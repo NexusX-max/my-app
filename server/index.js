@@ -11,7 +11,6 @@ import jwt from 'jsonwebtoken';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import axios from 'axios';
 
 // 🛠️ Config & Routes
 import connectAllDB from "./config/db.js"; 
@@ -36,24 +35,25 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const server = http.createServer(app);
 
+// Cloudflare-এর মাধ্যমে প্রক্সি ট্রাস্ট করার জন্য
 app.set('trust proxy', 1);
 
+// --- 🌐 CORS Configuration (Cloudflare ডোমেইন সহ) ---
 const allowedOrigins = [
   "http://localhost:5173", 
   "http://localhost:3000",
-  "http://127.0.0.1:5173",
-  "https://onyx-drift.com", 
+  "https://onyx-drift.com", // আপনার মেইন ডোমেইন
   "https://www.onyx-drift.com",
-  "https://api.onyx-drift.com",
   "https://onyx-messenger.vercel.app"
 ];
 
 app.use(cors({
   origin: function (origin, callback) {
+    // origin ছাড়া রিকোয়েস্ট (যেমন মোবাইল অ্যাপ) বা লিস্টেড ডোমেইন হলে অনুমতি দিন
     if (!origin || allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      callback(new Error('Neural Network Access Denied: Unauthorized Origin'));
+      callback(new Error('Onyx Security: Origin Unauthorized'));
     }
   },
   credentials: true,
@@ -64,6 +64,7 @@ app.use(cors({
 app.use(express.json({ limit: "150mb" }));
 app.use(express.urlencoded({ limit: "150mb", extended: true }));
 
+// Uploads static directory
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
@@ -97,17 +98,19 @@ const protect = async (req, res, next) => {
 /* ==========================================================
     🚀 API ROUTES
 ========================================================== */
-app.get("/", (req, res) => res.json({ status: "Active", system: "OnyxDrift Core", version: "3.0.0" }));
+app.get("/", (req, res) => res.json({ 
+    status: "Active", 
+    system: "OnyxDrift Core", 
+    node: process.env.NODE_ID || "Main", // কোন সার্ভার থেকে আসছে তা বোঝার জন্য
+    version: "3.1.0" 
+}));
 
 app.use('/api/auth', authRoutes); 
 app.use("/api/profile", protect, profileRoutes); 
 app.use("/api/users", protect, userRoutes); 
 app.use('/api/notifications', protect, notificationRoutes);
 app.use("/api/reels", protect, reelRoutes);
-
-// AI Routes (Onyx Brain, Voice, Smart Replies)
 app.use('/api/ai', protect, aiRoutes); 
-
 app.get("/api/feed", protect, getNeuralFeed);
 app.use("/api/posts", protect, postRoutes); 
 app.use("/api/stories", protect, storyRoute);
@@ -116,18 +119,22 @@ app.use("/api/market", protect, marketRoutes);
 app.use("/api/admin", protect, adminRoutes);
 app.use("/api/messages", protect, messageRoutes);
 app.use('/api/v1/search', protect, searchRoutes); 
-app.use('/api/user', protect, searchRoutes);      
-app.use('/api/user/profile', protect, profileRoutes); 
 
 /* ==========================================================
-    ⚡ SOCKET.IO (Neural Sync Engine)
+    ⚡ SOCKET.IO (Redis Sync Engine)
 ========================================================== */
 const io = new Server(server, { 
   cors: { origin: allowedOrigins, methods: ["GET", "POST"], credentials: true },
   pingTimeout: 60000,
 });
 
-const pubClient = createClient({ url: process.env.REDIS_URL || "redis://localhost:6379" });
+// --- Redis Cloud Connection ---
+const pubClient = createClient({ 
+    url: process.env.REDIS_URL, // Render-এ বসানো ওই লম্বা লিঙ্কটি এখানে কাজ করবে
+    socket: {
+        reconnectStrategy: retries => Math.min(retries * 50, 2000)
+    }
+});
 const subClient = pubClient.duplicate();
 
 let onlineUsers = [];
@@ -136,16 +143,19 @@ const setupSocket = async () => {
   try {
     await pubClient.connect();
     await subClient.connect();
+    
+    // ৪টি সার্ভারকে এক সুতায় বাঁধার মূল জায়গা
     io.adapter(createAdapter(pubClient, subClient));
-    console.log("💎 Neural Sync: Redis Adapter Linked");
+    console.log("💎 Neural Sync: Global Redis Adapter Linked");
   } catch (err) {
-    console.error("⚠️ Redis Connection Failed, falling back to Memory Adapter");
+    console.error("⚠️ Redis Connection Failed:", err);
+    // যদি রেডিস ফেইল করে তবে সার্ভার মেমোরিতে চলবে (তবে সিনক্রোনাইজেশন হবে না)
   }
 
   io.on("connection", (socket) => {
-    const userIdFromQuery = socket.handshake.query.userId;
-    if (userIdFromQuery && userIdFromQuery !== 'undefined') {
-      addUser(userIdFromQuery, socket.id);
+    const userId = socket.handshake.query.userId;
+    if (userId && userId !== 'undefined') {
+        addUser(userId, socket.id);
     }
 
     function addUser(userId, socketId) {
@@ -156,75 +166,36 @@ const setupSocket = async () => {
         onlineUsers.push({ userId, socketId });
       }
       io.emit("getOnlineUsers", onlineUsers);
-      console.log(`📡 Neural Link: User ${userId} mapped to ${socketId}`);
     }
 
-    socket.on("addNewUser", (userId) => {
-      if (userId) addUser(userId, socket.id);
-    });
-
     socket.on("sendMessage", (message) => {
-      const receiver = onlineUsers.find(u => u.userId === message.receiverId);
-      if (receiver) {
-        io.to(receiver.socketId).emit("getMessage", { ...message, status: 'delivered' });
-        io.to(receiver.socketId).emit("getNotification", {
-          senderId: message.senderId,
-          senderName: message.senderName || "New User",
-          isRead: false,
-          date: new Date(),
-        });
-      }
-    });
-
-    // --- WebRTC Calls ---
-    socket.on("callUser", (data) => {
-      const receiver = onlineUsers.find(u => u.userId === data.userToCall);
-      if (receiver) {
-        io.to(receiver.socketId).emit("incomingCall", {
-          signal: data.signalData, 
-          from: data.from,           
-          name: data.name,           
-          type: data.type,
-          roomId: data.roomId
-        });
-      } else {
-        socket.emit("callError", { message: "User is currently offline." });
-      }
-    });
-
-    socket.on("answerCall", (data) => {
-      const caller = onlineUsers.find(u => u.userId === data.to);
-      if (caller) {
-        io.to(caller.socketId).emit("callAccepted", data.signal);
-      }
-    });
-
-    socket.on("endCall", ({ to }) => {
-      const receiver = onlineUsers.find(u => u.userId === to);
-      if (receiver) {
-        io.to(receiver.socketId).emit("callEnded");
-      }
+      // মেসেজ পাঠানো হচ্ছে সবার কাছে (Redis Adapter সব সার্ভারে এটি পৌঁছে দেবে)
+      io.emit("getMessage", { ...message });
     });
 
     socket.on("disconnect", () => {
       onlineUsers = onlineUsers.filter(user => user.socketId !== socket.id);
       io.emit("getOnlineUsers", onlineUsers);
-      console.log("🛑 Neural link severed for a user.");
+      console.log("🛑 Neural link severed.");
     });
   });
 };
 
+/* ==========================================================
+    🏁 START SERVER
+========================================================== */
 const startApp = async () => {
   try {
-    await connectAllDB(); 
-    await setupSocket(); 
+    await connectAllDB(); // MongoDB কানেক্ট
+    await setupSocket(); // Socket + Redis কানেক্ট
+    
     const PORT = process.env.PORT || 5005; 
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 ONYX CORE ACTIVE: PORT ${PORT}`);
     });
   } catch (error) {
     console.error("❌ FAILURE:", error.message);
-    setTimeout(startApp, 3000); 
+    setTimeout(startApp, 5000); // ফেইল করলে ৫ সেকেন্ড পর আবার ট্রাই করবে
   }
 };
 

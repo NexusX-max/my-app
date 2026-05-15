@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-
-const API_BASE_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-  ? "http://127.0.0.1:5005/api"  // লোকাল ডেভেলপমেন্টের জন্য
-  : "https://api.onyx-drift.com/api"; // লাইভ সার্ভারের জন্য (Cloudflare Tunnel)
+import { useAuth } from '../context/AuthContext'; // AuthContext ইমপোর্ট করুন
 
 const JoinPage = () => {
+    const { signup, currentNode } = useAuth(); // Context থেকে signup এবং currentNode নিন
     const [isLoading, setIsLoading] = useState(false);
     const [formData, setFormData] = useState({
         firstName: '',
@@ -17,8 +15,6 @@ const JoinPage = () => {
         bio: '',
         avatarUrl: ''
     });
-    
-    const navigate = useNavigate();
 
     const handleRegister = async (e) => {
         e.preventDefault();
@@ -33,26 +29,24 @@ const JoinPage = () => {
         const loadToast = toast.loading("Establishing Neural Identity...");
 
         try {
-            const resp = await fetch(`${API_BASE_URL}/auth/register`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData),
-            });
+            // debug: কোন নোড ব্যবহার হচ্ছে তা কনসোলে দেখার জন্য
+            console.log(`🚀 Registering Identity via Node: ${currentNode}`);
 
-            const result = await resp.json();
+            // AuthContext-এর signup মেথড ব্যবহার করা হচ্ছে
+            // এটি আপনার ৪টি সার্ভারের মধ্যে র‍্যান্ডমলি একটিতে ডাটা পাঠাবে
+            await signup(formData);
 
-            if (resp.ok) {
-                localStorage.setItem('onyx_token', result.token);
-                toast.success("Identity Secured in Onyx Core!", { id: loadToast });
-                
-                // রেজিস্ট্রেশন সফল হলে ড্যাশবোর্ডে পাঠানো
-                setTimeout(() => navigate('/feed'), 1500);
-            } else {
-                throw new Error(result.msg || "Neural Identity rejected.");
-            }
+            toast.success("Identity Secured in Onyx Core!", { id: loadToast });
+            
+            // সফল হলে ১.৫ সেকেন্ড পর ফিড পেজে রিডাইরেক্ট
+            setTimeout(() => {
+                window.location.href = "/feed";
+            }, 1500);
+
         } catch (err) {
             console.error("❌ Join Error:", err);
-            toast.error(err.message || "Registration failed.", { id: loadToast });
+            const errorMessage = err.response?.data?.msg || err.message || "Neural Identity rejected.";
+            toast.error(errorMessage, { id: loadToast });
         } finally {
             setIsLoading(false);
         }
@@ -72,10 +66,11 @@ const JoinPage = () => {
                 <div className="text-center mb-8">
                     <h1 className="text-3xl font-black text-white mb-1 tracking-[0.2em] italic uppercase">ONYXDRIFT</h1>
                     <p className="text-cyan-400/50 text-[9px] font-mono tracking-[0.4em] uppercase">Establish New Identity</p>
+                    {/* একটিভ নোড ইন্ডিকেটর (বিকাশকারীর জন্য) */}
+                    <p className="text-white/5 text-[6px] mt-2 font-mono truncate">{currentNode}</p>
                 </div>
 
                 <form onSubmit={handleRegister} className="space-y-4">
-                    {/* নাম সেকশন */}
                     <div className="flex gap-4">
                         <input 
                             type="text" 
@@ -95,7 +90,6 @@ const JoinPage = () => {
                         />
                     </div>
 
-                    {/* ইমেইল ও পাসওয়ার্ড */}
                     <input 
                         type="email" 
                         placeholder="NEURAL EMAIL"
@@ -114,7 +108,6 @@ const JoinPage = () => {
                         onChange={(e) => setFormData({...formData, password: e.target.value})}
                     />
                     
-                    {/* অপশনাল প্রোফাইল ডাটা */}
                     <input 
                         type="text" 
                         placeholder="AVATAR URL (Optional)"

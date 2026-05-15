@@ -2,11 +2,10 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-const API_BASE_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-  ? "http://127.0.0.1:5005/api"  // লোকাল ডেভেলপমেন্টের জন্য
-  : "https://api.onyx-drift.com/api"; // লাইভ সার্ভারের জন্য (Cloudflare Tunnel)
+import { useAuth } from '../context/AuthContext'; // আপনার AuthContext ইমপোর্ট করুন
 
 const LoginPage = () => {
+    const { login, currentNode } = useAuth(); // Context থেকে login মেথড নিন
     const [isLoading, setIsLoading] = useState(false);
     const [formData, setFormData] = useState({
         email: '',
@@ -24,35 +23,25 @@ const LoginPage = () => {
         const loadToast = toast.loading("Authenticating Neural Identity...");
 
         try {
-            console.log("🚀 Establishing link to:", `${API_BASE_URL}/auth/login`);
+            // debug: কোন নোডে হিট করছে তা দেখার জন্য
+            console.log(`🚀 Connecting to Neural Node: ${currentNode}`);
             
-            const resp = await fetch(`${API_BASE_URL}/auth/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData),
-            });
+            // AuthContext-এর login মেথড ব্যবহার করা হচ্ছে
+            // এটি অটোমেটিক আপনার ৪টি সার্ভারের একটিকে বেছে নেবে
+            await login(formData.email, formData.password);
 
-            const result = await resp.json();
-            console.log("🛰️ Neural Response:", result);
+            toast.success(`Welcome back, Drifter!`, { id: loadToast });
+            
+            // ১ সেকেন্ড ডিলে যাতে ইউজার সাকসেস এনিমেশন দেখতে পায়
+            setTimeout(() => {
+                console.log("🏁 Neural Link Synchronized. Redirecting...");
+                window.location.href = "/feed";
+            }, 1000);
 
-            if (resp.ok && (result.success || result.token)) {
-                // ১. টোকেন সেভ করা
-                localStorage.setItem('onyx_token', result.token);
-                
-                toast.success(`Welcome back, Drifter!`, { id: loadToast });
-                
-                // ২. ১ সেকেন্ড ডিলে যাতে ইউজার সাকসেস মেসেজটা দেখতে পায়
-                setTimeout(() => {
-                    console.log("🏁 Neural Link Synchronized. Redirecting to Feed...");
-                    // navigate এর বদলে হার্ড রিফ্রেশ ব্যবহার করা হয়েছে যাতে AuthContext টোকেনটি লোড করতে পারে
-                    window.location.href = "/feed";
-                }, 1000);
-            } else {
-                throw new Error(result.msg || "Neural Access Denied.");
-            }
         } catch (err) {
-            console.error("❌ Login Error:", err);
-            toast.error(err.message, { id: loadToast });
+            console.error("❌ Neural Access Denied:", err);
+            const errorMessage = err.response?.data?.msg || err.message || "Connection Failed.";
+            toast.error(errorMessage, { id: loadToast });
         } finally {
             setIsLoading(false);
         }
@@ -72,6 +61,8 @@ const LoginPage = () => {
                 <div className="text-center mb-10">
                     <h1 className="text-3xl font-black text-white mb-1 tracking-[0.2em] italic uppercase">ONYXDRIFT</h1>
                     <p className="text-cyan-400/50 text-[9px] font-mono tracking-[0.4em] uppercase">Neural Access Point</p>
+                    {/* বর্তমানে কোন সার্ভারে কানেক্টেড তা ছোট করে দেখানোর জন্য (Debug purposes) */}
+                    <p className="text-white/10 text-[6px] mt-2 font-mono truncate">{currentNode}</p>
                 </div>
 
                 <form onSubmit={handleLogin} className="space-y-5">
