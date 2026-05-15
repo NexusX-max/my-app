@@ -2,7 +2,7 @@ import Message from "../models/Message.js";
 import Conversation from "../models/Conversation.js";
 import User from "../models/User.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-
+import { sendNotification } from '../utils/notificationHelper.js';
 // Gemini AI Setup (Ensure API Key is in .env)
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 

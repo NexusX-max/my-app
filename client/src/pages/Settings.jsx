@@ -16,7 +16,7 @@ const Settings = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const API_URL = "https://my-cool-app-cvm7.onrender.com";
+  const API_URL = "https://api.onyx-drift.com";
 
   // Axios Instance with Token
   const onyxApi = axios.create({

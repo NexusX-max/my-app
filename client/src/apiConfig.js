@@ -1,3 +1,4 @@
-// src/apiConfig.js
-export const BASE_URL = "https://my-cool-app-cvm7.onrender.com";
-export const SOCKET_URL = "https://my-cool-app-cvm7.onrender.com";
+// client/src/apiConfig.js
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://onyx-drift.com/api';
+
+export default API_BASE_URL;

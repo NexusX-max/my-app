@@ -2,132 +2,179 @@ import express from 'express';
 import Post from '../models/Post.js'; 
 import User from '../models/User.js';
 import auth from '../middleware/auth.js';
+import { sendNotification } from '../utils/notificationHelper.js';
 
 const router = express.Router();
 
 /* ==========================================================
-    ১. CONTROLLER FUNCTIONS (এআই ও সিস্টেম কন্ট্রোল)
+    ১. CONTROLLER FUNCTIONS (প্রোফাইল ও সিস্টেম কন্ট্রোল)
 ========================================================== */
 
-// ১. এআই অটো-পাইলট টগল
+// --- ✅ প্রোফাইল আপডেট ফাংশন (API Independent) ---
+const updateProfile = async (req, res) => {
+  try {
+    const { firstName, lastName, nickname, bio, location, avatar, coverImg, skills } = req.body;
+    const auth0Id = req.user.sub;
+
+    // এআই এমবেডিং আপাতত স্কিপ করা হচ্ছে (এপিআই এরর এড়াতে)
+    // যখন গুগল এপিআই ঠিক হবে, তখন এখানে getEmbeddings আবার চালু করা যাবে।
+    
+    const updateData = { 
+      firstName, 
+      lastName, 
+      nickname, 
+      bio, 
+      location, 
+      avatar, 
+      profilePic: avatar, 
+      coverImg, 
+      skills: Array.isArray(skills) ? skills : [] // নিশ্চিত করা যেন এটি এরি হয়
+    };
+
+    const updatedUser = await User.findOneAndUpdate(
+      { auth0Id: auth0Id },
+      { $set: updateData },
+      { new: true, upsert: true }
+    );
+
+    res.json({ success: true, user: updatedUser, msg: "Neural Identity Updated" });
+  } catch (err) {
+    console.error("Update Error:", err);
+    res.status(500).json({ msg: "Profile Sync Failure" });
+  }
+};
+
+// --- সিস্টেম কন্ট্রোল ফাংশনস ---
 const toggleAutopilot = async (req, res) => {
   try {
     const user = await User.findOne({ auth0Id: req.user.sub });
-    if (!user) return res.status(404).json({ msg: "User not found" });
-
     user.aiAutopilot = !user.aiAutopilot;
     await user.save();
-    
     res.json({ aiAutopilot: user.aiAutopilot, msg: "Neural Autopilot Updated" });
-  } catch (err) {
-    res.status(500).json({ msg: "System Sync Failure" });
-  }
+  } catch (err) { res.status(500).json({ msg: "System Sync Failure" }); }
 };
 
-// ২. এআই টোন (Personality) আপডেট
 const updateAiTone = async (req, res) => {
   try {
     const { tone } = req.body;
-    const user = await User.findOneAndUpdate(
-      { auth0Id: req.user.sub },
-      { aiTone: tone },
-      { new: true }
-    );
+    const user = await User.findOneAndUpdate({ auth0Id: req.user.sub }, { aiTone: tone }, { new: true });
     res.json({ aiTone: user.aiTone, msg: "Personality Calibrated" });
-  } catch (err) {
-    res.status(500).json({ msg: "Calibration Failure" });
-  }
+  } catch (err) { res.status(500).json({ msg: "Calibration Failure" }); }
 };
 
-// ৩. ঘোস্ট মোড টগল
 const toggleGhostMode = async (req, res) => {
   try {
     const user = await User.findOne({ auth0Id: req.user.sub });
-    if (!user) return res.status(404).json({ msg: "User not found" });
-
     user.ghostMode = !user.ghostMode;
     await user.save();
     res.json({ ghostMode: user.ghostMode, msg: "Ghost Protocol Updated" });
-  } catch (err) {
-    res.status(500).json({ msg: "Ghost Protocol Error" });
-  }
+  } catch (err) { res.status(500).json({ msg: "Ghost Protocol Error" }); }
 };
 
 /* ==========================================================
-    ২. ROUTES (পাবলিক ও প্রাইভেট গেটওয়ে)
+    ২. SEARCH ENGINE (Onyx Hybrid Search)
 ========================================================== */
 
-// --- প্রোফাইল এবং পোস্ট ডাটা পাওয়া ---
-router.get('/user/:userId', auth, async (req, res) => {
+router.post("/neural-search", auth, async (req, res) => {
   try {
-    const targetId = decodeURIComponent(req.params.userId);
+    const { query } = req.body;
+    if (!query) return res.status(400).json({ message: "Neural input required" });
+
+    // মঙ্গোডিবি টেক্সট সার্চ লজিক (যা এআই-এর মতোই কাজ করবে)
+    const results = await User.find(
+      { $text: { $search: query } },
+      { score: { $meta: "textScore" } }
+    )
+    .sort({ score: { $meta: "textScore" } }) // সবথেকে ভালো ম্যাচটি আগে আসবে
+    .limit(15)
+    .select("username firstName lastName avatar profilePic location skills bio");
+
+    res.json({ 
+      success: true, 
+      count: results.length,
+      results 
+    });
+
+  } catch (error) {
+    console.error("Search Error:", error);
+    res.status(500).json({ message: "Search Connection Failure" });
+  }
+});
+
+/* ==========================================================
+    ৩. ROUTES (পাবলিক ও সোশ্যাল গেটওয়ে)
+========================================================== */
+
+// প্রোফাইল এবং পোস্ট ডাটা পাওয়া (সংশোধিত রাউট)
+router.get('/profile/:userId', auth, async (req, res) => {
+  try {
+    const targetId = decodeURIComponent(req.params.userId).replace(/^:/, '').trim();
     
-    // ইউজার এবং পোস্ট প্যারালালি খোঁজা (Performance optimization)
+    // মঙ্গো আইডি নাকি অথ আইডি তা চেক করা
+    const isMongoId = targetId.match(/^[0-9a-fA-F]{24}$/);
+
     const [user, posts] = await Promise.all([
-      User.findOne({ auth0Id: targetId }).lean(),
+      User.findOne({ 
+        $or: [
+          { auth0Id: targetId }, 
+          { _id: isMongoId ? targetId : null }
+        ] 
+      }).lean(),
       Post.find({ 
         $or: [
           { authorAuth0Id: targetId },
-          { authorId: targetId },
-          { author: targetId }
-        ]
-      }).sort({ createdAt: -1 }).lean()
+          { author: isMongoId ? targetId : null }
+        ] 
+      })
+      .sort({ createdAt: -1 })
+      .populate('author', 'firstName lastName avatar nickname')
+      .lean()
     ]);
 
-    res.json({
-      user: user || { auth0Id: targetId, name: "Unknown Drifter", nickname: "drifter_unknown" },
-      posts: posts || []
-    });
+    if (!user) return res.status(404).json({ msg: "Target not found" });
 
-    console.log(`[Neural Link]: Found ${posts.length} signals for ${targetId}`);
+    res.json({ user, posts: posts || [] });
   } catch (err) {
-    console.error("Neural Fetch Error:", err);
     res.status(500).json({ msg: "Neural Link Synchronization Error" });
   }
 });
 
-// --- ✅ ফলো/আনফলো টগল রাউট (স্মার্ট লজিক) ---
+router.put('/profile/update', auth, updateProfile);
+
+// ফলো/আনফলো টগল
 router.post('/follow/:id', auth, async (req, res) => {
   try {
-    const targetAuth0Id = decodeURIComponent(req.params.id);
-    const followerAuth0Id = req.user.sub;
+    const targetId = decodeURIComponent(req.params.id).replace(/^:/, '').trim();
+    const isMongoId = targetId.match(/^[0-9a-fA-F]{24}$/);
 
-    if (followerAuth0Id === targetAuth0Id) {
-      return res.status(400).json({ message: "You cannot link with your own node." });
-    }
+    const [targetUser, currentUser] = await Promise.all([
+      User.findOne({ $or: [{ auth0Id: targetId }, { _id: isMongoId ? targetId : null }] }),
+      User.findOne({ auth0Id: req.user.sub })
+    ]);
 
-    const targetUser = await User.findOne({ auth0Id: targetAuth0Id });
-    const currentUser = await User.findOne({ auth0Id: followerAuth0Id });
+    if (!targetUser || !currentUser) return res.status(404).json({ message: "Node not found." });
+    if (currentUser.auth0Id === targetUser.auth0Id) return res.status(400).json({ message: "Cannot link own node." });
 
-    if (!targetUser || !currentUser) {
-      return res.status(404).json({ message: "Neural node not found in matrix." });
-    }
-
-    // অলরেডি ফলো করা থাকলে আনফলো হবে, না থাকলে ফলো হবে
-    const isFollowing = currentUser.following.includes(targetAuth0Id);
+    const targetIdentifier = targetUser.auth0Id;
+    const isFollowing = currentUser.following.includes(targetIdentifier);
 
     if (isFollowing) {
-      // আনফলো লজিক
-      currentUser.following = currentUser.following.filter(id => id !== targetAuth0Id);
-      targetUser.followers = targetUser.followers.filter(id => id !== followerAuth0Id);
-      await currentUser.save();
-      await targetUser.save();
-      return res.status(200).json({ isFollowing: false, message: "Neural link severed (Unfollowed)." });
+      currentUser.following = currentUser.following.filter(id => id !== targetIdentifier);
+      targetUser.followers = targetUser.followers.filter(id => id !== currentUser.auth0Id);
     } else {
-      // ফলো লজিক
-      currentUser.following.push(targetAuth0Id);
-      targetUser.followers.push(followerAuth0Id);
-      await currentUser.save();
-      await targetUser.save();
-      return res.status(200).json({ isFollowing: true, message: "Neural link established (Following)!" });
+      currentUser.following.push(targetIdentifier);
+      targetUser.followers.push(currentUser.auth0Id);
+      // ফলো নোটিফিকেশন পাঠানো
+      await sendNotification(targetUser._id, currentUser._id, 'follow', null, 'started following your drift');
     }
-  } catch (err) {
-    console.error("Follow Error:", err);
-    res.status(500).json({ message: "Neural Connection Failure" });
-  }
+
+    await Promise.all([currentUser.save(), targetUser.save()]);
+    res.status(200).json({ isFollowing: !isFollowing, message: isFollowing ? "Link severed." : "Link established!" });
+  } catch (err) { res.status(500).json({ message: "Neural Connection Failure" }); }
 });
 
-// --- সিস্টেম কন্ট্রোল রাউটস ---
+
+// সিস্টেম কন্ট্রোল রাুটস
 router.post('/autopilot/toggle', auth, toggleAutopilot);
 router.put('/tone/update', auth, updateAiTone);
 router.post('/ghost/toggle', auth, toggleGhostMode);

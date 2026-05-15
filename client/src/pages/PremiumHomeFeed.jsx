@@ -1,21 +1,25 @@
 import React, { useEffect, useState, useMemo, useCallback, useContext, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import axios from 'axios'; 
 import { 
   FaHeart, FaRegHeart, FaSearch, FaRegComment, 
-  FaShare, FaImage, FaTimes, FaSmile,
-  FaVolumeUp, FaVolumeMute
+  FaImage, FaTimes, FaVolumeUp, FaVolumeMute, FaArrowLeft, FaCog, FaBell, FaUser, FaSignOutAlt
 } from 'react-icons/fa';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams, Link } from 'react-router-dom';
 import toast from "react-hot-toast";
 import { AuthContext } from '../context/AuthContext';
 
-// গ্লোবাল সাউন্ড স্টেট
+// ১. তোমার তৈরি করা নোটিফিকেশন সিস্টেমটি ইম্পোর্ট করো
+import NotificationSystem from "../components/NotificationSystem";
 let globalIsMuted = true;
 
+const CLOUD_NAME = "dx0cf0ggu";
+const UPLOAD_PRESET = "my_onyx_preset"; 
+
 /* ==========================================================
-    ১. স্মার্ট ভিডিও ইঞ্জিন (NeuralVideoPlayer)
+    🧠 স্মার্ট ভিডিও ইঞ্জিন
 ========================================================== */
-const NeuralVideoPlayer = ({ src, poster }) => {
+const NeuralVideoPlayer = ({ src }) => {
   const videoRef = useRef(null);
   const [muted, setMuted] = useState(globalIsMuted);
 
@@ -30,49 +34,30 @@ const NeuralVideoPlayer = ({ src, poster }) => {
       },
       { threshold: 0.6 }
     );
-
     if (videoRef.current) observer.observe(videoRef.current);
     return () => observer.disconnect();
   }, []);
 
-const protect = async (req, res, next) => {
-  let token;
-  if (req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
-    try {
-      token = req.headers.authorization.split(" ")[1];
-      console.log("Received Token:", token); // এটি চেক করুন
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.user = { id: decoded.id }; 
-      return next();
-    } catch (error) {
-      console.log("JWT Verification Detail:", error.message); // এখানে আসল কারণ দেখা যাবে (যেমন: jwt expired)
-      return res.status(401).json({ error: "Neural Link Severed", message: error.message });
-    }
-  }
-  return res.status(401).json({ error: "Access Denied", message: "No Token Provided" });
-};
   const toggleMute = (e) => {
     e.stopPropagation();
     globalIsMuted = !muted;
     setMuted(!muted);
-    if (videoRef.current) videoRef.current.muted = globalIsMuted;
   };
 
   return (
-    <div className="relative group/video rounded-xl overflow-hidden bg-black border border-white/5">
+    <div className="relative group/video rounded-2xl md:rounded-[32px] overflow-hidden bg-black border border-white/10 shadow-2xl w-full aspect-video flex items-center justify-center">
       <video
         ref={videoRef}
         src={src}
-        poster={poster}
         muted={muted}
         loop
         playsInline
-        className="w-full max-h-[500px] object-contain cursor-pointer"
+        className="w-full h-full object-cover cursor-pointer transition-transform duration-700 group-hover/video:scale-105"
         onClick={toggleMute}
       />
       <button 
         onClick={toggleMute}
-        className="absolute bottom-4 right-4 p-2 bg-black/60 backdrop-blur-md rounded-full text-white opacity-0 group-hover/video:opacity-100 transition-opacity"
+        className="absolute bottom-4 right-4 p-3 bg-black/60 backdrop-blur-xl rounded-full text-white border border-white/10 opacity-0 group-hover/video:opacity-100 transition-all z-20"
       >
         {muted ? <FaVolumeMute size={14} /> : <FaVolumeUp size={14} className="text-cyan-400" />}
       </button>
@@ -81,7 +66,86 @@ const protect = async (req, res, next) => {
 };
 
 /* ==========================================================
-    ২. পোস্ট তৈরির কম্পোনেন্ট (Neural Synthesizer)
+    🚀 ২. প্রোফাইল ড্রপডাউন মেনু (Updated with Notifications)
+========================================================== */
+const ProfileDropdown = ({ user, logout, navigate }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-10 h-10 rounded-full bg-zinc-800 border-2 border-white/10 overflow-hidden cursor-pointer hover:border-cyan-500 transition-all shadow-[0_0_15px_rgba(6,182,212,0.1)]"
+      >
+        {(user?.avatar || user?.profilePic) ? (
+          <img src={user?.avatar || user?.profilePic} className="w-full h-full object-cover" alt="me" />
+        ) : (
+          <span className="flex items-center justify-center h-full font-black text-white">{user?.firstName?.charAt(0)}</span>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+            className="absolute right-0 mt-3 w-72 bg-black/95 backdrop-blur-3xl border border-white/10 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.9)] z-[1000] overflow-hidden"
+          >
+            <div className="p-5 border-b border-white/5 bg-white/[0.02] flex items-center gap-3">
+               <img src={user?.avatar || user?.profilePic} className="w-10 h-10 rounded-xl object-cover border border-white/10" alt="me" />
+               <div className="overflow-hidden">
+                  <p className="text-xs font-bold text-white truncate">{user?.firstName} {user?.lastName}</p>
+                  <p className="text-[9px] text-cyan-500 font-mono tracking-widest uppercase">Neural_Link_Active</p>
+               </div>
+            </div>
+
+            <div className="py-2 border-b border-white/5 bg-black/40">
+                <div className="px-5 py-2 flex justify-between items-center">
+                    <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Neural Signals</h3>
+                    <span className="flex h-2 w-2 relative">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+                    </span>
+                </div>
+                <NotificationSystem /> 
+            </div>
+
+            <div className="p-2 grid grid-cols-2 gap-1">
+              <Link to={`/profile/${user?._id}`} onClick={() => setIsOpen(false)} className="flex flex-col items-center gap-2 p-3 rounded-2xl hover:bg-white/5 text-zinc-400 hover:text-cyan-400 transition-all group">
+                <FaUser size={14} className="group-hover:scale-110 transition-all" />
+                <span className="text-[9px] font-black uppercase tracking-tighter">Profile</span>
+              </Link>
+              
+              <Link to="/settings" onClick={() => setIsOpen(false)} className="flex flex-col items-center gap-2 p-3 rounded-2xl hover:bg-white/5 text-zinc-400 hover:text-cyan-400 transition-all group">
+                <FaCog size={14} className="group-hover:rotate-90 transition-all duration-500" />
+                <span className="text-[9px] font-black uppercase tracking-tighter">Config</span>
+              </Link>
+            </div>
+
+            <button onClick={logout} className="w-full p-4 text-[10px] font-black uppercase text-rose-500 hover:bg-rose-500/10 transition-all border-t border-white/5 tracking-[0.2em]">
+                Disconnect_Node
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+/* ==========================================================
+    🚀 ৩. পোস্ট তৈরির কম্পোনেন্ট
 ========================================================== */
 const CreatePost = ({ onPostCreated, api, user }) => {
   const [text, setText] = useState("");
@@ -90,95 +154,65 @@ const CreatePost = ({ onPostCreated, api, user }) => {
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef(null);
 
-  const handleMediaChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setMedia(file);
-      setPreview(URL.createObjectURL(file));
-    }
-  };
-
-  const removeMedia = () => {
-    setMedia(null);
-    setPreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
   const handleSubmit = async () => {
-    if (!text.trim() && !media) return toast.error("Input required for transmission");
-    
-    const formData = new FormData();
-    formData.append("text", text);
-    if (media) formData.append("media", media); 
-
+    if (!text.trim() && !media) return toast.error("Transmission data required");
+    setLoading(true);
     try {
-      setLoading(true);
-      // এখানে টোকেনটি অটোমেটিক আপনার 'api' ইন্টারসেপ্টর থেকে যাওয়ার কথা
-      await api.post("/posts", formData);
-      toast.success("Signal Transmitted!");
-      setText("");
-      removeMedia();
-      if (onPostCreated) onPostCreated(); 
-    } catch (err) {
-      toast.error("Transmission Interrupted");
-    } finally {
-      setLoading(false);
+      let uploadedUrl = "";
+      let type = "text";
+      if (media) {
+        const formData = new FormData();
+        formData.append("file", media);
+        formData.append("upload_preset", UPLOAD_PRESET); 
+        const cloudRes = await axios.post(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`, formData);
+        uploadedUrl = cloudRes.data.secure_url;
+        type = media.type.startsWith("video") ? "video" : "image";
+      }
+      await api.post("/posts", { text, mediaUrl: uploadedUrl, mediaType: type });
+      toast.success("Onyx Synced!");
+      setText(""); setMedia(null); setPreview(null);
+      if (onPostCreated) onPostCreated();
+    } catch (err) { 
+      toast.error("Transmission Failed"); 
+    } finally { 
+      setLoading(false); 
     }
   };
 
   return (
-    <div className="p-4 border-b border-white/[0.05] bg-black">
-      <div className="flex gap-3">
-        <div className="w-10 h-10 rounded-full bg-zinc-900 border border-white/10 shrink-0 overflow-hidden shadow-md">
-          <img 
-            src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.firstName || 'U'}&background=06b6d4&color=fff`} 
-            alt="me" 
-            className="w-full h-full object-cover" 
-          />
-        </div>
+    <div className="p-6 border-b border-white/5 bg-black">
+      <div className="flex gap-4">
+        <img 
+          src={user?.avatar || user?.profilePic || `https://ui-avatars.com/api/?name=${user?.firstName || 'U'}`} 
+          className="w-12 h-12 rounded-2xl object-cover border border-white/10" 
+          alt="me"
+        />
         <div className="flex-1">
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="What's happening in the drift?"
-            className="w-full bg-transparent border-none focus:ring-0 text-[16px] text-zinc-200 placeholder-zinc-600 resize-none min-h-[60px] font-medium"
+            placeholder="Share a neural spark..."
+            className="w-full bg-transparent border-none focus:ring-0 text-lg text-white placeholder-zinc-600 resize-none min-h-[60px]"
           />
-          
-          <AnimatePresence>
-            {preview && (
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="relative mt-2 rounded-2xl overflow-hidden border border-white/10 bg-zinc-900"
-              >
-                <button 
-                  onClick={removeMedia} 
-                  className="absolute top-2 left-2 bg-black/70 p-2 rounded-full hover:bg-black z-10 text-white"
-                >
-                  <FaTimes size={12} />
-                </button>
-                {media?.type.startsWith("video") ? (
-                  <video src={preview} className="w-full h-auto" muted controls />
-                ) : (
-                  <img src={preview} alt="preview" className="w-full h-auto max-h-[450px] object-cover" />
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="flex justify-between items-center mt-4">
-            <div className="flex gap-1">
-              <button onClick={() => fileInputRef.current.click()} className="p-2.5 rounded-full hover:bg-cyan-500/10 text-cyan-500 transition-all active:scale-90"><FaImage size={18} /></button>
-              <button className="p-2.5 rounded-full hover:bg-cyan-500/10 text-cyan-500 transition-all opacity-40"><FaSmile size={18} /></button>
-              <input type="file" ref={fileInputRef} onChange={handleMediaChange} className="hidden" accept="image/*,video/*" />
+          {preview && (
+            <div className="relative mt-3 rounded-2xl overflow-hidden border border-white/10 max-h-80">
+              <button onClick={() => {setMedia(null); setPreview(null);}} className="absolute top-2 right-2 p-2 bg-black/50 rounded-full text-white z-10">
+                <FaTimes size={12} />
+              </button>
+              {media?.type?.startsWith("video") ? (
+                <video src={preview} className="w-full h-full object-cover aspect-video" />
+              ) : (
+                <img src={preview} className="w-full h-full object-cover aspect-video" alt="p" />
+              )}
             </div>
-            <button 
-              onClick={handleSubmit}
-              disabled={loading || (!text.trim() && !media)}
-              className="bg-cyan-500 text-black px-6 py-1.5 rounded-full font-black text-[13px] uppercase hover:bg-cyan-400 disabled:opacity-30 transition-all"
-            >
-              {loading ? "..." : "Drift"}
+          )}
+          <div className="flex justify-between items-center mt-4">
+            <button onClick={() => fileInputRef.current.click()} className="text-cyan-500 p-2 hover:bg-cyan-500/10 rounded-xl transition-all">
+              <FaImage size={20} />
+              <input type="file" ref={fileInputRef} onChange={(e) => { const file = e.target.files[0]; if (file) { setMedia(file); setPreview(URL.createObjectURL(file)); }}} className="hidden" accept="image/*,video/*" />
+            </button>
+            <button onClick={handleSubmit} disabled={loading} className="bg-white text-black px-6 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-cyan-400 transition-all">
+              {loading ? "TRANSMITTING..." : "TRANSMIT"}
             </button>
           </div>
         </div>
@@ -188,147 +222,252 @@ const CreatePost = ({ onPostCreated, api, user }) => {
 };
 
 /* ==========================================================
-    ৩. মেইন হোম ফিড (PremiumHomeFeed)
+    🌌 ৪. মেইন হোম ফিড
 ========================================================= */
-const PremiumHomeFeed = ({ searchQuery = "" }) => {
+const PremiumHomeFeed = () => {
   const navigate = useNavigate();
-  const { user, api, loading: isAuthLoading, logout } = useContext(AuthContext);
-
+  const { user: currentUser, logout, api, loading: isAuthLoading } = useContext(AuthContext);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeFilter, setActiveFilter] = useState("Global");
+  const [isSearchActive, setIsSearchActive] = useState(false);
+  const [localSearch, setLocalSearch] = useState("");
 
-  // ডোমেইন ভিত্তিক মিডিয়া ইউআরএল ফিক্স
-  const getMediaUrl = useCallback((url) => {
-    if (!url) return null;
-    if (url.startsWith('http')) return url;
-    // ব্যাকস্ল্যাশ ফিক্স করা হয়েছে এবং ডোমেইন পাথ ঠিক করা হয়েছে
-    const cleanPath = url.replace(/\\/g, '/');
-    return `https://onyx-drift.com/${cleanPath.startsWith('/') ? cleanPath.slice(1) : cleanPath}`;
-  }, []);
-
-  const fetchPosts = useCallback(async () => {
-    if (!user) return;
-    try {
-      setLoading(true);
-      // রিকোয়েস্ট পাঠানোর সময় হেডার নিশ্চিত করা
-      const res = await api.get("/posts/neural-feed"); 
-      setPosts(Array.isArray(res.data) ? res.data : []);
-    } catch (err) {
-      if (err.response?.status === 401) {
-        toast.error("Neural grid access denied. Re-authenticating...");
-        // যদি টোকেন এক্সপায়ার হয় তবে অটো লগআউট লজিক এখানে দিতে পারেন
-      } else {
-        toast.error("Neural grid offline");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [api, user]);
-
-  useEffect(() => {
-    if (user) fetchPosts();
-  }, [user, fetchPosts]);
-
-  const handleLike = async (id) => {
-    try {
-      const res = await api.post(`/posts/${id}/like`);
-      setPosts(prev => prev.map(p => p._id === id ? { ...p, likes: res.data.likes } : p));
-    } catch (err) {
-      toast.error("Sync failed");
+  // --- নতুন সার্চ হ্যান্ডলার (এন্টার চাপলে কাজ করবে) ---
+  const handleGlobalSearch = (e) => {
+    if (e.key === 'Enter' && localSearch.trim()) {
+      navigate(`/search?q=${encodeURIComponent(localSearch)}`);
     }
   };
 
-  const filteredPosts = useMemo(() => {
-    let result = [...posts];
-    if (searchQuery) {
-      result = result.filter(p => 
-        p.text?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.authorName?.toLowerCase().includes(searchQuery.toLowerCase())
-      );
+  const fetchPosts = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      setLoading(true);
+      const res = await api.get("/posts/neural-feed"); 
+      setPosts(Array.isArray(res.data) ? res.data : []);
+    } catch (err) { 
+      toast.error("Grid Connection Failed"); 
+    } finally { 
+      setLoading(false); 
     }
-    return result;
-  }, [posts, searchQuery]);
+  }, [api, currentUser]);
 
-  if (isAuthLoading) return (
-    <div className="bg-black min-h-screen flex items-center justify-center">
-      <div className="text-cyan-500 font-mono text-xs animate-pulse tracking-[0.3em]">INITIALIZING_NEURAL_LINK...</div>
-    </div>
-  );
+  useEffect(() => { if (currentUser) fetchPosts(); }, [currentUser, fetchPosts]);
+
+  const handleLike = async (id, e) => {
+    e.stopPropagation();
+    try {
+      const res = await api.post(`/posts/${id}/like`);
+      setPosts(prev => prev.map(p => (p._id === id || p.id === id) ? { ...p, likesCount: res.data.likesCount, isLiked: res.data.liked } : p));
+    } catch (err) { toast.error("Sync failed"); }
+  };
+
+  const handleCommentClick = (postId, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!postId) return toast.error("Neural data missing");
+    navigate(`/post/${postId}`);
+  };
+
+  const filteredPosts = useMemo(() => {
+    return posts.filter(p => p.text?.toLowerCase().includes(localSearch.toLowerCase()));
+  }, [posts, localSearch]);
+
+  if (isAuthLoading) return <div className="bg-black h-screen flex items-center justify-center font-mono text-cyan-500 animate-pulse uppercase tracking-widest">Initializing_Onyx_Link...</div>;
 
   return (
-    <div className="bg-black min-h-screen text-white font-sans selection:bg-cyan-500/30">
-      <header className="sticky top-0 z-50 bg-black/60 backdrop-blur-md border-b border-white/[0.05] p-4 flex justify-between items-center px-6">
-        <h2 className="text-lg font-black tracking-tighter uppercase italic">
-          Onyx<span className="text-cyan-500 font-mono">Drift</span>
-        </h2>
-        <FaSearch className="text-zinc-500 cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => navigate("/explorer")} />
+    <div className="bg-black min-h-screen text-zinc-300 font-sans">
+      <header className="sticky top-0 z-[100] bg-black/90 backdrop-blur-2xl border-b border-white/5 p-4 px-8 flex justify-between items-center">
+        <h2 className="text-xl font-black italic tracking-tighter cursor-pointer" onClick={() => window.scrollTo({top:0, behavior:'smooth'})}>ONYX<span className="text-cyan-500 not-italic font-mono">DRIFT</span></h2>
+        
+        <div className="flex items-center gap-4">
+            <AnimatePresence>
+              {isSearchActive && (
+                <motion.input 
+                  initial={{ width: 0, opacity: 0 }} animate={{ width: 200, opacity: 1 }} exit={{ width: 0, opacity: 0 }} 
+                  type="text" 
+                  placeholder="Press enter to search..." 
+                  value={localSearch} 
+                  onChange={(e) => setLocalSearch(e.target.value)} 
+                  onKeyDown={handleGlobalSearch} // এন্টার হ্যান্ডলার যুক্ত হলো
+                  className="bg-zinc-900 border border-cyan-500/30 rounded-full px-4 py-1 text-xs text-white outline-none font-mono" 
+                />
+              )}
+            </AnimatePresence>
+            
+            <button onClick={() => setIsSearchActive(!isSearchActive)} className="p-2 rounded-full bg-white/5 hover:bg-white/10 transition-all text-zinc-400">
+              <FaSearch size={14} />
+            </button>
+
+            <ProfileDropdown user={currentUser} logout={logout} navigate={navigate} />
+        </div>
       </header>
 
-      <main className="max-w-xl mx-auto border-x border-white/[0.05] min-h-screen bg-zinc-950/20">
-        <CreatePost onPostCreated={fetchPosts} api={api} user={user} />
+      <main className="max-w-xl mx-auto border-x border-white/5 min-h-screen bg-black">
+        <CreatePost onPostCreated={fetchPosts} api={api} user={currentUser} />
 
-        <div className="flex border-b border-white/[0.05] sticky top-[60px] bg-black/80 backdrop-blur-md z-40">
+        <div className="flex border-b border-white/5 sticky top-[68px] bg-black/95 backdrop-blur-xl z-40">
           {["Global", "Following"].map(f => (
-            <button key={f} onClick={() => setActiveFilter(f)} className="flex-1 py-4 text-[11px] font-bold uppercase tracking-widest relative">
-              <span className={activeFilter === f ? "text-white" : "text-zinc-500"}>{f}</span>
-              {activeFilter === f && <motion.div layoutId="tab" className="absolute bottom-0 left-0 w-full h-[2px] bg-cyan-500" />}
+            <button key={f} onClick={() => setActiveFilter(f)} className={`flex-1 py-4 text-[10px] font-black uppercase tracking-[0.2em] relative transition-all ${activeFilter === f ? "text-cyan-400" : "text-zinc-600 hover:text-zinc-400"}`}>
+              {f}{activeFilter === f && <motion.div layoutId="tab-indicator" className="absolute bottom-0 left-0 right-0 h-[2px] bg-cyan-500 shadow-[0_0_10px_#06b6d4]" />}
             </button>
           ))}
         </div>
 
-        <div className="flex flex-col pb-20">
-          {loading && posts.length === 0 ? (
-            <div className="p-20 text-center text-cyan-500 font-mono text-[10px] animate-pulse uppercase tracking-[0.2em]">SYNCING_NEURAL_GRID...</div>
-          ) : filteredPosts.length === 0 ? (
-             <div className="p-20 text-center text-zinc-600 font-mono text-[10px] uppercase tracking-[0.2em]">No signals detected in the drift</div>
-          ) : (
-            filteredPosts.map((post) => (
-              <div key={post._id} className="p-4 border-b border-white/[0.05] hover:bg-white/[0.01] transition-all group">
-                <div className="flex gap-3">
+        <div className="flex flex-col pb-24">
+          {filteredPosts.length > 0 ? filteredPosts.map((post) => {
+            const author = post.author || {};
+            const authorId = author._id || author.id;
+            const pid = post._id || post.id;
+            const fullName = author.firstName ? `${author.firstName} ${author.lastName || ''}` : "Onyx Drifter";
+            const avatar = author.avatar || author.profilePic || `https://ui-avatars.com/api/?name=${fullName}`;
+            
+            return (
+              <motion.article 
+                initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} key={pid} 
+                className="p-6 border-b border-white/5 hover:bg-zinc-900/30 transition-colors"
+              >
+                <div className="flex gap-4">
                   <img 
-                    src={getMediaUrl(post.authorAvatar || post.authorProfilePic) || `https://ui-avatars.com/api/?name=${post.authorName || 'D'}&background=18181b&color=71717a`} 
-                    className="w-10 h-10 rounded-full bg-zinc-900 object-cover border border-white/10"
-                    alt="" 
+                    onClick={() => authorId && navigate(`/profile/${authorId}`)}
+                    src={avatar} 
+                    className="w-12 h-12 rounded-2xl object-cover border border-white/10 cursor-pointer hover:border-cyan-500 transition-all" 
+                    alt="av" 
                   />
                   <div className="flex-1">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="font-bold text-[14px] hover:underline cursor-pointer">{post.authorName || "Drifter"}</span>
-                      <span className="text-zinc-600 text-[12px]">· {new Date(post.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    <div className="flex items-center justify-between">
+                      <div onClick={() => authorId && navigate(`/profile/${authorId}`)} className="cursor-pointer group">
+                        <h4 className="font-bold text-white leading-none group-hover:text-cyan-400 transition-all">{fullName}</h4>
+                        <p className="text-[10px] text-zinc-600 font-mono mt-1">@{author.username || "drifter"}</p>
+                      </div>
                     </div>
-                    <p className="text-[14.5px] text-zinc-300 leading-relaxed mb-3">{post.text}</p>
+
+                    <p className="text-[15px] leading-relaxed text-zinc-300 mt-3 mb-4">{post.text}</p>
                     
-                    {post.media && (
-                      <div className="my-3">
-                        {post.media.match(/\.(mp4|webm|mov|quicktime)$/i) ? (
-                          <NeuralVideoPlayer src={getMediaUrl(post.media)} />
+                    {post.mediaUrl && (
+                      <div className="mb-4">
+                        {post.mediaType === 'video' ? (
+                          <NeuralVideoPlayer src={post.mediaUrl} />
                         ) : (
-                          <img src={getMediaUrl(post.media)} className="rounded-xl w-full object-cover border border-white/5 shadow-2xl" alt="" />
+                          <div className="rounded-3xl overflow-hidden border border-white/10 bg-zinc-950 shadow-2xl">
+                            <img src={post.mediaUrl} className="w-full h-auto max-h-[600px] object-cover" alt="post-media" />
+                          </div>
                         )}
                       </div>
                     )}
 
-                    <div className="flex justify-between max-w-sm mt-4 text-zinc-500">
-                      <button className="flex items-center gap-2 hover:text-cyan-400 transition-colors">
-                        <FaRegComment size={15}/> 
-                        <span className="text-xs">{post.comments?.length || 0}</span>
+                    <div className="flex gap-6 mt-4 text-zinc-500">
+                      <button onClick={(e) => handleLike(pid, e)} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all ${post.isLiked ? 'text-rose-500 bg-rose-500/10' : 'hover:bg-white/5'}`}>
+                        {post.isLiked ? <FaHeart size={16} /> : <FaRegHeart size={16} />}
+                        <span className="text-xs font-bold">{post.likesCount || 0}</span>
                       </button>
-                      <button 
-                        onClick={() => handleLike(post._id)}
-                        className={`flex items-center gap-2 transition-colors ${post.likes?.includes(user?._id) ? 'text-rose-500' : 'hover:text-rose-500'}`}
-                      >
-                        {post.likes?.includes(user?._id) ? <FaHeart size={15} className="drop-shadow-[0_0_8px_rgba(244,63,94,0.5)]"/> : <FaRegHeart size={15}/>}
-                        <span className="text-xs font-bold">{post.likes?.length || 0}</span>
+                      
+                      <button onClick={(e) => handleCommentClick(pid, e)} className="flex items-center gap-2 px-3 py-1.5 rounded-xl hover:bg-white/5 transition-all text-zinc-400 hover:text-cyan-400">
+                        <FaRegComment size={16}/>
+                        <span className="text-xs font-bold">{post.commentsCount || (post.comments ? post.comments.length : 0)}</span>
                       </button>
-                      <button className="hover:text-cyan-400 transition-colors"><FaShare size={14}/></button>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))
+              </motion.article>
+            );
+          }) : (
+            <div className="p-20 text-center text-zinc-600 font-mono text-[10px] uppercase tracking-widest animate-pulse">
+              {loading ? "Scanning_Neural_Frequencies..." : "No_Transmissions_In_This_Sector"}
+            </div>
           )}
         </div>
       </main>
+    </div>
+  );
+};
+
+/* ==========================================================
+    👤 ৫. পাবলিক প্রোফাইল
+========================================================= */
+export const PublicProfile = () => {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { api } = useContext(AuthContext);
+  const [profile, setProfile] = useState(null);
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const targetId = id?.replace(/^:/, '').trim(); 
+    if (!targetId || targetId === "undefined" || targetId.length < 12) {
+        navigate('/');
+        return;
+    }
+
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const res = await api.get(`/users/profile/${targetId}`);
+        if (res.data) {
+          setProfile(res.data.user);
+          setPosts(Array.isArray(res.data.posts) ? res.data.posts : []);
+        }
+      } catch (err) { 
+        toast.error("Neural link unstable.");
+        navigate('/');
+      } finally { 
+        setLoading(false); 
+      }
+    };
+    fetchData();
+  }, [id, api, navigate]);
+
+  if (loading) return <div className="bg-black h-screen flex items-center justify-center font-mono text-cyan-500 animate-pulse tracking-tighter uppercase">SYNCING_PROFILE_DATA...</div>;
+
+  return (
+    <div className="bg-black min-h-screen text-white">
+      <div className="sticky top-0 z-50 bg-black/60 backdrop-blur-xl border-b border-white/5 p-4 flex items-center gap-6">
+        <button onClick={() => navigate(-1)} className="p-2 hover:bg-white/10 rounded-full transition-all">
+            <FaArrowLeft />
+        </button>
+        <h2 className="font-black text-lg tracking-tight">{profile?.firstName || "Drifter"}</h2>
+      </div>
+      
+      <div className="h-40 bg-zinc-900 border-b border-white/5 relative">
+        {profile?.coverImg && <img src={profile.coverImg} className="w-full h-full object-cover" alt="cover" />}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+      </div>
+      
+      <div className="px-6 -mt-12 relative z-10">
+        <img 
+          src={profile?.avatar || profile?.profilePic || `https://ui-avatars.com/api/?name=${profile?.firstName}`} 
+          className="w-24 h-24 rounded-[32px] border-4 border-black object-cover shadow-2xl shadow-cyan-500/20" 
+          alt="avatar" 
+        />
+        <div className="mt-4">
+          <h1 className="text-2xl font-black">{profile?.firstName} {profile?.lastName}</h1>
+          <p className="text-cyan-500 font-mono text-sm">@{profile?.username || 'unknown'}</p>
+          <p className="mt-4 text-zinc-400 text-sm max-w-lg leading-relaxed">{profile?.bio || "No neural bio available."}</p>
+        </div>
+      </div>
+
+      <div className="mt-8 border-t border-white/5 pb-20">
+        <div className="p-4 border-b border-white/5 bg-zinc-900/20 text-[10px] font-black uppercase tracking-widest text-zinc-500">
+          Neural Transmissions
+        </div>
+        {posts.length > 0 ? posts.map(post => {
+            const pid = post._id || post.id;
+            return (
+              <article key={pid} className="p-6 border-b border-white/5 hover:bg-zinc-900/20 transition-all cursor-pointer" onClick={() => navigate(`/post/${pid}`)}>
+                <p className="text-zinc-300 mb-4 leading-relaxed">{post.text}</p>
+                {post.mediaUrl && (
+                  <div className="rounded-[32px] overflow-hidden border border-white/10 max-w-md shadow-xl bg-zinc-950 aspect-video">
+                    {post.mediaType === 'video' ? <NeuralVideoPlayer src={post.mediaUrl} /> : <img src={post.mediaUrl} className="w-full h-full object-cover" alt="post-media" />}
+                  </div>
+                )}
+              </article>
+            );
+        }) : (
+          <div className="p-20 text-center text-zinc-600 font-mono text-xs uppercase tracking-widest">No transmissions found.</div>
+        )}
+      </div>
     </div>
   );
 };

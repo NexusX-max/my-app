@@ -4,13 +4,19 @@ import bcrypt from "bcryptjs";
 const userSchema = new mongoose.Schema({
   firstName: {
     type: String,
-    required: [true, "First name is required"],
-    trim: true
+    trim: true,
+    default: ""
   },
   lastName: {
     type: String,
-    required: [true, "Last name is required"],
-    trim: true
+    trim: true,
+    default: ""
+  },
+  // ⚡ নিউরাল সার্চ এবং ডিসপ্লের জন্য ফুল নেম
+  fullName: {
+    type: String,
+    trim: true,
+    default: ""
   },
   username: {
     type: String,
@@ -20,27 +26,90 @@ const userSchema = new mongoose.Schema({
     lowercase: true,
     minlength: [3, "Username must be at least 3 characters"]
   },
+  nickname: {
+    type: String,
+    trim: true,
+    default: ""
+  },
   email: {
     type: String,
-    required: [true, "Email is required"],
     unique: true,
+    sparse: true, 
     lowercase: true,
     trim: true,
-    match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, 'Please fill a valid email address']
   },
   password: {
     type: String,
-    required: [true, "Password is required"],
     minlength: 6,
-    select: false // ডাটাবেজ থেকে ইউজার কল করলে পাসওয়ার্ড অটো আসবে না (নিরাপদ)
+    select: false 
   },
-  
-  // 🔗 OAuth & Recovery (আপনার কন্ট্রোলারের জন্য জরুরি)
-  oauthId: { type: String, unique: true, sparse: true }, // গুগল বা কাস্টম লগইনের জন্য
+
+  /* ==========================================================
+      🧠 AI & Neural Search (The King's Brain)
+  ========================================================== */
+  bio_embeddings: {
+    type: [Number],
+    default: []
+  },
+  skills: {
+    type: [String],
+    default: []
+  },
+  aiAutopilot: {
+    type: Boolean,
+    default: false
+  },
+  aiTone: {
+    type: String,
+    default: "professional"
+  },
+  ghostMode: {
+    type: Boolean,
+    default: false
+  },
+
+  /* ==========================================================
+      🔗 Social Ecosystem
+  ========================================================== */
+  followers: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+  following: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+
+  /* ==========================================================
+      🔐 Security (Passkeys & OAuth)
+  ========================================================== */
+  passkeys: [{
+    credentialID: { type: String, required: true },
+    publicKey: { type: String, required: true },
+    counter: { type: Number, default: 0 },
+    transports: [String],
+    createdAt: { type: Date, default: Date.now }
+  }],
+  deviceSignature: { 
+    type: String, 
+    default: "" 
+  },
+  auth0Id: { 
+    type: String,
+    unique: true,
+    sparse: true
+  },
+  onyxCode: { 
+    type: String,
+    unique: true,
+    sparse: true
+  },
   resetPasswordToken: String,
   resetPasswordExpires: Date,
 
-  // 🤖 OnyxDrift এর ৪টি স্পেশাল মোড
+  /* ==========================================================
+      🎨 Profile & Aesthetics
+  ========================================================== */
   activeMode: {
     type: String,
     enum: ['minimal', 'video', 'chat', 'knowledge'],
@@ -50,36 +119,89 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: ""
   },
+  profilePic: { 
+    type: String, 
+    default: ""
+  },
+  coverImg: {
+    type: String,
+    default: ""
+  },
   bio: {
     type: String,
     default: "Accessing the OnyxDrift network..."
+  },
+  location: {
+    type: String,
+    default: ""
+  },
+  userPublicKey: {
+    type: String,
+    default: ""
   }
 }, {
-  timestamps: true // createdAt এবং updatedAt অটোমেটিক ম্যানেজ হবে
+  timestamps: true 
 });
 
 /* ==========================================================
-    🔐 ১. পাসওয়ার্ড সেভ করার আগে অটোমেটিক এনক্রিপশন
+    🔍 Onyx Neural Search Index (MongoDB Text Search)
 ========================================================== */
-userSchema.pre('save', async function(next) {
-  // যদি পাসওয়ার্ড মডিফাই না হয়, তবে পরবর্তী স্টেপে চলে যাও
-  if (!this.isModified('password')) return next();
-  
+userSchema.index({ 
+  username: 'text', 
+  fullName: 'text', 
+  firstName: 'text', 
+  lastName: 'text', 
+  skills: 'text',
+  bio: 'text' 
+}, {
+  weights: {
+    username: 10,
+    fullName: 8,
+    firstName: 5,
+    skills: 5,
+    bio: 2
+  },
+  name: "OnyxTextIndex"
+});
+
+/* ==========================================================
+    🔐 Middleware & Methods
+========================================================== */
+
+/**
+ * ১. পাসওয়ার্ড এনক্রিপশন এবং fullName জেনারেশন
+ * লজিক আপডেট: async ফাংশন থেকে next() সরিয়ে দেওয়া হয়েছে
+ */
+userSchema.pre('save', async function() {
+  // fullName তৈরি (যদি firstName বা lastName পরিবর্তিত হয়)
+  if (this.isModified('firstName') || this.isModified('lastName')) {
+    this.fullName = `${this.firstName || ''} ${this.lastName || ''}`.trim();
+  }
+
+  // পাসওয়ার্ড হ্যাশিং
+  if (!this.isModified('password') || !this.password) return;
+
   try {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
-    next();
   } catch (error) {
-    next(error);
+    throw new Error("Neural encryption failed: " + error.message);
   }
 });
 
-/* ==========================================================
-    🔑 ২. লগইন করার সময় পাসওয়ার্ড চেক করার মেথড
-========================================================== */
+// ২. পাসওয়ার্ড চেক মেথড
 userSchema.methods.matchPassword = async function(enteredPassword) {
-  // যেহেতু password 'select: false', তাই কন্ট্রোলারে .select('+password') করতে হবে
+  if (!this.password) return false;
   return await bcrypt.compare(enteredPassword, this.password);
+};
+
+// ৩. পাসকি কাউন্টার আপডেট
+userSchema.methods.updatePasskeyCounter = async function(credID, newCounter) {
+  const passkey = this.passkeys.find(pk => pk.credentialID === credID);
+  if (passkey) {
+    passkey.counter = newCounter;
+    return await this.save();
+  }
 };
 
 const User = mongoose.model('User', userSchema);

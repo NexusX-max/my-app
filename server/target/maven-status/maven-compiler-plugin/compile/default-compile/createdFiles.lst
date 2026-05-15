@@ -16,4 +16,5 @@ com\onyx\drift\controller\AuthController.class
 com\onyx\drift\service\AuthService.class
 com\onyx\drift\config\SecurityConfig.class
 com\onyx\drift\model\Post.class
+com\onyx\drift\config\RedisConfig.class
 com\onyx\drift\controller\PostController.class

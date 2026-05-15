@@ -1,93 +1,47 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta charset="utf-8" />
+    <link rel="icon" href="/favicon.ico" type="image/x-icon" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
+    <meta name="theme-color" content="#020617" />
     
-    <meta name="theme-color" content="#02040a" />
-    <meta name="description" content="OnyxDrift - The Private Neural Social Network" />
-    <title>OnyxDrift | Neural Engine</title>
+    <title>OnyxDrift | The Neural Social Network</title>
+    
+    <link rel="manifest" href="/manifest.json" crossorigin="use-credentials" />
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+    <script>
+      var global = global || window;
+      if (window.process === undefined) {
+        window.process = { 
+          env: { NODE_ENV: 'production' }, 
+          browser: true,
+          version: '' 
+        };
+      }
+    </script>
+    
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 
     <style>
-      /* গ্লোবাল স্টাইল: অ্যাপের ওভারফ্লো কন্ট্রোল এবং ব্যাকগ্রাউন্ড */
-      :root {
-        --onyx-bg: #02040a;
-      }
-
-      body { 
-        margin: 0; 
-        padding: 0;
-        background-color: var(--onyx-bg); 
-        color: white; 
-        font-family: 'JetBrains Mono', monospace;
-        overflow: hidden; /* কাস্টম স্ক্রলবার অ্যাপের ভেতরে হ্যান্ডেল হবে */
+      body {
+        margin: 0;
+        background-color: #020617; 
+        color: #ffffff;
+        font-family: -apple-system, sans-serif;
+        overflow-x: hidden;
+        overscroll-behavior-y: contain;
         -webkit-tap-highlight-color: transparent;
-        height: 100vh;
-        width: 100vw;
       }
-      
-      #root {
-        height: 100%;
-        width: 100%;
-        display: flex;
-        flex-direction: column;
-      }
-
-      /* লোডিং স্ক্রিন স্টাইল (Optional: অ্যাপ লোড হওয়ার আগে এটি দেখাবে) */
-      #initial-loader {
-        position: fixed;
-        inset: 0;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        background: #02040a;
-        z-index: 9999;
-      }
-      .pulse {
-        width: 40px;
-        height: 40px;
-        background: #06b6d4; /* Cyan-500 */
-        border-radius: 50%;
-        animation: pulse-animation 1.5s infinite ease-out;
-      }
-      @keyframes pulse-animation {
-        0% { transform: scale(0.5); opacity: 1; }
-        100% { transform: scale(2.5); opacity: 0; }
-      }
+      ::-webkit-scrollbar { width: 4px; }
+      ::-webkit-scrollbar-track { background: #020617; }
+      ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 20px; }
+      ::-webkit-scrollbar-thumb:hover { background: #06b6d4; }
+      input, textarea { font-size: 16px !important; }
     </style>
-
-    <script>
-      // কনসোলে এরর চেক করার জন্য হেল্পার (Debugging এর জন্য রাখা হয়েছে)
-      window.onerror = function(msg, url, line) {
-        console.error(`Onyx Engine Error: ${msg} at ${url} line: ${line}`);
-        return false;
-      };
-    </script>
   </head>
   <body>
-    <div id="initial-loader">
-      <div class="pulse"></div>
-    </div>
-
-    <noscript>You need to enable JavaScript to run OnyxDrift Engine.</noscript>
-    
+    <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
-
-    <script type="module" src="/src/main.jsx"></script>
-
-    <script>
-      // রিঅ্যাক্ট লোড হয়ে গেলে লোডার সরিয়ে ফেলার জন্য ছোট স্ক্রিপ্ট
-      window.addEventListener('load', () => {
-        const loader = document.getElementById('initial-loader');
-        if (loader) {
-          loader.style.opacity = '0';
-          setTimeout(() => loader.remove(), 500);
-        }
-      });
-    </script>
   </body>
 </html>

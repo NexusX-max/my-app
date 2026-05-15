@@ -1,8 +1,11 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import api from "../api"; // আপনার তৈরি করা axios instance
+import axios from "axios"; // সরাসরি axios ব্যবহার করা হয়েছে পাথ এরর এড়াতে
 import { toast } from "react-hot-toast";
+
+// প্রোডাকশন এপিআই ইউআরএল
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://onyx-drift.com/api';
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState("");
@@ -12,11 +15,20 @@ const ForgotPassword = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    const loadingToast = toast.loading("Transmitting recovery request...");
+    
     try {
-      await api.post("/auth/forgot-password", { email });
-      toast.success("Recovery link sent to your neural mail!");
+      // সরাসরি axios দিয়ে কল করা হচ্ছে
+      await axios.post(`${API_BASE_URL}/auth/forgot-password`, { email });
+      
+      toast.success("Recovery link sent to your neural mail!", { id: loadingToast });
+      
+      // ৩ সেকেন্ড পর লগইন পেজে পাঠিয়ে দেবে
+      setTimeout(() => navigate("/"), 3000);
+      
     } catch (err) {
-      toast.error(err.response?.data?.message || "Link transmission failed.");
+      const errorMsg = err.response?.data?.message || "Link transmission failed.";
+      toast.error(errorMsg, { id: loadingToast });
     } finally {
       setLoading(false);
     }
@@ -33,7 +45,8 @@ const ForgotPassword = () => {
         className="w-full max-w-md bg-black/40 backdrop-blur-xl border border-white/5 p-8 rounded-3xl shadow-2xl z-10"
       >
         <div className="text-center mb-8">
-          <h2 className="text-3xl font-black text-white tracking-tighter mb-2">RECOVER <span className="text-cyan-500">ACCESS.</span></h2>
+          <h1 className="text-3xl font-black text-white tracking-tighter mb-2 uppercase italic">ONYXDRIFT</h1>
+          <h2 className="text-xl font-bold text-cyan-500 tracking-tight mb-2">RECOVER ACCESS.</h2>
           <p className="text-zinc-500 font-mono text-xs uppercase tracking-widest">Enter email to sync recovery key</p>
         </div>
 
@@ -51,6 +64,7 @@ const ForgotPassword = () => {
           </div>
 
           <button 
+            type="submit"
             disabled={loading}
             className="w-full py-4 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-2xl transition-all shadow-[0_0_20px_rgba(6,182,212,0.2)] active:scale-95 disabled:opacity-50"
           >

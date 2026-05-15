@@ -3,7 +3,6 @@ import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
 import Post from "../models/Post.js"; 
-import User from "../models/User.js";
 import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -19,103 +18,135 @@ const storage = new CloudinaryStorage({
     allowed_formats: ["mp4", "mov", "webm", "quicktime"],
   },
 });
-
-const upload = multer({ 
-  storage: storage,
-  limits: { fileSize: 50 * 1024 * 1024 } // ৫০ এমবি লিমিট (ভিডিওর জন্য)
-});
+const upload = multer({ storage });
 
 /* ==========================================================
-    📺 GET NEURAL FEED (Optimized for ReelsFeed.jsx)
+    📺 GET ALL REELS (Route: GET /api/reels)
 ========================================================== */
-// এখানে "/all" এর বদলে "/neural-feed" করা হয়েছে যাতে আপনার ফ্রন্টএন্ডের সাথে মিলে যায়
-router.get("/neural-feed", async (req, res) => {
+router.get("/", async (req, res) => {
   try {
-    const reels = await Post.find({ 
-        $or: [
-          { postType: "reels" },
-          { mediaType: "video" }
-        ] 
-    })
-    .sort({ createdAt: -1 })
-    .limit(20) 
-    .populate("authorId", "fullName firstName lastName avatar") // ইউজারের লেটেস্ট ডাটা পাওয়ার জন্য
-    .lean();
+    const reels = await Post.find({ mediaType: "video" })
+      .sort({ createdAt: -1 })
+      .limit(30)
+      .populate("author", "fullName avatar username isVerified") 
+      .lean();
     
-    if (!reels || reels.length === 0) return res.status(200).json([]);
+    if (!reels || reels.length === 0) {
+      return res.status(200).json([]);
+    }
 
-    // ডাটা ফরম্যাটিং যাতে ফ্রন্টএন্ডে resolveDrifter() ঠিকমতো কাজ করে
-    const safeReels = reels.map(reel => ({
-        ...reel,
-        _id: reel._id.toString(),
-        likes: Array.isArray(reel.likes) ? reel.likes : [],
-        commentsCount: reel.comments?.length || 0,
-        author: reel.authorId || {
-            fullName: reel.authorName || "Unknown Drifter",
-            profilePic: reel.authorAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${reel._id}`
-        }
+    // ফ্রন্টএন্ডের জন্য ডাটা ম্যাপ করা (সংশোধিত অংশ)
+    const formattedReels = reels.map(reel => ({
+      _id: reel._id,
+      videoUrl: reel.mediaUrl || "", 
+      
+      // এই অংশটুকু ফিক্স করা হয়েছে যাতে ফ্রন্টএন্ডে আইডি এবং নাম পাওয়া যায়
+      author: {
+        _id: reel.author?._id,
+        fullName: reel.author?.fullName || "Onyx Drifter",
+        avatar: reel.author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${reel._id}`,
+        username: reel.author?.username || "drifter",
+        isVerified: reel.author?.isVerified || false
+      },
+
+      // সরাসরি ব্যবহারের সুবিধার্থে নিচের ফিল্ডগুলো রাখা হলো
+      username: reel.author?.fullName || "Onyx Drifter",
+      userAvatar: reel.author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${reel._id}`,
+      
+      caption: reel.text || "",
+      likesCount: Array.isArray(reel.likes) ? reel.likes.length : 0,
+      
+      // লাইক স্টেট চেক
+      likedByMe: req.user ? reel.likes.some(id => id.toString() === req.user._id.toString()) : false,
+      
+      commentsCount: Array.isArray(reel.comments) ? reel.comments.length : 0,
+      audioName: "Onyx Neural Signal",
+      createdAt: reel.createdAt
     }));
 
-    res.status(200).json(safeReels);
+    res.status(200).json(formattedReels);
   } catch (err) {
-    console.error("Neural Feed Fetch Error:", err);
+    console.error("🔥 Fetch Error:", err.message);
     res.status(500).json({ error: "Neural Link Offline" });
   }
 });
 
 /* ==========================================================
-    🚀 REEL UPLOAD (Secured with Neural Auth)
+    🚀 UPLOAD REEL (Route: POST /api/reels/upload)
 ========================================================== */
 router.post("/upload", protect, upload.single("video"), async (req, res) => {
   try {
-    const user = req.user; 
-    
-    if (!req.file) {
-      return res.status(400).json({ error: "Neural Core Data (Video) missing." });
-    }
+    if (!req.file) return res.status(400).json({ error: "No video provided" });
 
     const newReel = new Post({
-      authorId: user._id,
-      authorName: user.fullName || `${user.firstName} ${user.lastName}`,
-      authorAvatar: user.avatar || "",
+      author: req.user._id, 
       text: req.body.caption || "",
-      mediaUrl: req.file.path, // mediaUrl হিসেবে ক্লাউডিনারি পাথ সেভ হচ্ছে
+      mediaUrl: req.file.path,
       mediaType: "video",
-      postType: "reels",
       likes: [],
-      comments: [],
-      createdAt: new Date()
+      comments: []
     });
 
     await newReel.save();
-    res.status(201).json({ msg: "Neural Upload Successful", data: newReel });
+    res.status(201).json({ msg: "Reel Sync Complete", data: newReel });
   } catch (err) {
-    console.error("Upload Error:", err);
-    res.status(400).json({ error: "Neural Sync Failed", details: err.message });
+    console.error("🔥 Upload Error:", err.message);
+    res.status(500).json({ error: "Upload Failed" });
   }
 });
 
 /* ==========================================================
-    ❤️ LIKE REEL (For Interaction Sync)
+    ❤️ LIKE REEL (Route: POST /api/reels/:id/like)
 ========================================================== */
 router.post("/:id/like", protect, async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
-    if (!post) return res.status(404).json({ msg: "Post Not Found" });
+    if (!post) return res.status(404).json({ msg: "Neural Post Not Found" });
 
-    // লাইক চেক এবং টগল
-    const isLiked = post.likes.includes(req.user._id);
+    const userId = req.user._id.toString();
+    const isLiked = post.likes.some(id => id.toString() === userId);
+
     if (isLiked) {
-      post.likes = post.likes.filter(id => id.toString() !== req.user._id.toString());
+      post.likes = post.likes.filter(id => id.toString() !== userId);
     } else {
       post.likes.push(req.user._id);
     }
 
     await post.save();
-    res.json({ likes: post.likes });
+    res.json({ 
+      likes: post.likes.length, 
+      isLiked: !isLiked 
+    });
   } catch (err) {
-    res.status(500).json({ msg: "Like Sync Error" });
+    console.error("🔥 Like Error:", err.message);
+    res.status(500).json({ msg: "Interaction Sync Error" });
   }
 });
+
+/* ==========================================================
+    💬 COMMENT ON REEL (Route: POST /api/reels/:id/comment)
+========================================================== */
+router.post("/:id/comment", protect, async (req, res) => {
+    try {
+      const { text } = req.body;
+      if (!text) return res.status(400).json({ msg: "Comment text required" });
+  
+      const post = await Post.findById(req.params.id);
+      if (!post) return res.status(404).json({ msg: "Post Not Found" });
+  
+      const newComment = {
+        user: req.user._id,
+        text,
+        createdAt: new Date()
+      };
+  
+      post.comments.unshift(newComment);
+      await post.save();
+  
+      res.status(201).json({ msg: "Comment added", commentsCount: post.comments.length });
+    } catch (err) {
+      res.status(500).json({ msg: "Comment Sync Error" });
+    }
+  });
 
 export default router;

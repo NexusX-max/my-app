@@ -10,8 +10,14 @@ import {
   getMe, 
   updateProfile,
   googleLogin,
-  forgotPassword, // নতুন ইমপোর্ট
-  resetPassword  // নতুন ইমপোর্ট
+  forgotPassword,
+  resetPassword,
+  // পাসকি রেজিস্ট্রেশনের জন্য (নিশ্চিত করো কন্ট্রোলারে এই নামে আছে)
+  generateRegistrationOptions, 
+  verifyRegistration,
+  // পাসকি লগইনের জন্য
+  generateAuthOptions, 
+  verifyAuthentication 
 } from '../controllers/authController.js';
 
 import { protect } from '../middleware/authMiddleware.js';
@@ -19,79 +25,81 @@ import { protect } from '../middleware/authMiddleware.js';
 const router = express.Router();
 
 /* ==========================================================
-    🔐 ১. স্ট্যান্ডার্ড অথেন্টিকেশন রাউটস (Email/Password)
+    🔐 ১. স্ট্যান্ডার্ড অথেন্টিকেশন (Email/Password)
 ========================================================= */
-
-// নতুন ইউজার রেজিস্ট্রেশন
 router.post('/register', register);
-
-// ইউজার লগইন
 router.post('/login', login);
-
-// টোকেন রিফ্রেশ (সেশন দীর্ঘস্থায়ী করার জন্য)
 router.post('/refresh', refreshToken);
-
-// নিজের প্রোফাইল ডাটা দেখা (Protected)
 router.get('/me', protect, getMe);
-
-// প্রোফাইল আপডেট করা (Protected)
 router.put('/profile', protect, updateProfile);
 
 
 /* ==========================================================
-    🛰️ ২. পাসওয়ার্ড রিকভারি রাউটস (Recovery Protocol)
+    🖐️ ২. পাসকি ও বায়োমেট্রিক (WebAuthn Protocol)
 ========================================================== */
+// --- ১. রেজিস্ট্রেশন প্রোটোকল (Registration) ---
+// ধাপ ১: চ্যালেঞ্জ জেনারেট করা
+// ফ্রন্টএন্ড কল: fetch('/api/auth/register-options')
+router.get('/register-options', generateRegistrationOptions);
 
-// পাসওয়ার্ড রিসেট লিঙ্ক পাঠানোর রিকোয়েস্ট
+// ধাপ ২: বায়োমেট্রিক ডাটা ভেরিফাই করা
+// ফ্রন্টএন্ড কল: fetch('/api/auth/verify-registration')
+router.post('/verify-registration', verifyRegistration);
+
+
+// --- ২. লগইন প্রোটোকল (Login/Authentication) ---
+router.get('/login-options', generateAuthOptions);
+
+// ধাপ ২: বায়োমেট্রিক সিগনেচার ভেরিফাই করা
+/** * 🛠️ গুরুত্বপূর্ণ ফিক্স: 
+ * তোমার ফ্রন্টএন্ড '/api/auth/verify-login' খুঁজছে। 
+ * তাই এখানে 'verify-login' ই দিতে হবে, নাহলে ৪MD এরর আসবে।
+ */
+router.post('/verify-login', verifyAuthentication);
+
+
+/* ==========================================================
+    🛰️ ৩. পাসওয়ার্ড রিকভারি (Recovery Protocol)
+========================================================== */
 router.post('/forgot-password', forgotPassword);
-
-// নতুন পাসওয়ার্ড সেট করা (টোকেন সহ)
 router.post('/reset-password/:token', resetPassword);
 
 
 /* ==========================================================
-    🌐 ৩. গুগল OAuth2 রাউটস (Social Login)
+    🌐 ৪. গুগল OAuth2 (Social Login)
 ========================================================== */
 
-/**
- * @route   POST /api/auth/google
- * @desc    ফ্রন্টএন্ড থেকে আসা গুগল টোকেন ভেরিফাই করে লগইন করা
- * @access  Public
- */
+// ফ্রন্টএন্ড থেকে আসা গুগল টোকেন ভেরিফাই করা
 router.post('/google', googleLogin); 
 
-
-/** * ৪. পাসপোর্ট জেএস (Redirect Method) - ঐচ্ছিক
- */
-
-// গুগলের সাইন-ইন পেজে নিয়ে যাবে
+// গুগলের সাইন-ইন পেজে নিয়ে যাওয়া
 router.get('/google/redirect', passport.authenticate('google', { 
   scope: ['profile', 'email'],
   prompt: 'select_account' 
 }));
 
-// গুগল থেকে ফিরে আসার পর এই রাউট কাজ করবে (Callback)
+// গুগল থেকে ফিরে আসার পর কলব্যাক
 router.get('/google/callback', 
   passport.authenticate('google', { session: false, failureRedirect: '/login' }),
   (req, res) => {
     try {
-      // টোকেন জেনারেট করা
       const token = jwt.sign(
         { id: req.user._id.toString() }, 
         process.env.JWT_SECRET, 
         { expiresIn: '30d' }
       );
 
-      // প্রোডাকশন ইউআরএল (OnyxDrift Domain)
       const frontendURL = process.env.NODE_ENV === 'production' 
         ? "https://onyx-drift.com" 
         : "http://localhost:5173";
 
-      // সাকসেস হলে ফ্রন্টএন্ডে টোকেনসহ রিডাইরেক্ট
+      // টোকেন সহ ফ্রন্টএন্ডে রিডাইরেক্ট
       res.redirect(`${frontendURL}/login-success?token=${token}`);
     } catch (error) {
       console.error("🔥 Google Auth Redirect Error:", error);
-      const frontendURL = process.env.NODE_ENV === 'production' ? "https://onyx-drift.com" : "http://localhost:5173";
+      const frontendURL = process.env.NODE_ENV === 'production' 
+        ? "https://www.onyx-drift.com/" 
+        : "http://localhost:5173";
       res.redirect(`${frontendURL}/login?error=auth_failed`);
     }
   }

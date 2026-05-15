@@ -1,7 +1,5 @@
-version: '3.8'
-
 services:
-  # --- ১. ব্যাকএন্ড সার্ভার (Onyx Core) ---
+  # ১. Onyx Backend
   api:
     build: .
     ports:
@@ -15,7 +13,7 @@ services:
     networks:
       - onyx-net
 
-  # --- ২. PostgreSQL (Neural Storage) ---
+  # ২. PostgreSQL (Neural Brain)
   postgres:
     image: postgres:16-alpine
     restart: always
@@ -30,7 +28,7 @@ services:
     networks:
       - onyx-net
 
-  # --- ৩. MongoDB (Metadata) ---
+  # ৩. MongoDB (Metadata)
   mongodb:
     image: mongo:latest
     ports:
@@ -40,7 +38,7 @@ services:
     networks:
       - onyx-net
 
-  # --- ৪. Redis (RAM Cache) ---
+  # ৪. Redis (RAM Cache)
   redis:
     image: redis:alpine
     ports:

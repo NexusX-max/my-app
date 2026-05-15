@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+# আপনার স্লাইটম্যাপের লিঙ্ক (আপনার ডোমেইন দিয়ে পরিবর্তন করুন)
+Sitemap: https://onyx-drift.com
+
+# এই পেজগুলো গুগল ইনডেক্স করবে না (সিকিউরিটির জন্য)
+Disallow: /api/
+Disallow: /admin/
+Disallow: /dashboard/settings/

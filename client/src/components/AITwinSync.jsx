@@ -4,6 +4,7 @@ import { FaBrain, FaSync, FaShieldAlt, FaSkull, FaMicrochip, FaBolt } from 'reac
 import axios from 'axios';
 import { useAuth0 } from "@auth0/auth0-react";
 import NeuralModel from './NeuralModel';
+
 const AITwinSync = () => {
   const { getAccessTokenSilently } = useAuth0();
   const [syncData, setSyncData] = useState({ syncLevel: 0, traits: [] });
@@ -24,10 +25,11 @@ const AITwinSync = () => {
         <h1 className="text-3xl font-black uppercase tracking-tighter">AI Twin <span className="text-purple-500">Synchronizer</span></h1>
         <p className="text-zinc-500 text-xs mt-2 uppercase tracking-[0.3em]">Building your digital immortality</p>
       </div>
+
       <div className="md:col-span-2 flex flex-col items-center justify-center bg-zinc-900/10 rounded-[40px] border border-white/5 py-10 mb-6">
-    <NeuralModel />
-    <p className="text-[10px] text-purple-500 font-mono animate-pulse uppercase tracking-[0.4em]">Neural Core: Manifesting...</p>
-</div>
+        <NeuralModel />
+        <p className="text-[10px] text-purple-500 font-mono animate-pulse uppercase tracking-[0.4em]">Neural Core: Manifesting...</p>
+      </div>
 
       <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
         
@@ -37,12 +39,12 @@ const AITwinSync = () => {
           <h3 className="text-purple-400 font-black text-xs uppercase mb-6 tracking-widest">Neural Sync Progress</h3>
           <div className="relative w-40 h-40 mx-auto mb-6">
             <svg className="w-full h-full transform -rotate-90">
-              <circle cx="80" cy="80" r="70" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-zinc-800" />
+              {/* ফিক্স: fill="transparent" এর বদলে fill="none" ব্যবহার করা হয়েছে */}
+              <circle cx="80" cy="80" r="70" stroke="currentColor" strokeWidth="8" fill="none" className="text-zinc-800" />
               <motion.circle 
-                cx="80" cy="80" r="70" stroke="currentColor" strokeWidth="8" fill="transparent" 
+                cx="80" cy="80" r="70" stroke="currentColor" strokeWidth="8" fill="none" 
                 strokeDasharray={440} strokeDashoffset={440 - (440 * syncData.syncLevel) / 100}
                 className="text-purple-500 shadow-[0_0_20px_#a855f7]"
-            
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">

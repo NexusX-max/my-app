@@ -2,9 +2,18 @@ import React, { useState } from 'react';
 import { Heart, MessageCircle, Share2, MoreHorizontal, Bookmark } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const PostCard = ({ user, content, image, time }) => {
+const PostCard = ({ user, content, image, time, authorAvatar }) => {
   const [liked, setLiked] = useState(false);
   const [showHeart, setShowHeart] = useState(false);
+
+  // ✅ ১. ডাইনামিক ইমেজ পাথ হ্যান্ডলার (Cloudflare & Local Sync)
+  const getImageUrl = (path) => {
+    if (!path) return null;
+    // যদি অলরেডি পূর্ণ ইউআরএল (Cloudinary) থাকে
+    if (path.startsWith('http')) return path;
+    // যদি লোকাল আপলোড হয়, তবে আমাদের এপিআই ডোমেইন যোগ হবে
+    return `https://api.onyx-drift.com${path}`;
+  };
 
   // Double Tap Gesture Logic
   const handleDoubleTap = () => {
@@ -18,7 +27,7 @@ const PostCard = ({ user, content, image, time }) => {
       onDoubleClick={handleDoubleTap}
       className="relative max-w-2xl mx-auto bg-black pt-8 pb-10 px-6 transition-all hover:bg-[#030303] group borderless-flow"
     >
-      {/* ১. ৩ডি হার্ট অ্যানিমেশন (Double Tap Effect) */}
+      {/* ২. ৩ডি হার্ট অ্যানিমেশন (Double Tap Effect) */}
       <AnimatePresence>
         {showHeart && (
           <motion.div 
@@ -32,12 +41,16 @@ const PostCard = ({ user, content, image, time }) => {
         )}
       </AnimatePresence>
 
-      {/* ২. হেডার: গ্রাডিয়েন্ট অ্যাকসেন্ট */}
+      {/* ৩. হেডার: গ্রাডিয়েন্ট অ্যাকসেন্ট */}
       <div className="flex justify-between items-start mb-4">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#1a1a1a] to-[#333] p-[1.5px] rotate-45 group-hover:rotate-0 transition-transform duration-500">
              <div className="w-full h-full rounded-full bg-black flex items-center justify-center overflow-hidden -rotate-45 group-hover:rotate-0 transition-transform duration-500">
-               <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user}`} alt="avatar" />
+               <img 
+                 src={getImageUrl(authorAvatar) || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user}`} 
+                 alt="avatar" 
+                 className="w-full h-full object-cover"
+               />
              </div>
           </div>
           <div>
@@ -50,19 +63,26 @@ const PostCard = ({ user, content, image, time }) => {
         <MoreHorizontal className="text-gray-700 hover:text-white cursor-pointer transition-colors" size={18} />
       </div>
 
-      {/* ৩. কন্টেন্ট: ইউনিক টাইপোগ্রাফি (Bold & Clean) */}
+      {/* ৪. কন্টেন্ট */}
       <div className="mb-6 text-[18px] text-gray-200 font-medium leading-[1.6] tracking-tight">
         {content}
       </div>
 
-      {/* ৪. ৩ডি ডেপথ ইমেজ */}
+      {/* ৫. ৩ডি ডেপথ ইমেজ (Fix: Using getImageUrl) */}
       {image && (
-        <div className="relative rounded-3xl overflow-hidden mb-6 bg-[#0a0a0a] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.7)] transform transition-transform duration-700 hover:scale-[1.02] hover:-translate-y-2">
-          <img src={image} alt="post" className="w-full object-cover max-h-[600px] opacity-90 group-hover:opacity-100 transition-opacity" />
+        <div className="relative rounded-3xl overflow-hidden mb-6 bg-[#0a0a0a] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.7)] transform transition-transform duration-700 hover:scale-[1.01] hover:-translate-y-1">
+          <img 
+            src={getImageUrl(image)} 
+            alt="Onyx Media" 
+            className="w-full object-cover max-h-[600px] opacity-90 group-hover:opacity-100 transition-opacity" 
+            onError={(e) => {
+                e.target.src = "https://placehold.co/600x400/000000/FFFFFF?text=Signal+Lost";
+            }}
+          />
         </div>
       )}
 
-      {/* ৫. মাইক্রো-গ্লাস মর্ফিজম অ্যাকশন বার */}
+      {/* ৬. মাইক্রো-গ্লাস মর্ফিজম অ্যাকশন বার */}
       <div className="inline-flex items-center gap-8 px-6 py-3 rounded-full bg-white/[0.03] backdrop-blur-md border border-white/[0.05] shadow-xl">
         <button 
           onClick={() => setLiked(!liked)}
@@ -88,7 +108,7 @@ const PostCard = ({ user, content, image, time }) => {
         </button>
       </div>
 
-      {/* Borderless Flow Separator (খুবই সূক্ষ্ম) */}
+      {/* Borderless Flow Separator */}
       <div className="absolute bottom-0 left-6 right-6 h-[1px] bg-gradient-to-r from-transparent via-white/5 to-transparent"></div>
     </div>
   );

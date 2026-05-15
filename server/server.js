@@ -28,10 +28,11 @@ import reelRoutes from "./routes/reels.js";
 import profileRoutes from "./routes/profile.js"; 
 import groupRoutes from "./routes/group.js"; 
 import marketRoutes from "./routes/market.js"; 
-import adminRoutes from "./routes/admin.js";                      
+import adminRoutes from "./routes/admin.js";                       
 import { getNeuralFeed } from "./controllers/feedController.js";
 import calendarRoutes from './routes/calendar.js';
 import authRoutes from './routes/authRoutes.js';
+
 // 🛡️ Auth0 JWT ভেরিফিকেশন মিডলওয়্যার
 const checkJwt = auth({
   audience: 'https://onyx-drift-api.com', 
@@ -60,7 +61,6 @@ const allowedOrigins = [
 
 const corsOptions = {
     origin: function (origin, callback) {
-        // origin না থাকলে (যেমন মোবাইল অ্যাপ বা সার্ভার-টু-সার্ভার) বা লিস্টে থাকলে অ্যালাউ করবে
         if (!origin || allowedOrigins.includes(origin.replace(/\/$/, ""))) {
             callback(null, true);
         } else {
@@ -89,7 +89,6 @@ const updateNeuralPulse = async (req, res, next) => {
     try {
         const auth0Id = req.auth?.payload?.sub; 
         if (auth0Id) {
-            // await করার দরকার নেই যাতে API রেসপন্স স্লো না হয়
             User.updateOne(
                 { auth0Id: auth0Id },
                 { $set: { "deathSwitch.lastPulseTimestamp": new Date() } }
@@ -104,7 +103,6 @@ const updateNeuralPulse = async (req, res, next) => {
 ========================================================== */
 app.get("/", (req, res) => res.status(200).send("🚀 OnyxDrift Neural Core Online!"));
 
-// রাউটগুলো ডিফাইন করার সময় সঠিক মিডলওয়্যার সিকোয়েন্স নিশ্চিত করা হয়েছে
 app.get("/api/posts/neural-feed", checkJwt, updateNeuralPulse, getNeuralFeed);
 app.use("/api/users", checkJwt, updateNeuralPulse, userRoutes); 
 app.use("/api/profile", checkJwt, updateNeuralPulse, profileRoutes);
@@ -116,8 +114,8 @@ app.use("/api/groups", checkJwt, updateNeuralPulse, groupRoutes);
 app.use("/api/market", checkJwt, updateNeuralPulse, marketRoutes);
 app.use("/api/admin", checkJwt, updateNeuralPulse, adminRoutes);
 app.use("/api/calendar", checkJwt, calendarRoutes);
-app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/auth', authRoutes);
+
 /* ==========================================================
     📡 REAL-TIME ENGINE (Socket.io)
 ========================================================== */
@@ -131,19 +129,16 @@ const redis = process.env.REDIS_URL ? new Redis(process.env.REDIS_URL) : null;
 const roomUsers = {}; 
 const userSocketMap = {}; 
 
-
-
 io.on("connection", (socket) => {
     
-    // ১. নিজের সকেট আইডি ক্লায়েন্টকে জানানো
     socket.emit("me", socket.id);
 
-    // ২. অনলাইন ইউজার হ্যান্ডলিং
+    // ১. অনলাইন ইউজার হ্যান্ডলিং
     socket.on("addNewUser", async (auth0Id) => { 
         if (!auth0Id) return;
         socket.userId = auth0Id; 
         userSocketMap[auth0Id] = socket.id; 
-        socket.join(auth0Id); 
+        socket.join(auth0Id); // Auth0 ID অনুযায়ী রুমে জয়েন করানো (Targeting-এর জন্য সহজ)
         
         try {
             if (redis) {
@@ -153,62 +148,57 @@ io.on("connection", (socket) => {
             }
         } catch (e) { console.error("Redis Sync Error"); }
         
-        console.log(`User Linked: ${auth0Id} as ${socket.id}`);
+        console.log(`📡 Neural Link Established: ${auth0Id}`);
     });
 
-    /* --- 📞 CALL SIGNALS --- */
-    socket.on("callUser", (data) => {
-        const recipientSocketId = userSocketMap[data.userToCall];
-        if (recipientSocketId) {
-            io.to(recipientSocketId).emit("incomingCall", { 
-                signal: data.signalData, 
-                from: socket.id, 
-                name: data.name, 
-                pic: data.pic, 
-                type: data.type 
-            });
-        }
+    /* --- 📞 CALL SIGNALS (Onyx Hybrid Protocol) --- */
+    
+    // কলার যখন কল শুরু করে
+    socket.on("startCall", (data) => {
+        const { receiverId, signalData, from, fromName, fromPic, type, roomId } = data;
+        console.log(`🛰️ Forwarding call from ${fromName} to node: ${receiverId}`);
+        
+        // রিসিভারের রুমে সিগন্যাল পাঠানো
+        io.to(receiverId).emit("incomingCall", { 
+            signal: signalData, 
+            senderId: from, 
+            fromName, 
+            fromPic, 
+            type, 
+            roomId 
+        });
     });
 
+    // রিসিভার যখন কল একসেপ্ট করে
     socket.on("answerCall", (data) => {
+        console.log(`✅ Connection accepted by node: ${data.to}`);
         io.to(data.to).emit("callAccepted", data.signal);
     });
 
+    // কল কেটে দিলে
     socket.on("endCall", (data) => {
-        const target = userSocketMap[data.to] || data.to;
-        io.to(target).emit("callEnded");
+        console.log(`🔌 Termination signal for: ${data.to}`);
+        io.to(data.to).emit("callEnded");
+    });
+
+    // কল ডিক্লাইন করলে
+    socket.on("declineCall", (data) => {
+        io.to(data.to).emit("callEnded");
     });
 
     /* --- 💬 MESSAGE & TYPING --- */
     socket.on("sendMessage", (message) => {
         if (message.receiverId) {
-            // receiverId যদি Auth0 ID হয় তবে তাকে রুমে পাঠানো হচ্ছে
             io.to(message.receiverId).emit("getMessage", message);
         }
     });
 
-    /* --- 👥 GROUP CALLING --- */
-    socket.on("join-room", (payload) => {
-        const { roomId } = payload;
-        socket.roomId = roomId;
-        socket.join(roomId); // Socket.io এর নেটিভ রুম ফাংশন ব্যবহার
-        if (roomUsers[roomId]) roomUsers[roomId].push(socket.id);
-        else roomUsers[roomId] = [socket.id];
-        
-        const otherUsersInRoom = roomUsers[roomId].filter(id => id !== socket.id);
-        socket.emit("all-users", otherUsersInRoom);
-    });
-
+    /* --- 👥 DISCONNECT --- */
     socket.on("disconnect", async () => {
         if (socket.userId) {
             delete userSocketMap[socket.userId]; 
+            // অন্যকে জানানো (Optional: যদি কল চলন্ত অবস্থায় থাকে)
             socket.broadcast.emit("callEnded");
-        }
-
-        const roomId = socket.roomId;
-        if (roomId && roomUsers[roomId]) {
-            roomUsers[roomId] = roomUsers[roomId].filter(id => id !== socket.id);
-            socket.to(roomId).emit("user-left", socket.id);
         }
 
         try {
@@ -218,6 +208,7 @@ io.on("connection", (socket) => {
                 io.emit("getOnlineUsers", Object.keys(allUsers).map(id => ({ userId: id })));
             }
         } catch (e) {}
+        console.log("🔌 Node Offline");
     });
 });
 
@@ -231,5 +222,5 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 ONYX CORE ACTIVE ON PORT: ${PORT}`);
+    console.log(`🚀 ONYX CORE ACTIVE ON PORT: ${PORT}`); 
 });

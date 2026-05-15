@@ -13,7 +13,7 @@ const CustomCursor = () => {
     };
 
     const handleMouseOver = (e) => {
-      // বাটন, লিংক বা ক্লিকযোগ্য এলিমেন্টে হোভার করলে কার্সার বড় হবে
+      // বাটন, লিংক বা ক্লিকযোগ্য এলিমেন্টে হোভার করলে কার্সার বড় হবে
       if (
         e.target.tagName === "BUTTON" ||
         e.target.tagName === "A" ||
@@ -48,7 +48,10 @@ const CustomCursor = () => {
                 y: mousePos.y - 20,
                 scale: isHovering ? 1.5 : 1,
                 borderColor: isHovering ? "#a855f7" : "#22d3ee",
-                backgroundColor: isHovering ? "rgba(168, 85, 247, 0.1)" : "transparent",
+                // ফিক্স: "transparent" এর বদলে rgba ব্যবহার করা হয়েছে যাতে এরর না আসে
+                backgroundColor: isHovering 
+                  ? "rgba(168, 85, 247, 0.1)" 
+                  : "rgba(34, 211, 238, 0)", 
               }}
               transition={{ type: "spring", damping: 20, stiffness: 250, mass: 0.5 }}
             />

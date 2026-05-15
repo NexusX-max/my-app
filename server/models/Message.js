@@ -5,8 +5,8 @@ const MessageSchema = new mongoose.Schema(
     // ১. কন্টিনজেন্সি: চ্যাট টাইপ আইডেন্টিফিকেশন
     conversationId: {
       type: String, 
-      index: true,
       required: [true, "Conversation ID is required"]
+      // এখানে index: true সরিয়ে নিচে কম্পাউন্ড ইনডেক্সে দেওয়া হয়েছে
     },
     isGroup: {
       type: Boolean,
@@ -34,20 +34,20 @@ const MessageSchema = new mongoose.Schema(
       default: ""
     },
 
-    // ৩. ইউনিক আইডেন্টিফায়ার (Client-side tracking এর জন্য)
+    // ৩. ইউনিক আইডেন্টিফায়ার
     tempId: { 
       type: String, 
       sparse: true  
     },
 
-    // ৪. কন্টেন্ট এবং মিডিয়াম (Cloudinary ইমেজ বা টেক্সট)
+    // ৪. কন্টেন্ট এবং মিডিয়াম
     text: {
       type: String,
       trim: true,
       default: ""
     },
     media: {
-      type: String, // আপনার Cloudinary image URL এখানে সেভ হবে
+      type: String, // Cloudinary image URL
       default: ""
     },
     mediaType: {
@@ -63,7 +63,7 @@ const MessageSchema = new mongoose.Schema(
       default: "Neural-Flow"
     },
 
-    // 🚀 ফিচার ২: THE TIME CAPSULE (মেসেজ পরে ডেলিভারি হবে)
+    // 🚀 ফিচার ২: THE TIME CAPSULE
     isTimeCapsule: {
       type: Boolean,
       default: false
@@ -103,8 +103,8 @@ const MessageSchema = new mongoose.Schema(
     },
     expireAt: {
       type: Date,
-      default: null,
-      index: true 
+      default: null
+      // এখান থেকে index: true সরানো হয়েছে কারণ নিচে TTL ইনডেক্স দেওয়া আছে
     }
   },
   { 
@@ -115,29 +115,30 @@ const MessageSchema = new mongoose.Schema(
 );
 
 /* ==========================================================
-    📡 PERFORMANCE & OPTIMIZATION
+    📡 PERFORMANCE & OPTIMIZATION (ইন্ডেক্স সেটিংস)
 ========================================================== */
 
-// ১. TTL Index (অটোমেটিক ডিলিট লজিক)
+// ১. TTL Index: এই একটি লাইনই যথেষ্ট expireAt এর জন্য। 
+// ডুপ্লিকেট ইনডেক্স এরর এড়াতে ফিল্ডের ভেতর থেকে index: true ডিলিট করা হয়েছে।
 MessageSchema.index({ expireAt: 1 }, { expireAfterSeconds: 0 });
 
-// ২. চ্যাট লোডিং স্পিড বাড়ানোর জন্য ইনডেক্স
+// ২. চ্যাট লোডিং স্পিড বাড়ানোর জন্য কম্পাউন্ড ইনডেক্স
 MessageSchema.index({ conversationId: 1, createdAt: -1 });
 
-// ৩. ভার্চুয়াল ফিল্ড: চেক করবে মেসেজটি কি বর্তমানে লক করা (Time Capsule এর জন্য)
+// ৩. ভার্চুয়াল ফিল্ড: চেক করবে মেসেজটি কি বর্তমানে লক করা
 MessageSchema.virtual('isLocked').get(function() {
   return this.deliverAt && new Date() < this.deliverAt;
 });
 
-// ৪. প্রি-সেভ হুক (Pre-save Hook)
+// ৪. প্রি-সেভ হুক
 MessageSchema.pre('save', function(next) {
-  // যদি self-destruct অন থাকে কিন্তু expireAt দেওয়া না থাকে, তবে ৩০ সেকেন্ড ডিফল্ট
+  // যদি self-destruct অন থাকে কিন্তু expireAt দেওয়া না থাকে, তবে ৬০ সেকেন্ড ডিফল্ট
   if (this.isSelfDestruct && !this.expireAt) {
-    this.expireAt = new Date(Date.now() + 30 * 1000); 
+    this.expireAt = new Date(Date.now() + 60 * 1000); 
   }
 
-  // মিডিয়া টাইপ অটো-ডিটেকশন লজিক (যদি ফ্রন্টএন্ড থেকে না আসে)
-  if (this.media && this.mediaType === "text") {
+  // মিডিয়া টাইপ অটো-ডিটেকশন
+  if (this.media && (this.mediaType === "text" || !this.mediaType)) {
     this.mediaType = "image";
   }
 

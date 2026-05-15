@@ -1,267 +1,273 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { 
-  ArrowLeft, Calendar, MapPin, 
-  X, Zap, Cpu, Radio, Settings 
-} from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-import axios from "axios";
-import toast from "react-hot-toast";
-import { useAuth } from "../context/AuthContext"; // আপনার ব্যবহার করা কনটেক্সট
+  CheckCircle, MapPin, Link as LinkIcon, Camera,
+  Edit3, Plus, Loader2, X, Heart, MessageCircle
+} from 'lucide-react';
 
-const ProfilePage = () => {
-  const { username } = useParams();
-  const navigate = useNavigate();
-  const { user: currentUser, api: authApi } = useAuth(); // AuthContext থেকে ডাটা নিচ্ছি
-
+const MyProfile = () => {
   const [user, setUser] = useState(null);
-  const [posts, setPosts] = useState([]);
-  const [activeTab, setActiveTab] = useState("Posts");
-  const [isFollowing, setIsFollowing] = useState(false);
+  const [posts, setPosts] = useState([]); 
   const [loading, setLoading] = useState(true);
+  const [postsLoading, setPostsLoading] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  
+  const API_BASE = "https://api.onyx-drift.com";
 
-  // 🚀 Fetch Profile Data
+  const [editData, setEditData] = useState({
+    firstName: '',
+    lastName: '',
+    bio: '',
+    location: '',
+    website: ''
+  });
+
   useEffect(() => {
-    const fetchNeuralData = async () => {
-      if (!username) return;
-      try {
-        setLoading(true);
-        
-        // ১. প্রোফাইল ডাটা ফেচ
-        const userRes = await authApi.get(`/users/${encodeURIComponent(username)}`);
-        const userData = userRes.data;
-        setUser(userData);
-        setIsFollowing(userData.isFollowing || false);
+    fetchMyData();
+    fetchMyPosts(); 
+  }, []);
 
-        // ২. ইউজারের পোস্ট ফেচ
-        const postsRes = await authApi.get(`/users/${encodeURIComponent(username)}/posts`);
-        setPosts(Array.isArray(postsRes.data) ? postsRes.data : []);
-
-      } catch (error) {
-        console.error("Profile Fetch Error:", error);
-        toast.error("Neural Identity Not Found");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchNeuralData();
-  }, [username, authApi]);
-
-  // ❤️ Follow/Link Logic
-  const handleFollowToggle = async () => {
-    if (!currentUser) return toast.error("Authentication Required");
+  const fetchMyData = async () => {
     try {
-      await authApi.post(`/users/${user._id}/follow`);
-      setIsFollowing(!isFollowing);
-      setUser(prev => ({
-        ...prev,
-        followersCount: prev.followersCount + (isFollowing ? -1 : 1)
-      }));
+      const token = localStorage.getItem('onyx_token'); 
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+      const res = await axios.get(`${API_BASE}/api/profile/me`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setUser(res.data);
+      setEditData({
+        firstName: res.data.firstName || '',
+        lastName: res.data.lastName || '',
+        bio: res.data.bio || '',
+        location: res.data.location || '',
+        website: res.data.website || ''
+      });
+      setLoading(false);
     } catch (err) {
-      toast.error("Network Rejection");
+      console.error("Profile fetch error:", err);
+      setLoading(false);
+    }
+  };
+
+  const fetchMyPosts = async () => {
+    try {
+      const token = localStorage.getItem('onyx_token');
+      const res = await axios.get(`${API_BASE}/api/posts/me`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setPosts(res.data);
+      setPostsLoading(false);
+    } catch (err) {
+      console.error("Posts fetch error:", err);
+      setPostsLoading(false);
+    }
+  };
+
+  const handleUpload = async (e, type) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append(type, file);
+
+    try {
+      const token = localStorage.getItem('onyx_token');
+      const res = await axios.put(`${API_BASE}/api/profile/update`, formData, {
+        headers: { 
+          'Content-Type': 'multipart/form-data',
+          Authorization: `Bearer ${token}` 
+        }
+      });
+      
+      // প্রোফাইল ডাটা সাথে সাথে আপডেট করার জন্য
+      setUser(res.data); 
+      // নিশ্চিত হতে ডাটাবেস থেকে আবার ডাটা টেনে আনা
+      await fetchMyData(); 
+      
+      alert("Neural Link Updated!");
+    } catch (err) {
+      console.error("Upload error:", err);
+      alert("Upload failed.");
+    }
+  };
+
+  const handleUpdateText = async (e) => {
+    e.preventDefault();
+    try {
+      const token = localStorage.getItem('onyx_token');
+      const res = await axios.put(`${API_BASE}/api/profile/update`, editData, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setUser(res.data);
+      setIsEditModalOpen(false);
+      alert("Identity synced!");
+    } catch (err) {
+      console.error("Update error:", err);
     }
   };
 
   if (loading) return (
-    <div className="h-screen flex flex-col items-center justify-center bg-black gap-4">
-      <div className="w-12 h-12 border-2 border-t-cyan-500 border-white/5 rounded-full animate-spin" />
-      <p className="text-cyan-500 font-black text-[9px] tracking-[0.6em] animate-pulse uppercase">Syncing_Neural_ID...</p>
+    <div className="min-h-screen bg-[#0B0F14] flex items-center justify-center">
+      <Loader2 className="text-[#1877F2] animate-spin" size={40} />
     </div>
   );
-
-  if (!user) return (
-    <div className="h-screen flex flex-col items-center justify-center bg-black text-white p-6">
-      <Cpu className="text-zinc-900 mb-6" size={80} strokeWidth={1} />
-      <p className="text-zinc-500 font-black text-[10px] tracking-[0.4em] uppercase mb-8">Signal_Lost: 404_ID_NOT_FOUND</p>
-      <button onClick={() => navigate("/")} className="bg-white text-black px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:shadow-[0_0_30px_rgba(255,255,255,0.2)] transition-all">
-        Return_to_Core
-      </button>
-    </div>
-  );
-
-  const isMe = currentUser?.username === user.username || currentUser?._id === user._id;
 
   return (
-    <div className="min-h-screen bg-black text-white max-w-2xl mx-auto border-x border-white/5 pb-20 font-sans selection:bg-cyan-500/30">
+    <div className="min-h-screen pb-20 bg-[#0B0F14] text-[#E5E7EB]">
       
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-black/60 backdrop-blur-2xl flex items-center px-6 py-4 gap-6 border-b border-white/5">
-        <button onClick={() => navigate(-1)} className="p-2 hover:bg-white/5 rounded-full text-white transition-all active:scale-90">
-          <ArrowLeft size={20} />
-        </button>
-        <div>
-          <div className="flex items-center gap-1.5">
-            <h1 className="text-sm font-black uppercase tracking-tight italic">{user.displayName || user.username}</h1>
-            {user.isVerified && <Zap size={14} className="text-cyan-400 fill-current" />}
-          </div>
-          <span className="text-[9px] text-zinc-600 font-black uppercase tracking-[0.2em]">{posts.length} Signals_Detected</span>
-        </div>
-      </header>
-
-      {/* Cover & Avatar */}
-      <div className="relative">
-        <div className="h-48 bg-zinc-950 overflow-hidden relative">
-          {user.coverImg ? (
-            <img src={user.coverImg} className="w-full h-full object-cover opacity-50" alt="" />
-          ) : (
-            <div className="w-full h-full bg-gradient-to-br from-zinc-900 via-black to-cyan-950/20" />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent" />
-        </div>
-        
-        <div className="px-6 -mt-16 flex justify-between items-end relative z-10">
-          <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}>
-            <img
-              src={user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`}
-              className="w-32 h-32 rounded-[2.5rem] border-[6px] border-black object-cover bg-zinc-900 shadow-2xl"
-              alt={user.username}
-            />
-          </motion.div>
-          <div className="pb-3">
-            {isMe ? (
-              <button 
-                onClick={() => setIsEditModalOpen(true)}
-                className="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 text-white rounded-2xl hover:bg-white/10 transition-all font-black text-[10px] uppercase tracking-widest active:scale-95"
-              >
-                <Settings size={14} /> Config_ID
-              </button>
-            ) : (
-              <button
-                onClick={handleFollowToggle}
-                className={`px-8 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 ${
-                  isFollowing 
-                    ? "border border-zinc-800 text-zinc-500 bg-black" 
-                    : "bg-cyan-500 text-black shadow-[0_10px_30px_rgba(0,242,255,0.3)]"
-                }`}
-              >
-                {isFollowing ? "Linked_Network" : "Link_Neural"}
-              </button>
-            )}
-          </div>
-        </div>
+      {/* --- Cover Photo --- */}
+      <div className="relative h-48 md:h-64 w-full bg-zinc-900 overflow-hidden">
+        <img 
+          src={user?.coverImg || "https://images.unsplash.com/photo-1614850523296-d8c1af93d400?q=80&w=2070"} 
+          className="w-full h-full object-cover brightness-[0.6]"
+          alt="cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F14] via-transparent to-transparent" />
+        <label className="absolute bottom-4 right-4 p-2.5 bg-black/60 backdrop-blur-xl border border-white/10 rounded-xl text-white text-[10px] cursor-pointer hover:bg-[#1877F2] transition-all flex items-center gap-2 group z-10 font-black uppercase tracking-widest">
+          <Camera size={14} /> 
+          <span>Update Cover</span>
+          <input type="file" className="hidden" onChange={(e) => handleUpload(e, 'coverImg')} />
+        </label>
       </div>
 
-      {/* Bio & Details */}
-      <div className="px-8 mt-6">
-        <h2 className="text-2xl font-black italic tracking-tighter uppercase">{user.displayName}</h2>
-        <p className="text-cyan-500 text-xs font-mono font-bold">//NET_ID: @{user.username}</p>
-        
-        <p className="mt-5 text-sm text-zinc-400 leading-relaxed font-medium italic border-l-2 border-white/5 pl-4">
-          "{user.bio || "This drifter hasn't shared a neural signature yet."}"
-        </p>
+      <div className="max-w-4xl mx-auto px-4 relative -mt-16">
+        <div className="flex flex-col items-center md:items-start md:flex-row md:gap-6">
+          
+          {/* --- Avatar --- */}
+          <div className="relative group">
+            <div className="w-32 h-32 md:w-44 md:h-44 rounded-full border-[6px] border-[#0B0F14] overflow-hidden shadow-[0_0_50px_rgba(24,119,242,0.2)] bg-[#121821]">
+              <img 
+                src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.firstName || 'O'}&background=1877F2&color=fff`} 
+                className="w-full h-full object-cover"
+                alt="profile"
+              />
+            </div>
+            <label className="absolute bottom-3 right-3 p-2.5 bg-[#1877F2] border-4 border-[#0B0F14] rounded-full text-white cursor-pointer shadow-xl z-20 hover:scale-110 transition-transform">
+              <Camera size={20} />
+              <input type="file" className="hidden" onChange={(e) => handleUpload(e, 'avatar')} />
+            </label>
+          </div>
 
-        <div className="flex flex-wrap gap-4 text-[9px] text-zinc-600 mt-6 font-black uppercase tracking-[0.2em]">
-          {user.location && (
-            <div className="flex items-center gap-1.5 bg-white/5 px-4 py-2 rounded-xl">
-              <MapPin size={12} className="text-cyan-500" /> {user.location}
+          {/* --- User Details --- */}
+          <div className="mt-4 md:mt-24 flex-1 text-center md:text-left">
+            <div className="flex items-center justify-center md:justify-start gap-2">
+              <h1 className="text-4xl font-black italic uppercase tracking-tighter text-white">
+                {user?.firstName} {user?.lastName}
+              </h1>
+              <CheckCircle className="text-[#1877F2]" size={24} fill="#1877F2" />
+            </div>
+            <p className="text-[#1877F2] font-black tracking-[0.3em] text-[10px] mt-1 uppercase opacity-80">
+              @{user?.username || 'drifter_node'}
+            </p>
+            
+            <div className="flex gap-6 mt-6 justify-center md:justify-start">
+              <div className="text-center md:text-left">
+                <span className="block font-black text-xl text-white">{user?.friendsCount || 0}</span>
+                <span className="text-[10px] uppercase font-black text-zinc-500 tracking-widest">Friends</span>
+              </div>
+              <div className="border-x border-white/5 px-6 text-center md:text-left">
+                <span className="block font-black text-xl text-white">{user?.followersCount || 0}</span>
+                <span className="text-[10px] uppercase font-black text-zinc-500 tracking-widest">Followers</span>
+              </div>
+              <div className="text-center md:text-left">
+                <span className="block font-black text-xl text-white">{user?.followingCount || 0}</span>
+                <span className="text-[10px] uppercase font-black text-zinc-500 tracking-widest">Following</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 md:mt-28 flex gap-3">
+            <button onClick={() => setIsEditModalOpen(true)} className="bg-zinc-800/50 hover:bg-[#1877F2] border border-white/5 text-white px-6 py-3 rounded-2xl font-black uppercase text-[10px] transition-all flex items-center gap-2 tracking-widest">
+              <Edit3 size={14} /> Edit Identity
+            </button>
+            <button className="bg-[#1877F2] text-white p-3.5 rounded-2xl shadow-lg hover:scale-105 transition-all">
+              <Plus size={22} />
+            </button>
+          </div>
+        </div>
+
+        {/* --- Media Posts (Neural Feed) --- */}
+        <div className="mt-16">
+          <div className="flex items-center gap-4 mb-10">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.5em] text-[#1877F2]">Transmission Logs</h3>
+            <div className="h-[1px] flex-1 bg-gradient-to-r from-[#1877F2]/40 to-transparent"></div>
+          </div>
+
+          {postsLoading ? (
+            <div className="flex justify-center p-20"><Loader2 className="animate-spin text-[#1877F2]" size={32} /></div>
+          ) : posts.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {posts.map((post) => (
+                <div key={post._id} className="bg-[#121821] border border-white/5 rounded-[2.5rem] overflow-hidden hover:border-[#1877F2]/40 transition-all group shadow-2xl">
+                  
+                  {(post.image || post.mediaUrl) && (
+                    <div className="aspect-video overflow-hidden bg-black flex items-center justify-center">
+                      {post.mediaType === "video" ? (
+                        <video 
+                          src={post.mediaUrl} 
+                          controls 
+                          className="w-full h-full object-cover"
+                          poster={post.image}
+                        />
+                      ) : (
+                        <img 
+                          src={post.image || post.mediaUrl} 
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
+                          alt="post" 
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  <div className="p-8">
+                    <p className="text-zinc-300 text-sm mb-6 leading-relaxed font-medium">{post.content}</p>
+                    <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-tighter text-zinc-500 border-t border-white/5 pt-6">
+                      <span>{new Date(post.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                      <div className="flex gap-6">
+                        <span className="flex items-center gap-2 hover:text-[#1877F2] transition-colors cursor-pointer">
+                          <Heart size={14} /> {post.likes?.length || 0}
+                        </span>
+                        <span className="flex items-center gap-2 hover:text-[#1877F2] transition-colors cursor-pointer">
+                          <MessageCircle size={14} /> {post.comments?.length || 0}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-24 border-2 border-dashed border-white/5 rounded-[3rem] bg-white/[0.01]">
+              <p className="text-zinc-600 font-black uppercase tracking-[0.3em] italic text-sm">Silence in the neural grid.</p>
             </div>
           )}
-          <div className="flex items-center gap-1.5 bg-white/5 px-4 py-2 rounded-xl">
-            <Calendar size={12} className="text-cyan-500" /> SYNCED_{user.joinedAt?.slice(0, 4) || "2026"}
-          </div>
-        </div>
-
-        <div className="flex gap-10 mt-8 border-y border-white/5 py-6">
-          <div className="group cursor-pointer">
-            <p className="text-xl font-black italic group-hover:text-cyan-400 transition-colors">{user.followingCount || 0}</p>
-            <p className="text-[9px] text-zinc-600 uppercase tracking-[0.3em]">Following</p>
-          </div>
-          <div className="group cursor-pointer">
-            <p className="text-xl font-black italic group-hover:text-cyan-400 transition-colors">{user.followersCount || 0}</p>
-            <p className="text-[9px] text-zinc-600 uppercase tracking-[0.3em]">Followers</p>
-          </div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-white/5 mt-4 sticky top-16 bg-black/60 backdrop-blur-xl z-30">
-        {["Posts", "Media", "Stored"].map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className="flex-1 py-5 text-[10px] font-black uppercase tracking-[0.3em] relative transition-all"
-          >
-            <span className={activeTab === tab ? "text-cyan-400" : "text-zinc-700"}>{tab}</span>
-            {activeTab === tab && (
-              <motion.div layoutId="tabLine" className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-500 shadow-[0_0_15px_#00f2ff]" />
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Content Area */}
-      <div className="divide-y divide-white/5">
-        {posts.length > 0 ? (
-          posts.map((p, idx) => (
-            <motion.div 
-              initial={{ opacity: 0 }} 
-              whileInView={{ opacity: 1 }} 
-              viewport={{ once: true }}
-              key={p._id} 
-              className="p-8 hover:bg-white/[0.01] transition-all group"
-            >
-              <p className="text-sm leading-relaxed text-zinc-300 font-medium">{p.content}</p>
-              {p.image && (
-                <div className="mt-5 rounded-[2rem] overflow-hidden border border-white/10 aspect-video bg-zinc-900">
-                   <img src={p.image} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700 ease-in-out" alt="" />
-                </div>
-              )}
-              <div className="flex justify-between items-center mt-6">
-                <div className="flex gap-4 text-[9px] text-zinc-700 font-black tracking-widest uppercase">
-                  <span>{new Date(p.createdAt).toLocaleDateString()}</span>
-                  <span className="text-zinc-800">|</span>
-                  <span className="group-hover:text-cyan-500 transition-colors">SIG_VERIFIED</span>
-                </div>
+      {/* --- Edit Modal --- */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+          <div className="bg-[#121821] border border-white/10 w-full max-w-md rounded-[3rem] p-10 shadow-2xl relative">
+            <button onClick={() => setIsEditModalOpen(false)} className="absolute top-8 right-8 text-zinc-500 hover:text-white">
+              <X size={28} />
+            </button>
+            <h2 className="text-2xl font-black uppercase italic mb-8 tracking-tighter text-white">Sync <span className="text-[#1877F2]">Identity</span></h2>
+            <form onSubmit={handleUpdateText} className="space-y-5">
+              <div className="grid grid-cols-2 gap-4">
+                <input type="text" placeholder="First Name" className="w-full bg-[#0B0F14] border border-white/5 p-4 rounded-2xl focus:border-[#1877F2] outline-none text-white font-bold text-sm" value={editData.firstName} onChange={(e) => setEditData({...editData, firstName: e.target.value})} />
+                <input type="text" placeholder="Last Name" className="w-full bg-[#0B0F14] border border-white/5 p-4 rounded-2xl focus:border-[#1877F2] outline-none text-white font-bold text-sm" value={editData.lastName} onChange={(e) => setEditData({...editData, lastName: e.target.value})} />
               </div>
-            </motion.div>
-          ))
-        ) : (
-          <div className="py-32 text-center flex flex-col items-center opacity-10">
-            <Radio size={48} strokeWidth={1} className="mb-4" />
-            <p className="text-[10px] font-black uppercase tracking-[0.6em]">No_Neural_Signals_Detected</p>
+              <textarea placeholder="Neural Bio" className="w-full bg-[#0B0F14] border border-white/5 p-4 rounded-2xl focus:border-[#1877F2] outline-none text-white h-32 font-bold text-sm resize-none" value={editData.bio} onChange={(e) => setEditData({...editData, bio: e.target.value})} />
+              <input type="text" placeholder="Location Node" className="w-full bg-[#0B0F14] border border-white/5 p-4 rounded-2xl focus:border-[#1877F2] outline-none text-white font-bold text-sm" value={editData.location} onChange={(e) => setEditData({...editData, location: e.target.value})} />
+              <button type="submit" className="w-full bg-[#1877F2] text-white font-black uppercase py-5 rounded-2xl hover:brightness-110 shadow-lg tracking-[0.2em] text-xs transition-all">Commit Neural Changes</button>
+            </form>
           </div>
-        )}
-      </div>
-
-      {/* Edit Modal */}
-      <AnimatePresence>
-        {isEditModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 backdrop-blur-3xl bg-black/80">
-            <motion.div 
-              initial={{ y: 50, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 50, opacity: 0 }}
-              className="bg-[#080808] w-full max-w-md p-8 border border-white/10 rounded-[3rem] shadow-[0_0_100px_rgba(0,0,0,1)]"
-            >
-               <div className="flex justify-between items-center mb-10">
-                  <h2 className="text-xl font-black italic tracking-tighter uppercase">Config_Neural_ID</h2>
-                  <button onClick={() => setIsEditModalOpen(false)} className="w-10 h-10 flex items-center justify-center bg-white/5 rounded-full text-zinc-500 hover:text-white transition-all">
-                    <X size={20}/>
-                  </button>
-               </div>
-               
-               <div className="space-y-6">
-                  <div>
-                    <label className="text-[9px] font-black uppercase tracking-widest text-zinc-600 mb-2 block">Display_Name</label>
-                    <input className="w-full bg-black border border-white/5 rounded-2xl p-5 text-sm font-bold outline-none focus:border-cyan-500/50 transition-all" placeholder="Enter Name" defaultValue={user.displayName} />
-                  </div>
-                  <div>
-                    <label className="text-[9px] font-black uppercase tracking-widest text-zinc-600 mb-2 block">Neural_Bio</label>
-                    <textarea className="w-full bg-black border border-white/5 rounded-2xl p-5 text-sm font-bold outline-none focus:border-cyan-500/50 transition-all h-32 resize-none" placeholder="Broadcast your thoughts..." defaultValue={user.bio} />
-                  </div>
-               </div>
-               
-               <button className="w-full mt-10 bg-white text-black py-5 rounded-[1.5rem] font-black uppercase text-[11px] tracking-[0.2em] shadow-[0_10px_30px_rgba(255,255,255,0.1)] hover:scale-[1.02] active:scale-95 transition-all">
-                  Commit_Changes
-               </button>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+        </div>
+      )}
     </div>
   );
 };
 
-export default ProfilePage;
+export default MyProfile;

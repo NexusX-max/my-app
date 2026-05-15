@@ -1,169 +1,190 @@
-import React, { createContext, useState, useEffect, useContext, useMemo, useCallback } from 'react';
+import React, { createContext, useState, useEffect, useContext, useMemo, useCallback, useRef } from 'react';
 import axios from 'axios';
+import { io } from 'socket.io-client';
 
-// আপনার নিজস্ব প্রাইভেট সার্ভার এপিআই ইউআরএল
-const API_URL = "https://onyx-drift.com/api";
+// ✅ ১. ডাইনামিক এপিআই এবং সকেট ইউআরএল
+const BASE_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+  ? "http://localhost:5005" 
+  : "https://api.onyx-drift.com";
+
+const API_BASE_URL = `${BASE_URL}/api`;
+const TOKEN_KEY = 'onyx_token';
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [socket, setSocket] = useState(null);
   const [loading, setLoading] = useState(true);
+  
+  // ডুপ্লিকেট কানেকশন ট্র্যাকিং এর জন্য useRef
+  const socketConnecting = useRef(false);
 
-  // 🛠️ ১. স্ট্যাবল এপিআই ইনস্ট্যান্স (Axios Interceptors সহ)
+  // 🛠️ ২. Axios Instance
   const api = useMemo(() => {
     const instance = axios.create({
-      baseURL: API_URL,
+      baseURL: API_BASE_URL,
+      withCredentials: true,
       headers: { 'Content-Type': 'application/json' }
     });
 
-    // রিকোয়েস্ট ইন্টারসেপ্টর: প্রতিবার টোকেন পাঠাবে
     instance.interceptors.request.use((config) => {
-      const token = localStorage.getItem('accessToken');
+      const token = localStorage.getItem(TOKEN_KEY);
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
       return config;
     }, (error) => Promise.reject(error));
 
-    // রেসপন্স ইন্টারসেপ্টর: ৪০১ (Unauthorized) আসলে অটো লগআউট
-    instance.interceptors.response.use(
-      (response) => response,
-      (error) => {
-        if (error.response && error.response.status === 401) {
-          console.warn("🔒 Neural Link Severed! Clearing session...");
-          localStorage.removeItem('accessToken');
-          setUser(null);
-          // সেশন নষ্ট হলে অটো হোমপেজে পাঠিয়ে দেবে
-          if (window.location.pathname !== '/') {
-             window.location.href = '/';
-          }
-        }
-        return Promise.reject(error);
-      }
-    );
-
     return instance;
   }, []);
 
-  // 🛠️ ২. ইন্টারনাল হেল্পার: ডাটা ক্লিনআপ
-  const handleLogoutData = useCallback(() => {
-    localStorage.removeItem('accessToken');
+  // 🛠️ ৩. ডাটা ক্লিনআপ (Logout and cleanup logic)
+  const clearAuthData = useCallback(() => {
+    localStorage.removeItem(TOKEN_KEY);
+    if (socket) {
+      socket.emit("logout_user", user?._id);
+      socket.disconnect();
+    }
     setUser(null);
-  }, []);
+    setSocket(null);
+    window.socket = null;
+    socketConnecting.current = false;
+  }, [socket, user?._id]);
 
-  // 🛠️ ৩. ইনিশিয়াল অথ চেক (Neural Session Recovery)
+  // 🛠️ ৪. সকেট ম্যানেজমেন্ট (Optimized for single connection)
+  useEffect(() => {
+    let socketInstance = null;
+
+    // ইউজার থাকলে এবং সকেট কানেকশন ইতিমধ্যে না থাকলে তবেই কানেক্ট হবে
+    if (user?._id && !socketConnecting.current) {
+      socketConnecting.current = true;
+      const currentUserId = user._id;
+
+      socketInstance = io(BASE_URL, {
+        query: { userId: currentUserId },
+        transports: ['websocket', 'polling'], // অটো-ফলব্যাক অপশন রাখা ভালো
+        reconnection: true,
+        reconnectionAttempts: 10, 
+        reconnectionDelay: 2000,
+        secure: true,
+        withCredentials: true
+      });
+
+      socketInstance.on("connect", () => {
+        console.log("%c 🚀 Neural link active: " + socketInstance.id, "color: #06b6d4; font-weight: bold;");
+        window.socket = socketInstance;
+        socketInstance.emit("addNewUser", currentUserId);
+        setSocket(socketInstance);
+      });
+
+      socketInstance.on("connect_error", (err) => {
+        console.warn("📡 Signal Pending/Error. Adjusting transports...");
+      });
+
+      const interval = setInterval(() => {
+        if (socketInstance?.connected) {
+          socketInstance.emit("heartbeat", currentUserId);
+        }
+      }, 30000);
+
+      return () => {
+        clearInterval(interval);
+        if (socketInstance) {
+          socketInstance.disconnect();
+          window.socket = null;
+          socketConnecting.current = false;
+          console.log("📡 Neural link closed.");
+        }
+      };
+    }
+  }, [user?._id]); 
+
+  // 🛠️ ৫. সেশন রিকভারি (Mounting logic optimized)
   useEffect(() => {
     let isMounted = true;
     const initAuth = async () => {
-      const token = localStorage.getItem('accessToken');
+      const token = localStorage.getItem(TOKEN_KEY);
       if (!token) {
         if (isMounted) setLoading(false);
         return;
       }
 
       try {
-        // ব্যাকএন্ডের getMe এন্ডপয়েন্ট কল করা
         const res = await api.get('/auth/me'); 
         if (isMounted) {
-          setUser(res.data.user || res.data);
+          const userData = res.data.user || res.data.data || res.data;
+          setUser(userData);
         }
       } catch (err) {
-        console.error("❌ Neural Session Recovery Failed");
-        if (isMounted) handleLogoutData();
+        console.error("Neural Recovery Error:", err);
+        // যদি টোকেন এক্সপায়ার হয় তবে ক্লিনআপ
+        if (isMounted) clearAuthData();
       } finally {
         if (isMounted) setLoading(false);
       }
     };
-    
+
     initAuth();
     return () => { isMounted = false; };
-  }, [api, handleLogoutData]);
+  }, [api, clearAuthData]);
 
-  // 🛠️ ৪. গুগল লগইন মেথড (কাস্টম টোকেন সিস্টেমের সাথে সিঙ্ক)
-  const googleLogin = useCallback(async (googleCredential) => {
-    try {
-      const res = await api.post('/auth/google', { googleToken: googleCredential });
-      const { token, user } = res.data;
-      if (token) {
-        localStorage.setItem('accessToken', token);
-        setUser(user);
-        return res.data;
-      }
-    } catch (err) {
-      throw err.response?.data?.msg || "Google Authentication Failed";
-    }
-  }, [api]);
-
-  // 🛠️ ৫. কাস্টম সাইনআপ ও লগইন মেথড
-  const signup = useCallback(async (formData) => {
-    try {
-      const res = await api.post('/auth/register', formData);
-      const { token, user } = res.data;
-      if (token) {
-        localStorage.setItem('accessToken', token);
-        setUser(user);
-      }
-      return res.data;
-    } catch (err) {
-      throw err.response?.data?.msg || "Registration Failed";
-    }
-  }, [api]);
-
+  // 🛠️ ৬. অথেনটিকেশন মেথডসমূহ
   const login = useCallback(async (email, password) => {
-    try {
-      const res = await api.post('/auth/login', { email, password });
-      const { token, user } = res.data;
-      if (token) {
-        localStorage.setItem('accessToken', token);
-        setUser(user);
-      }
-      return res.data;
-    } catch (err) {
-      throw err.response?.data?.msg || "Login Failed";
+    const res = await api.post('/auth/login', { email, password });
+    const { token, user: userData } = res.data;
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+      setUser(userData || res.data);
     }
+    return res.data;
   }, [api]);
 
-  // 🛠️ ৬. প্রোফাইল আপডেট (Neural Profile Sync)
-  const updateProfile = useCallback(async (updateData) => {
-    try {
-      const res = await api.put('/auth/profile', updateData);
-      setUser(res.data);
-      return res.data;
-    } catch (err) {
-      throw err.response?.data?.msg || "Update Failed";
+  const signup = useCallback(async (formData) => {
+    const res = await api.post('/auth/register', formData);
+    const { token, user: userData } = res.data;
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+      setUser(userData || res.data);
     }
+    return res.data;
   }, [api]);
 
-  // 🛠️ ৭. লগআউট (Neural Session Termination)
   const logout = useCallback(() => {
-    handleLogoutData();
-    window.location.href = '/'; 
-  }, [handleLogoutData]);
+    clearAuthData();
+    // রিফ্রেশ দিয়ে ক্লিন এনভায়রনমেন্ট নিশ্চিত করা
+    window.location.href = '/';
+  }, [clearAuthData]);
 
-  // 🛠️ কনটেক্সট ভ্যালু মেমোইজেশন
-  const value = useMemo(() => ({
-    user,
-    loading,
-    login,
-    signup,
-    googleLogin,
-    updateProfile,
+  const contextValue = useMemo(() => ({
+    user, 
+    socket, 
+    loading, 
+    login, 
+    signup, 
     logout,
     isAuthenticated: !!user,
     api 
-  }), [user, loading, api, login, signup, googleLogin, updateProfile, logout]);
+  }), [user, socket, loading, login, signup, logout, api]);
 
   return (
-    <AuthContext.Provider value={value}>
-      {!loading && children}
+    <AuthContext.Provider value={contextValue}>
+      {!loading ? children : (
+        <div className="min-h-screen bg-[#020617] flex items-center justify-center">
+            <div className="flex flex-col items-center gap-4">
+               <div className="relative w-16 h-16">
+                 <div className="absolute inset-0 border-4 border-cyan-500/10 rounded-full"></div>
+                 <div className="absolute inset-0 border-4 border-t-cyan-500 rounded-full animate-spin"></div>
+               </div>
+               <div className="text-cyan-500 font-mono animate-pulse uppercase tracking-[0.4em] text-[10px]">
+                 Syncing_Neural_Core...
+               </div>
+            </div>
+        </div>
+      )}
     </AuthContext.Provider>
   );
 };
 
-// কাস্টম হুক
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth must be used within an AuthProvider");
-  return context;
-};
+export const useAuth = () => useContext(AuthContext);
+export default AuthProvider;

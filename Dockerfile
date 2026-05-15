@@ -1,18 +1,25 @@
-# ১. নোড ইমেজ সিলেক্ট করা (লাইটওয়েট ভার্সন)
+# ১. স্ট্যাবল নোড ইমেজ
 FROM node:20-alpine
 
 # ২. ডিরেক্টরি সেটআপ
 WORKDIR /app
 
-# ৩. ডিপেন্ডেন্সি কপি ও ইন্সটল
-COPY package*.json ./
-RUN npm install --production
+# ৩. নেটওয়ার্ক এরর এড়াতে এনপিএম কনফিগারেশন
+RUN npm config set fetch-retry-maxtimeout 120000 && \
+    npm config set fetch-retries 5
 
-# ৪. সব কোড কপি করা
+# ৪. শুধু প্যাকেজ ফাইলগুলো আগে কপি করা
+COPY package*.json ./
+
+# ৫. ডিপেন্ডেন্সি ইন্সটল করা (Conflict এড়াতে --legacy-peer-deps যোগ করা হয়েছে)
+# এটি multer-storage-cloudinary এর ভার্সন সমস্যা সমাধান করবে
+RUN npm install --production --legacy-peer-deps
+
+# ৬. প্রজেক্টের বাকি সব কোড কপি করা
 COPY . .
 
-# ৫. পোর্ট এক্সপোজ করা (তোমার ব্যাকএন্ড পোর্ট ১০০০০)
+# ৭. ওনিক্সড্রিফট এর পোর্ট
 EXPOSE 10000
 
-# ৬. সার্ভার রান করার কমান্ড
+# ৮. অ্যাপ রান করা
 CMD ["npm", "start"]

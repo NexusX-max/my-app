@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Home, 
@@ -22,6 +22,7 @@ import LiveStudio from '../modules/LiveStudio';
 const MobileNavbar = () => {
   const [isHubOpen, setIsHubOpen] = useState(false);
   const [activeModule, setActiveModule] = useState(null);
+  const navigate = useNavigate();
 
   // ক্রিয়েশন হাব অপশনসমূহ
   const creationOptions = [
@@ -31,6 +32,20 @@ const MobileNavbar = () => {
     { id: 'photo', label: 'Photo', icon: <Image size={20} />, color: 'text-green-500', desc: 'Visual node' },
     { id: 'live', label: 'Go Live', icon: <Radio size={20} />, color: 'text-red-500', desc: 'Real-time sync' },
   ];
+
+  // হ্যান্ডেল ক্লিক লজিক
+  const handleOptionClick = (id) => {
+    setIsHubOpen(false); // মডাল বন্ধ হবে
+    
+    if (id === 'live') {
+      setActiveModule('live'); // লাইভ স্টুডিও মডিউল ওপেন হবে
+    } else if (id === 'text') {
+      setActiveModule('text'); // নিউরাল টেক্সট মডিউল ওপেন হবে
+    } else {
+      // বাকি সব (reels, video, photo) সরাসরি এডিটরে যাবে
+      navigate('/reels-editor', { state: { type: id } });
+    }
+  };
 
   return (
     <>
@@ -101,7 +116,7 @@ const MobileNavbar = () => {
         </div>
       </nav>
 
-      {/* --- ২. ক্রিয়েশন হাব মডাল (Framer Motion Integration) --- */}
+      {/* --- ২. ক্রিয়েশন হাব মডাল (Neural Engine V3) --- */}
       <AnimatePresence>
         {isHubOpen && (
           <div className="fixed inset-0 z-[150] flex items-end justify-center px-4 pb-28">
@@ -139,10 +154,7 @@ const MobileNavbar = () => {
                     key={opt.id}
                     whileHover={{ x: 10 }}
                     whileTap={{ scale: 0.98 }}
-                    onClick={() => {
-                      setActiveModule(opt.id);
-                      setIsHubOpen(false);
-                    }}
+                    onClick={() => handleOptionClick(opt.id)}
                     className="flex items-center gap-5 p-5 rounded-[2.2rem] bg-white/[0.03] border border-white/5 hover:bg-white/[0.07] hover:border-cyan-500/30 transition-all group"
                   >
                     <div className={`p-4 rounded-2xl bg-black border border-white/10 ${opt.color} shadow-inner`}>

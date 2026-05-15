@@ -1,229 +1,272 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
-import { useAuth0 } from "@auth0/auth0-react";
-import axios from "axios";
-import { motion, AnimatePresence } from "framer-motion";
+import React, { useState, useContext, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { 
-  HiOutlineChevronLeft, HiOutlineBell, HiOutlineEyeSlash, 
-  HiMagnifyingGlass, HiChatBubbleLeftRight, HiUsers, 
-  HiCog6Tooth, HiOutlineVideoCamera, HiOutlinePhoto, 
-  HiOutlineMicrophone, HiOutlinePaperAirplane, HiOutlineStopCircle 
-} from "react-icons/hi2";
+  FaCommentDots, FaCog, FaPhoneAlt, FaVideo, FaTimes, FaCheck 
+} from 'react-icons/fa';
 
-const API_URL = "https://my-cool-app-cvm7.onrender.com";
-const AUTH_AUDIENCE = "https://onyx-drift-api";
-const CLOUD_NAME = "dx0cf0ggu";
-const UPLOAD_PRESET = "onyx_preset"; // আপনার Cloudinary Unsigned Preset নাম
-const CLOUDINARY_URL = `https://api.cloudinary.com{CLOUD_NAME}/image/upload`;
+import { AuthContext } from '../context/AuthContext';
+import SearchScreen from './SearchScreen'; 
+import ChatInterface from './ChatInterface';
+import SettingsScreen from './SettingsScreen'; // SettingsScreen ইমপোর্ট করা হলো
 
-const getAvatar = (name) => `https://api.dicebear.com{name || 'Drifter'}`;
+// --- Sound Assets ---
+const MSG_SOUND = "https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3"; 
+const CALL_SOUND = "https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3";
 
-const Messenger = ({ socket }) => {
-  const { user, isAuthenticated, isLoading: authLoading, getAccessTokenSilently } = useAuth0();
+const getAvatarUrl = (target) => {
+  if (!target) return `https://ui-avatars.com/api/?name=User&background=27272a&color=fff`;
+  const pic = target.profilePic || target.avatar || target.profileImage;
+  if (pic && typeof pic === 'string' && pic.startsWith('http')) return pic;
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(target.fullName || target.name || target.username || "Onyx")}&background=06b6d4&color=fff&bold=true`;
+};
 
-  const [conversations, setConversations] = useState([]);
-  const [messages, setMessages] = useState([]);
-  const [currentChat, setCurrentChat] = useState(null);
-  const [newMessage, setNewMessage] = useState("");
-  const [onlineUsers, setOnlineUsers] = useState([]);
-  const [typingStatus, setTypingStatus] = useState("");
-  const [isUploading, setIsUploading] = useState(false);
-  const [isIncognito, setIsIncognito] = useState(false);
+const OnyxMessengerHome = () => {
+  const { user, socket } = useContext(AuthContext);
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState('chats');
+  const [selectedChat, setSelectedChat] = useState(null);
+  const [showSearch, setShowSearch] = useState(false);
+  const [incomingCall, setIncomingCall] = useState(null);
 
-  const scrollRef = useRef();
-  const fileInputRef = useRef();
-  const api = useRef(axios.create({ baseURL: API_URL }));
+  const msgAudio = useRef(new Audio(MSG_SOUND));
+  const callAudio = useRef(new Audio(CALL_SOUND));
 
-  // ✅ AUTH TOKEN SETUP
-  const getAuthToken = useCallback(async () => {
-    try {
-      return await getAccessTokenSilently({
-        authorizationParams: { audience: AUTH_AUDIENCE, scope: "openid profile email" },
-        cacheMode: "off",
+  // চ্যাট লিস্ট স্টেট (Local Storage sync সহ)
+  const [chatList, setChatList] = useState(() => {
+    const savedChats = localStorage.getItem('onyx_recent_connections');
+    return savedChats ? JSON.parse(savedChats) : [
+      { _id: "u1", fullName: "Onyx Support", lastMsg: "System status: Optimal.", time: "Online", online: true },
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('onyx_recent_connections', JSON.stringify(chatList));
+  }, [chatList]);
+
+  /* ==========================================================
+      ⚡ NEURAL SIGNAL HANDLING (Socket Logic)
+  ========================================================== */
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleIncomingMessage = (data) => {
+      if (data.isIncomingCall || data.isCallSignal) return;
+
+      setChatList(prev => {
+        const filtered = prev.filter(c => c._id !== data.senderId);
+        const updatedChat = {
+          _id: data.senderId,
+          fullName: data.senderName || "Unknown Node",
+          lastMsg: data.text || "Encrypted transmission...",
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          online: true,
+          profilePic: data.senderAvatar || null
+        };
+        return [updatedChat, ...filtered];
       });
-    } catch (e) { 
-      console.error("Token fetch error:", e);
-      return null; 
-    }
-  }, [getAccessTokenSilently]);
 
-  useEffect(() => {
-    const interceptor = api.current.interceptors.request.use(async (config) => {
-      const token = await getAuthToken();
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+      if (!selectedChat || selectedChat._id !== data.senderId) {
+        msgAudio.current.play().catch(() => {});
       }
-      return config;
-    });
-    return () => api.current.interceptors.request.eject(interceptor);
-  }, [getAuthToken]);
+    };
 
-  // ✅ SOCKET LOGIC
-  useEffect(() => {
-    const s = socket?.current || socket;
-    if (!s) return;
+    const handleIncomingCall = (data) => {
+      setIncomingCall(data);
+      callAudio.current.loop = true;
+      callAudio.current.play().catch(e => console.warn("Audio blocked by browser policy"));
+    };
 
-    s.on("getUsers", (users) => setOnlineUsers(users));
-    
-    s.on("displayTyping", (data) => {
-      if (currentChat?.userDetails?.auth0Id === data.senderId) setTypingStatus("Typing...");
-    });
+    const handleCallEnded = () => {
+      setIncomingCall(null);
+      callAudio.current.pause();
+      callAudio.current.currentTime = 0;
+    };
 
-    s.on("hideTyping", () => setTypingStatus(""));
-
-    s.on("getMessage", (data) => {
-      if (currentChat?._id === data.conversationId) {
-        setMessages((prev) => [...prev, data]);
-      }
-    });
+    socket.on("getMessage", handleIncomingMessage);
+    socket.on("$incomingCall", handleIncomingCall);
+    socket.on("callEnded", handleCallEnded);
 
     return () => {
-      s.off("getUsers");
-      s.off("displayTyping");
-      s.off("hideTyping");
-      s.off("getMessage");
+      socket.off("getMessage", handleIncomingMessage);
+      socket.off("$incomingCall", handleIncomingCall);
+      socket.off("callEnded", handleCallEnded);
     };
-  }, [socket, currentChat]);
+  }, [socket, selectedChat]);
 
-  // ✅ FETCH DATA
-  const fetchConversations = useCallback(async () => {
-    try {
-      const res = await api.current.get("/api/messages/conversations");
-      setConversations(res.data || []);
-    } catch (err) { console.error("Conversations load error:", err); }
+  /* ==========================================================
+      📞 CALL ACTIONS
+  ========================================================== */
+  const initiateCall = useCallback((targetUser, type) => {
+    if (!targetUser?._id || !user?._id) return;
+    const roomId = [user._id, targetUser._id].sort().join("-"); 
+    navigate(`/call/${roomId}?type=${type}&mode=outbound`);
+  }, [user, navigate]);
+
+  const acceptCall = () => {
+    if (!incomingCall || !user) return;
+    callAudio.current.pause();
+    callAudio.current.currentTime = 0;
+    const roomId = incomingCall.roomId || [user._id, incomingCall.from].sort().join("-");
+    const callType = incomingCall.callType || incomingCall.type || 'video';
+    navigate(`/call/${roomId}?type=${callType}&mode=inbound`, {
+      state: { incomingSignal: incomingCall.signalData, callerId: incomingCall.from }
+    });
+    setIncomingCall(null);
+  };
+
+  const declineCall = () => {
+    if (incomingCall) {
+      socket.emit("endCall", { to: incomingCall.from });
+      callAudio.current.pause();
+      callAudio.current.currentTime = 0;
+      setIncomingCall(null);
+    }
+  };
+
+  /* ==========================================================
+      🎯 USER SELECTION
+  ========================================================== */
+  const handleUserSelect = useCallback((u) => {
+    if (!u) return;
+    
+    const userId = u._id || u.id;
+    if (!userId) return;
+
+    const normalizedUser = {
+      _id: userId,
+      fullName: u.fullName || u.name || u.username || "Drifter",
+      profilePic: u.profilePic || u.avatar || u.profileImage,
+      lastMsg: "Neural link established",
+      time: "Just now",
+      online: true
+    };
+
+    setChatList(prev => {
+      const filtered = prev.filter(c => c._id !== userId);
+      return [normalizedUser, ...filtered];
+    });
+
+    setSelectedChat(normalizedUser);
+    setShowSearch(false);
   }, []);
 
-  useEffect(() => {
-    if (isAuthenticated) fetchConversations();
-  }, [isAuthenticated, fetchConversations]);
-
-  useEffect(() => {
-    if (currentChat) {
-      api.current.get(`/api/messages/${currentChat._id}`).then(res => setMessages(res.data));
-    }
-  }, [currentChat]);
-
-  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
-
-  // ✅ HANDLERS
-  const handleTyping = (e) => {
-    setNewMessage(e.target.value);
-    const s = socket?.current || socket;
-    if (s && currentChat) {
-      s.emit("typing", { senderId: user.sub, receiverId: currentChat.userDetails?.auth0Id });
-      // Clear typing after 3s
-      if (window.typingTimeout) clearTimeout(window.typingTimeout);
-      window.typingTimeout = setTimeout(() => {
-        s.emit("stopTyping", { receiverId: currentChat.userDetails?.auth0Id });
-      }, 3000);
-    }
-  };
-
-  const handleSend = async (imageLink = null) => {
-    if (!currentChat || (!newMessage.trim() && !imageLink)) return;
-    const msgData = { 
-      senderId: user.sub, 
-      text: newMessage, 
-      media: imageLink, // মডেলে 'media' ব্যবহার করা হয়েছে
-      mediaType: imageLink ? "image" : "text",
-      conversationId: currentChat._id 
-    };
-
-    try {
-      const res = await api.current.post("/api/messages/message", msgData);
-      setMessages(prev => [...prev, res.data]);
-      setNewMessage("");
-      const s = socket?.current || socket;
-      if (s) s.emit("sendMessage", { ...res.data, receiverId: currentChat.userDetails?.auth0Id });
-    } catch (err) { console.error("Send error:", err); }
-  };
-
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setIsUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("upload_preset", UPLOAD_PRESET);
-    try {
-      const res = await axios.post(CLOUDINARY_URL, formData);
-      handleSend(res.data.secure_url);
-    } catch (err) { 
-      console.error("Upload error:", err);
-      alert("Upload failed! Check your preset name."); 
-    } finally { setIsUploading(false); }
-  };
-
-  const isOnline = (id) => onlineUsers.some(u => u.userId === id);
-
   return (
-    <div className={`fixed inset-0 text-white h-[100dvh] overflow-hidden transition-all duration-700 ${isIncognito ? 'bg-[#0a0010]' : 'bg-[#02040a]'}`}>
-      {!currentChat ? (
-        <div className="flex flex-col h-full w-full">
-          <header className="p-5 pt-12 bg-black/40 border-b border-white/5 backdrop-blur-3xl">
-            <div className="flex justify-between items-center mb-4">
-              <div className="flex items-center gap-3">
-                <img src={user?.picture} className="w-10 h-10 rounded-xl border border-cyan-500/30" alt="me" />
-                <h1 className="text-lg font-black text-cyan-500 italic uppercase">ONYXDRIFT</h1>
+    <div className="bg-black h-[100dvh] text-white flex flex-col overflow-hidden font-sans select-none">
+      
+      {activeTab === 'chats' ? (
+        <>
+          {/* Header */}
+          <header className="p-6 pb-2 sticky top-0 bg-black z-40 border-b border-white/5">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-black italic uppercase tracking-tighter">
+                ONYX<span className="text-cyan-500">CHAT</span>
+              </h2>
+              <div 
+                onClick={() => navigate('/my-profile')} 
+                className="flex items-center gap-3 bg-zinc-900/50 p-1.5 pr-4 rounded-2xl border border-white/5 cursor-pointer active:scale-95 transition-transform"
+              >
+                <img src={getAvatarUrl(user)} className="w-8 h-8 rounded-xl object-cover border border-white/10" alt="me" />
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
+                  {user?.fullName?.split(' ')[0] || "Drifter"}
+                </span>
               </div>
             </div>
-            <input type="text" placeholder="Scan the grid..." className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 text-sm" />
+            
+            {/* Search Bar Trigger */}
+            <div 
+              onClick={() => setShowSearch(true)} 
+              className="relative mb-4 bg-zinc-900/40 border border-white/5 rounded-2xl py-4 pl-5 cursor-text text-zinc-500 text-[11px] uppercase tracking-widest hover:bg-zinc-900/60 transition-all flex items-center gap-3"
+            >
+              <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+              Search neural nodes...
+            </div>
           </header>
 
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
-            {conversations.map(c => (
-              <div key={c._id} onClick={() => setCurrentChat(c)} className="p-3.5 flex items-center gap-4 bg-white/[0.02] border border-white/5 rounded-2xl relative cursor-pointer">
-                <div className="relative">
-                  <img src={c.userDetails?.avatar || getAvatar(c.userDetails?.name)} className="w-12 h-12 rounded-xl object-cover" alt="avatar" />
-                  {isOnline(c.userDetails?.auth0Id) && <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-black animate-pulse" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-sm">{c.userDetails?.name || "Unknown"}</h3>
-                  <p className="text-xs text-zinc-500 truncate">{c.lastMessage?.text || "New encrypted channel..."}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+          {/* Main Content: Chat List */}
+          <main className="flex-1 overflow-y-auto px-6 pb-32 no-scrollbar pt-4">
+            <div className="space-y-3">
+              {chatList.map((chat) => (
+                <motion.div 
+                  layout 
+                  key={chat._id} 
+                  className="flex items-center gap-4 p-4 rounded-[1.8rem] bg-zinc-900/20 border border-white/5 hover:border-cyan-500/30 transition-all group"
+                >
+                  <div 
+                    onClick={() => setSelectedChat(chat)} 
+                    className="flex flex-1 items-center gap-4 cursor-pointer min-w-0"
+                  >
+                    <div className="relative shrink-0">
+                      <img src={getAvatarUrl(chat)} className="w-12 h-12 rounded-2xl object-cover grayscale-[0.5] group-hover:grayscale-0 transition-all" alt="" />
+                      {chat.online && <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 border-[3px] border-black rounded-full" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-bold text-sm text-zinc-100 truncate">{chat.fullName}</h4>
+                      <p className="text-[11px] text-zinc-500 truncate">{chat.lastMsg}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2 shrink-0">
+                     <button 
+                      onClick={(e) => { e.stopPropagation(); initiateCall(chat, 'audio'); }} 
+                      className="p-3.5 rounded-xl bg-zinc-800/50 text-zinc-400 hover:bg-cyan-500 hover:text-black transition-all"
+                     >
+                       <FaPhoneAlt size={12} />
+                     </button>
+                     <button 
+                      onClick={(e) => { e.stopPropagation(); initiateCall(chat, 'video'); }} 
+                      className="p-3.5 rounded-xl bg-zinc-800/50 text-zinc-400 hover:bg-purple-500 hover:text-white transition-all"
+                     >
+                       <FaVideo size={12} />
+                     </button>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </main>
+        </>
       ) : (
-        <div className="flex flex-col h-full w-full bg-[#02040a]">
-          <header className="p-4 pt-10 flex items-center gap-3 bg-black/60 border-b border-white/5">
-            <button onClick={() => setCurrentChat(null)}><HiOutlineChevronLeft size={24}/></button>
-            <div className="flex flex-col">
-              <span className="font-bold text-sm">{currentChat.userDetails?.name}</span>
-              <span className="text-[10px] text-cyan-400 italic">{typingStatus || (isOnline(currentChat.userDetails?.auth0Id) ? "Online" : "Offline")}</span>
-            </div>
-          </header>
-
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.map((m, i) => (
-              <div key={i} className={`flex ${m.senderId === user.sub ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] p-3 rounded-2xl ${m.senderId === user.sub ? 'bg-cyan-600' : 'bg-white/10'}`}>
-                  {m.media && <img src={m.media} className="rounded-lg mb-2 max-h-60" alt="sent" />}
-                  {m.text && <p className="text-sm">{m.text}</p>}
-                </div>
-              </div>
-            ))}
-            <div ref={scrollRef} />
-          </div>
-
-          <footer className="p-4 bg-black/80 border-t border-white/5 flex items-center gap-2">
-            <input type="file" hidden ref={fileInputRef} onChange={handleFileUpload} accept="image/*" />
-            <button onClick={() => fileInputRef.current.click()} className="p-2 text-zinc-400">
-              <HiOutlinePhoto size={24} className={isUploading ? "animate-spin" : ""}/>
-            </button>
-            <input 
-              value={newMessage} 
-              onChange={handleTyping} 
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              className="flex-1 bg-white/5 border border-white/10 rounded-xl p-2.5 text-sm outline-none" 
-              placeholder={isUploading ? "Uploading Data..." : "Transmission..."} 
-            />
-            <button onClick={() => handleSend()} className="p-2.5 bg-cyan-500 rounded-xl text-black"><HiOutlinePaperAirplane size={20}/></button>
-          </footer>
-        </div>
+        /* Settings Tab: আপনার নতুন SettingsScreen এখানে লোড হবে */
+        <SettingsScreen onBack={() => setActiveTab('chats')} />
       )}
+
+      {/* Navigation Bar */}
+      <nav className="fixed bottom-8 left-8 right-8 h-20 bg-black/80 backdrop-blur-3xl border border-white/10 rounded-[35px] flex items-center justify-around z-40 shadow-2xl">
+        <button onClick={() => setActiveTab('chats')} className={`transition-all p-4 ${activeTab === 'chats' ? 'text-cyan-500 scale-125' : 'text-zinc-600'}`}><FaCommentDots size={22} /></button>
+        <button onClick={() => setActiveTab('settings')} className={`transition-all p-4 ${activeTab === 'settings' ? 'text-cyan-500 scale-125' : 'text-zinc-600'}`}><FaCog size={22} /></button>
+      </nav>
+
+      {/* Overlays */}
+      <AnimatePresence>
+        {incomingCall && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95 backdrop-blur-md p-6">
+            <div className="w-full max-w-sm bg-zinc-900 border border-white/10 rounded-[40px] p-8 text-center shadow-2xl relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1 bg-cyan-500 animate-pulse" />
+              <img src={getAvatarUrl({ name: incomingCall.name, profilePic: incomingCall.avatar })} className="w-24 h-24 rounded-[30px] mx-auto mb-6 border-2 border-cyan-500/30 p-1 object-cover" alt="caller" />
+              <h3 className="text-xl font-black uppercase mb-1 tracking-tight">{incomingCall.name || "Unknown Link"}</h3>
+              <p className="text-cyan-500 text-[10px] font-black uppercase tracking-[0.4em] mb-10 animate-pulse">Incoming Pulse</p>
+              <div className="flex justify-center gap-10">
+                <button onClick={declineCall} className="w-16 h-16 flex items-center justify-center bg-zinc-800 hover:bg-red-600 rounded-full text-white transition-all shadow-lg"><FaTimes size={24} /></button>
+                <button onClick={acceptCall} className="w-16 h-16 flex items-center justify-center bg-cyan-600 hover:bg-cyan-500 rounded-full text-white transition-all shadow-[0_0_20px_rgba(6,182,212,0.4)]"><FaCheck size={24} /></button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {showSearch && (
+          <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: "tween" }} className="fixed inset-0 z-[6000] bg-black">
+            <SearchScreen onSelect={handleUserSelect} onBack={() => setShowSearch(false)} />
+          </motion.div>
+        )}
+
+        {selectedChat && (
+          <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: "spring", damping: 30, stiffness: 200 }} className="fixed inset-0 z-[5000] bg-black">
+            <ChatInterface activeChat={selectedChat} onBack={() => setSelectedChat(null)} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
 
-export default Messenger;
+export default OnyxMessengerHome;

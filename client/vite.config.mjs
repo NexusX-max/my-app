@@ -10,17 +10,26 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
 
   return {
+    // ১. প্রজেক্ট রুট থেকে ফাইল লোড হওয়া নিশ্চিত করে
+    base: '/',
+    
+    // ২. নিশ্চিত করে যে 'public' ফোল্ডারের manifest.json সরাসরি 'dist' এ যাবে
+    publicDir: 'public',
+
     plugins: [react()],
 
     define: {
       'global': 'globalThis',
-      'process.env': JSON.stringify(env),
+      // 'process.env' কে সরাসরি JSON.stringify না করে এভাবে দেওয়া নিরাপদ
+      'process.env': env,
+      // 🚨 ফিক্স: 'process.nextTick' কে সরাসরি স্ট্রিং হিসেবে ডিফাইন না করে গ্লোবাল অবজেক্টে রাখা ভালো। 
+      // তবে যদি একান্তই প্রয়োজন হয়, তবে নিচের ফরম্যাটটি ব্যবহার করুন:
+      'process.nextTick': JSON.stringify('process.nextTick'),
     },
 
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
-        // প্রোডাকশন লেভেল পলিফিলস
         'util': 'util/', 
         'stream': 'stream-browserify',
         'buffer': 'buffer',
@@ -33,20 +42,15 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       host: true, 
       strictPort: true,
-      historyApiFallback: true, 
-      
-      // ডোমেইন সিকিউরিটি পারমিশন
       allowedHosts: [
         'onyx-drift.com',
         'www.onyx-drift.com',
         '.onyx-drift.com'
       ],
-
-      // HMR (Hot Module Replacement) - স্টেবল কানেকশন ফিক্স
       hmr: {
-        host: 'onyx-drift.com',
-        protocol: 'wss', // HTTPS এর জন্য সুরক্ষিত কানেকশন
-        clientPort: 443, 
+        host: mode === 'production' ? 'onyx-drift.com' : 'localhost',
+        protocol: mode === 'production' ? 'wss' : 'ws',
+        clientPort: mode === 'production' ? 443 : 5173, 
       }
     },
 
@@ -57,9 +61,9 @@ export default defineConfig(({ mode }) => {
         'events',
         'util',
         'process'
-        // MediaPipe ডিলিট করা হয়েছে
       ],
       esbuildOptions: {
+        // OptimizeDeps এর ভেতরেও global ডিফাইন করা জরুরি
         define: {
           global: 'globalThis'
         }
@@ -68,16 +72,22 @@ export default defineConfig(({ mode }) => {
 
     build: {
       outDir: 'dist',
+      assetsDir: 'assets',
       sourcemap: false,
-      chunkSizeWarningLimit: 2000, // লিমিট কমিয়ে অপ্টিমাইজ করা হয়েছে
+      chunkSizeWarningLimit: 2000,
+      minify: 'esbuild',
       commonjsOptions: {
         transformMixedEsModules: true,
       },
       rollupOptions: {
         output: {
+          // ফাইলের নামের শেষে হ্যাশ কোড ক্যাশ সমস্যা সমাধান করে
+          chunkFileNames: 'assets/js/[name]-[hash].js',
+          entryFileNames: 'assets/js/[name]-[hash].js',
+          assetFileNames: 'assets/[ext]/[name]-[hash].[ext]',
           manualChunks(id) {
             if (id.includes('node_modules')) {
-              return 'vendor'; // লাইব্রেরিগুলোকে আলাদা চাঙ্কে ভাগ করা হয়েছে
+              return 'vendor';
             }
           }
         }

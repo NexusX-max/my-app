@@ -1,151 +1,141 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import User from "../models/User.js";
-import Post from "../models/Post.js";
+import express from 'express';
+import Groq from 'groq-sdk';
+import axios from 'axios';
+import { protect } from '../middleware/authMiddleware.js';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const router = express.Router();
 
-/**
- * ==========================================================
- * 🧠 NEURAL IDENTITY PROCESSOR
- * এই ফাংশনটি ইউজারের পোস্ট অ্যানালাইসিস করে ডাটাবেস আপডেট করে
- * ==========================================================
- */
-export const processNeuralIdentity = async (userId, postText) => {
-  try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+// Groq API Initialize
+const groq = new Groq({
+    apiKey: process.env.GROQ_API_KEY || "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" 
+});
 
-    const prompt = `
-      Task: Analyze this social media post for a cyberpunk social network called 'OnyxDrift'.
-      Post Content: "${postText}"
-      
-      Instructions:
-      1. Detect the mood (Choose one: motivated, creative, calm, stressed).
-      2. Identify 1 relevant skill or topic (e.g., Tech, AI, Music, Gaming).
-      3. Calculate 'Impact Points' (1-5) based on the post's depth.
-      4. Suggest an AI Persona label (e.g., Bold Thinker, Tech Voyager, Silent Observer).
+/* ==========================================================
+    🧠 ১. ONYX BRAIN (Local Ollama or Groq Cloud)
+========================================================== */
+router.post("/onyx-brain", protect, async (req, res) => {
+    try {
+        const { prompt, chatHistory = [], useLocal = false } = req.body;
 
-      Return ONLY a valid JSON object like this:
-      {
-        "mood": "creative",
-        "skill": "Tech",
-        "points": 3,
-        "persona": "Tech Voyager"
-      }
-    `;
+        if (!prompt) return res.status(400).json({ reply: "I'm listening..." });
 
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text();
-    
-    // JSON পার্স করা (ক্লিনআপ সহ)
-    const cleanedJson = responseText.substring(
-      responseText.indexOf("{"),
-      responseText.lastIndexOf("}") + 1
-    );
-    const data = JSON.parse(cleanedJson);
-
-    // --- ডাটাবেস আপডেট লজিক ---
-    const moodField = `moodStats.${data.mood.toLowerCase()}`;
-    
-    const updatedUser = await User.findOneAndUpdate(
-      { auth0Id: userId },
-      {
-        $inc: { 
-          [moodField]: data.points, 
-          neuralImpact: data.points, 
-          decisionsInfluenced: 1 
-        },
-        $set: { aiPersona: data.persona },
-        $addToSet: { detectedSkills: { name: data.skill, relevance: 100 } },
-        $push: { 
-          moodHistory: { 
-            mood: data.mood, 
-            intensity: data.points, 
-            timestamp: new Date() 
-          } 
+        // অপশন ১: লোকাল Ollama ব্যবহার করলে (যদি আপনার পিসিতে রান থাকে)
+        if (useLocal) {
+            try {
+                const ollamaRes = await axios.post('http://localhost:11434/api/generate', {
+                    model: "llama3",
+                    prompt: `You are the Onyx Assistant. User says: "${prompt}". Give a concise response.`,
+                    stream: false
+                });
+                return res.json({ reply: ollamaRes.data.response.trim() });
+            } catch (err) {
+                console.error("Ollama Offline, falling back to Groq...");
+            }
         }
-      },
-      { new: true }
-    );
 
-    console.log(`📡 Neural Identity Updated for User: ${userId} | Mood: ${data.mood}`);
-    return data;
+        // অপশন ২: Groq Cloud (এটি দ্রুত এবং রিলায়েবল)
+        const completion = await groq.chat.completions.create({
+            messages: [
+                {
+                    role: "system",
+                    content: "You are Onyx, the futuristic AI brain of OnyxDrift. Keep replies under 15 words and very cool."
+                },
+                ...chatHistory,
+                { role: "user", content: prompt }
+            ],
+            model: "llama-3.1-8b-instant",
+            temperature: 0.7,
+        });
 
-  } catch (error) {
-    console.error("❌ Neural Engine Error:", error);
-  }
-};
+        res.json({ reply: completion.choices[0]?.message?.content.trim() });
 
-/**
- * ==========================================================
- * 🤖 AUTONOMOUS DRIFT (AI AUTO-POST)
- * ইউজারের মুড এবং স্কিল অনুযায়ী AI নিজে থেকে পোস্ট জেনারেট করবে
- * ==========================================================
- */
-export const triggerAutonomousDrift = async (userId) => {
-  try {
-    const user = await User.findOne({ auth0Id: userId });
-    if (!user) return;
+    } catch (err) {
+        console.error("📡 [Brain Error]:", err.message);
+        res.status(500).json({ reply: "Neural link recalibrating. Try again." });
+    }
+});
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+/* ==========================================================
+    🎙️ ২. ONYX VOICE (ElevenLabs TTS)
+========================================================== */
+router.post("/onyx-voice", protect, async (req, res) => {
+    try {
+        const { text } = req.body;
+        const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+        const VOICE_ID = "EXAVITQu4vr4xnSDxMaL"; // Bella or Custom Voice
 
-    const prompt = `
-      You are the 'Neural Shadow' (AI Twin) of ${user.name}.
-      Your current AI Persona is: ${user.aiPersona || 'Digital Drifter'}.
-      Based on your high impact in ${user.detectedSkills?.[0]?.name || 'Cyber-Void'},
-      write a futuristic, cryptic, and deep status update for the OnyxDrift network.
-      Keep it under 25 words. Do not use hashtags.
-    `;
+        const response = await axios({
+            method: 'POST',
+            url: `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`,
+            data: {
+                text: text,
+                model_id: "eleven_multilingual_v2",
+                voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+            },
+            headers: {
+                'xi-api-key': ELEVENLABS_API_KEY,
+                'accept': 'audio/mpeg',
+                'Content-Type': 'application/json'
+            },
+            responseType: 'arraybuffer'
+        });
 
-    const result = await model.generateContent(prompt);
-    const aiText = result.response.text();
+        res.set({
+            'Content-Type': 'audio/mpeg',
+            'Content-Length': response.data.length
+        });
+        res.send(Buffer.from(response.data));
 
-    const newPost = await Post.create({
-      author: user._id,
-      authorAuth0Id: user.auth0Id,
-      authorName: `${user.name} [AI SHADOW]`,
-      authorAvatar: user.avatar || user.picture, // avatar field schema অনুযায়ী চেক করা হয়েছে
-      text: aiText,
-      mediaType: "text",
-      isAiGenerated: true,
-      aiPersona: user.aiPersona,
-      neuralSyncLevel: Math.floor(Math.random() * (99 - 85 + 1) + 85)
-    });
+    } catch (err) {
+        console.error("🎙️ [Voice Error]:", err.message);
+        res.status(500).json({ error: "Voice synthesis failed" });
+    }
+});
 
-    console.log(`🚀 Autonomous Drift executed for ${user.name}`);
-    return newPost;
-  } catch (error) {
-    console.error("❌ Autonomous Drift Error:", error);
-  }
-};
+/* ==========================================================
+    🧠 ৩. SMART REPLIES (Chat Suggestions)
+========================================================== */
+router.post("/smart-replies", protect, async (req, res) => {
+    try {
+        const { lastMessage } = req.body;
+        const completion = await groq.chat.completions.create({
+            messages: [
+                {
+                    role: "system",
+                    content: "Return exactly 3 futuristic reply suggestions for the following message as a JSON array of strings. Max 3 words each."
+                },
+                { role: "user", content: lastMessage || "Hello" }
+            ],
+            model: "llama-3.1-8b-instant",
+            temperature: 0.3,
+        });
 
-/**
- * ==========================================================
- * 💬 AI SHADOW RESPONSE (AUTO-REPLY)
- * ==========================================================
- */
-export const generateAiShadowReply = async (receiverId, senderName, incomingMessage) => {
-  try {
-    const user = await User.findOne({ auth0Id: receiverId });
-    if (!user) throw new Error("User not found");
+        res.json({ suggestions: JSON.parse(completion.choices[0]?.message?.content || "[]") });
+    } catch (err) {
+        res.json({ suggestions: ["Roger that", "Got it", "On it!"] });
+    }
+});
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+/* ==========================================================
+    🎙️ ৪. PROCESS VOICE (Autopilot Actions)
+========================================================== */
+router.post("/process-voice", protect, async (req, res) => {
+    try {
+        const { prompt } = req.body;
+        const chatCompletion = await groq.chat.completions.create({
+            messages: [
+                {
+                    role: "system",
+                    content: "Analyze voice intent. Actions: ACTION_POST, ACTION_NAV. If none, just reply briefly."
+                },
+                { role: "user", content: prompt }
+            ],
+            model: "llama-3.1-8b-instant",
+        });
+        res.json({ result: chatCompletion.choices[0]?.message?.content.trim() });
+    } catch (err) {
+        res.status(500).json({ msg: "Neural Cloud Error" });
+    }
+});
 
-    // AI Tone অনুযায়ী ডাইনামিক প্রম্পট ফাংশনের ভেতরে ডিফাইন করা হয়েছে
-    const prompt = `
-      You are ${user.name}'s AI Shadow on the OnyxDrift network.
-      Personality Calibration: ${user.aiTone}/100.
-      (If tone < 30: Be mysterious, cold, and brief. 
-       If tone > 70: Be extremely friendly, energetic, and talkative.
-       Otherwise: Be balanced and analytical.)
-
-      ${senderName} said: "${incomingMessage}".
-      Reply in a short, witty, and cyberpunk style.
-    `;
-
-    const result = await model.generateContent(prompt);
-    return result.response.text();
-  } catch (error) {
-    console.error("❌ AI Reply Error:", error);
-    return "Neural link unstable. Unable to reply.";
-  }
-};
+export default router;

@@ -1,180 +1,142 @@
-import React, { useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useAuth } from '../context/AuthContext'; // AuthContext ইম্পোর্ট করুন
-import { useNavigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
+const API_BASE_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+  ? "http://127.0.0.1:5005/api"  // লোকাল ডেভেলপমেন্টের জন্য
+  : "https://api.onyx-drift.com/api"; // লাইভ সার্ভারের জন্য (Cloudflare Tunnel)
 
-const AuthModal = () => {
-  const { login, signup } = useAuth(); // কাস্টম হুক থেকে ফাংশন নিন
-  const navigate = useNavigate();
-  
-  const [isLogin, setIsLogin] = useState(true);
-  const [step, setStep] = useState(1);
-  const [formData, setFormData] = useState({ 
-    email: '', 
-    password: '', 
-    fullName: '', 
-    bio: '', 
-    profilePic: null 
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(''); // এরর দেখানোর জন্য
-  const fileInputRef = useRef(null);
+const LoginPage = () => {
+    const [isLoading, setIsLoading] = useState(false);
+    const [formData, setFormData] = useState({
+        email: '',
+        password: ''
+    });
 
-  const handleNext = (e) => {
-    e.preventDefault();
-    if (step < 4) setStep(step + 1);
-    else handleSubmit(e);
-  };
-
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      // প্রোফাইল পিকচার হ্যান্ডলিং (আপনি চাইলে এটাকে base64 বা সরাসরি ফাইল পাঠাতে পারেন)
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData({ ...formData, profilePic: reader.result });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // --- কাস্টম ব্যাকএন্ড সাবমিট হ্যান্ডলার ---
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    
-    if (!formData.email || !formData.password) {
-      return setError("Please fill all required fields");
-    }
-    
-    setLoading(true);
-    try {
-      if (isLogin) {
-        // ১. কাস্টম লগইন কল
-        await login(formData.email, formData.password);
-        console.log("✅ Neural Link Established: Logged In");
-      } else {
-        // ২. কাস্টম সাইনআপ কল
-        await signup(formData);
-        console.log("✅ Neural Profile Created: Registered");
-      }
-      
-      // সফল হলে ড্যাশবোর্ড বা হোমে পাঠান
-      navigate('/dashboard'); 
-      
-    } catch (err) {
-      setError(err || "Authentication Failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-black font-sans selection:bg-cyan-500/30 overflow-x-hidden">
-      <div className="w-full h-full min-h-screen md:h-auto md:min-h-0 md:max-w-[600px] p-6 md:p-12 bg-black text-white flex flex-col justify-center">
+    const handleLogin = async (e) => {
+        e.preventDefault();
         
-        {/* Logo Section */}
-        <div className="flex flex-col items-center mb-8 md:mb-12">
-          <div className="text-6xl md:text-8xl font-black text-white leading-none tracking-tighter transition-all">
-            OX<span className="text-cyan-500">.</span>
-          </div>
-          <div className="text-[10px] md:text-xs font-bold text-zinc-500 tracking-[0.4em] md:tracking-[0.6em] uppercase mt-2">
-            OnyxDrift
-          </div>
-        </div>
+        if (!formData.email || !formData.password) {
+            return toast.error("Credentials required for Neural Access.");
+        }
+        
+        setIsLoading(true);
+        const loadToast = toast.loading("Authenticating Neural Identity...");
 
-        {/* Title */}
-        <h1 className="text-3xl md:text-6xl font-bold mb-4 tracking-tight text-center md:text-left leading-tight">
-          {isLogin ? "Happening now" : "Join OnyxDrift today"}
-        </h1>
+        try {
+            console.log("🚀 Establishing link to:", `${API_BASE_URL}/auth/login`);
+            
+            const resp = await fetch(`${API_BASE_URL}/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData),
+            });
 
-        {/* Error Message */}
-        {error && (
-          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/50 text-red-500 rounded-lg text-sm text-center">
-            {error}
-          </div>
-        )}
+            const result = await resp.json();
+            console.log("🛰️ Neural Response:", result);
 
-        <div className="w-full max-w-[350px] mx-auto md:mx-0">
-          <form onSubmit={isLogin ? handleSubmit : (step === 4 ? handleSubmit : handleNext)} className="space-y-4">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={isLogin ? "login" : `step-${step}`}
-                initial={{ opacity: 0, x: 10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -10 }}
-                transition={{ duration: 0.2 }}
-              >
-                {isLogin ? (
-                  <div className="space-y-4">
-                    <Input type="email" placeholder="Email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
-                    <Input type="password" placeholder="Password" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} />
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {step === 1 && (
-                      <>
-                        <Input type="text" placeholder="Full Name" value={formData.fullName} onChange={(e) => setFormData({...formData, fullName: e.target.value})} />
-                        <Input type="email" placeholder="Email Address" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
-                        <Input type="password" placeholder="Password" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} />
-                      </>
-                    )}
-                    {step === 4 && (
-                      <div className="flex flex-col items-center gap-6">
-                        <div 
-                          onClick={() => fileInputRef.current.click()} 
-                          className="w-24 h-24 rounded-full border border-zinc-800 flex items-center justify-center cursor-pointer overflow-hidden bg-zinc-900 hover:bg-zinc-800 transition-all"
-                        >
-                          {formData.profilePic ? (
-                            <img src={formData.profilePic} alt="Profile" className="w-full h-full object-cover" />
-                          ) : (
-                            <span className="text-[10px] text-zinc-500 uppercase font-bold text-center">Upload</span>
-                          )}
-                        </div>
-                        <input type="file" hidden ref={fileInputRef} onChange={handleFileChange} accept="image/*" />
-                        <textarea 
-                          placeholder="Bio (Optional)" 
-                          className="w-full p-4 bg-transparent border border-zinc-800 rounded-xl text-white outline-none focus:border-cyan-500 min-h-[100px] text-base" 
-                          onChange={(e) => setFormData({...formData, bio: e.target.value})} 
+            if (resp.ok && (result.success || result.token)) {
+                // ১. টোকেন সেভ করা
+                localStorage.setItem('onyx_token', result.token);
+                
+                toast.success(`Welcome back, Drifter!`, { id: loadToast });
+                
+                // ২. ১ সেকেন্ড ডিলে যাতে ইউজার সাকসেস মেসেজটা দেখতে পায়
+                setTimeout(() => {
+                    console.log("🏁 Neural Link Synchronized. Redirecting to Feed...");
+                    // navigate এর বদলে হার্ড রিফ্রেশ ব্যবহার করা হয়েছে যাতে AuthContext টোকেনটি লোড করতে পারে
+                    window.location.href = "/feed";
+                }, 1000);
+            } else {
+                throw new Error(result.msg || "Neural Access Denied.");
+            }
+        } catch (err) {
+            console.error("❌ Login Error:", err);
+            toast.error(err.message, { id: loadToast });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-[#020617] relative overflow-hidden font-sans py-10">
+            {/* Ambient background light effects */}
+            <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-600/10 blur-[130px] rounded-full pointer-events-none" />
+            <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600/10 blur-[120px] rounded-full pointer-events-none" />
+            
+            <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="relative p-8 w-full max-w-[420px] mx-4 rounded-[40px] bg-white/[0.02] backdrop-blur-3xl border border-white/10 shadow-2xl z-10"
+            >
+                <div className="text-center mb-10">
+                    <h1 className="text-3xl font-black text-white mb-1 tracking-[0.2em] italic uppercase">ONYXDRIFT</h1>
+                    <p className="text-cyan-400/50 text-[9px] font-mono tracking-[0.4em] uppercase">Neural Access Point</p>
+                </div>
+
+                <form onSubmit={handleLogin} className="space-y-5">
+                    <div className="relative group">
+                        <input 
+                            type="email" 
+                            placeholder="NEURAL EMAIL"
+                            required
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-xs font-mono focus:outline-none focus:border-blue-500/50 focus:bg-white/[0.07] transition-all"
+                            value={formData.email}
+                            onChange={(e) => setFormData({...formData, email: e.target.value})}
                         />
-                      </div>
-                    )}
-                  </div>
-                )}
-              </motion.div>
-            </AnimatePresence>
+                    </div>
 
-            <button 
-              type="submit" 
-              disabled={loading}
-              className="w-full py-3 bg-white text-black font-bold rounded-full hover:bg-zinc-200 transition-all active:scale-[0.97] text-base md:text-lg disabled:opacity-50"
-            >
-              {loading ? "Establishing Neural Link..." : (isLogin ? "Log in" : (step === 4 ? "Create account" : "Next"))}
-            </button>
-          </form>
+                    <div className="relative group">
+                        <input 
+                            type="password" 
+                            placeholder="ACCESS CODE (PASSWORD)"
+                            required
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-xs font-mono focus:outline-none focus:border-blue-500/50 focus:bg-white/[0.07] transition-all"
+                            value={formData.password}
+                            onChange={(e) => setFormData({...formData, password: e.target.value})}
+                        />
+                    </div>
 
-          <div className="mt-12 md:mt-16">
-            <h3 className="font-bold text-zinc-400 text-lg mb-4">
-              {isLogin ? "Don't have an account?" : "Already have an account?"}
-            </h3>
-            <button 
-              onClick={() => { setIsLogin(!isLogin); setStep(1); setError(''); }}
-              className="w-full py-3 bg-transparent border border-zinc-700 text-cyan-500 font-bold rounded-full hover:bg-cyan-500/5 transition-all text-base md:text-lg"
-            >
-              {isLogin ? "Create account" : "Log in"}
-            </button>
-          </div>
+                    <div className="pt-4 flex flex-col gap-6">
+                        <button 
+                            type="submit"
+                            disabled={isLoading}
+                            className="group relative w-full py-5 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-800 text-white font-black transition-all hover:shadow-[0_0_40px_rgba(37,99,235,0.3)] active:scale-[0.98] disabled:opacity-50 overflow-hidden"
+                        >
+                            <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                            <span className="relative z-10 uppercase text-xs tracking-[0.2em]">
+                                {isLoading ? "⚡ Synchronizing..." : "🔓 Initialize Neural Link"}
+                            </span>
+                        </button>
+
+                        <div className="flex justify-between items-center px-2">
+                            <Link to="/join" className="text-gray-500 text-[9px] uppercase tracking-widest hover:text-white transition-colors">
+                                New Identity? <span className="text-blue-400">Join Drift</span>
+                            </Link>
+                            <button type="button" className="text-gray-500 text-[9px] uppercase tracking-widest hover:text-red-400 transition-colors">
+                                Lost Key?
+                            </button>
+                        </div>
+                    </div>
+                </form>
+
+                {/* Aesthetic Neural Indicators */}
+                <div className="mt-12 flex justify-center items-center gap-4 opacity-10">
+                    <div className="h-[1px] w-12 bg-white" />
+                    <div className="flex gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                        <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse delay-75" />
+                        <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse delay-150" />
+                    </div>
+                    <div className="h-[1px] w-12 bg-white" />
+                </div>
+            </motion.div>
+
+            <div className="absolute bottom-6 text-white/5 text-[7px] tracking-[1.5em] uppercase font-mono w-full text-center">
+                System_Node_Authorized_v3.2
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 };
 
-const Input = ({ ...props }) => (
-  <input 
-    {...props} 
-    className="w-full p-4 bg-transparent border border-zinc-800 rounded-lg text-white placeholder-zinc-600 outline-none focus:border-cyan-500 transition-all text-base focus:ring-1 focus:ring-cyan-500" 
-  />
-);
-
-export default AuthModal;
+export default LoginPage;
