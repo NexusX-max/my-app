@@ -1,17 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import axios from 'axios';
 import { 
-  CheckCircle, MapPin, Link as LinkIcon, Camera,
-  Edit3, Plus, Loader2, X, Heart, MessageCircle
+  CheckCircle, Camera, Edit3, Plus, Loader2, X, Heart, MessageCircle
 } from 'lucide-react';
 
+// --- AUTH CONTEXT IMPORTED EXACTLY LIKE MESSENGER ---
+import { AuthContext } from '../context/AuthContext';
+
 const MyProfile = () => {
+  // AuthContext থেকে সরাসরি গ্লোবাল ইউজার ডাটা নেওয়া হচ্ছে
+  const { user: contextUser } = useContext(AuthContext);
+  
   const [user, setUser] = useState(null);
   const [posts, setPosts] = useState([]); 
   const [loading, setLoading] = useState(true);
   const [postsLoading, setPostsLoading] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   
+  // আপনার ডোমেইন অনুযায়ী API URL সেট করা হয়েছে
   const API_BASE = "https://api.onyx-drift.com";
 
   const [editData, setEditData] = useState({
@@ -22,11 +28,23 @@ const MyProfile = () => {
     website: ''
   });
 
+  // প্রথমে গ্লোবাল কনটেক্সট এর ডাটা দিয়ে স্টেট ইনিশিয়ালাইজ করা হচ্ছে
   useEffect(() => {
+    if (contextUser) {
+      setUser(contextUser);
+      setEditData({
+        firstName: contextUser.firstName || '',
+        lastName: contextUser.lastName || '',
+        bio: contextUser.bio || '',
+        location: contextUser.location || '',
+        website: contextUser.website || ''
+      });
+    }
     fetchMyData();
     fetchMyPosts(); 
-  }, []);
+  }, [contextUser]);
 
+  // ডাটাবেস থেকে ফ্রেশ প্রোফাইল ডাটা রিট্রিভ করা
   const fetchMyData = async () => {
     try {
       const token = localStorage.getItem('onyx_token'); 
@@ -52,9 +70,14 @@ const MyProfile = () => {
     }
   };
 
+  // নিজের করা পোস্টগুলো টেনে আনা
   const fetchMyPosts = async () => {
     try {
       const token = localStorage.getItem('onyx_token');
+      if (!token) {
+        setPostsLoading(false);
+        return;
+      }
       const res = await axios.get(`${API_BASE}/api/posts/me`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -66,6 +89,7 @@ const MyProfile = () => {
     }
   };
 
+  // Avatar এবং Cover ইমেজ আপলোড হ্যান্ডলার
   const handleUpload = async (e, type) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -81,11 +105,8 @@ const MyProfile = () => {
         }
       });
       
-      // প্রোফাইল ডাটা সাথে সাথে আপডেট করার জন্য
       setUser(res.data); 
-      // নিশ্চিত হতে ডাটাবেস থেকে আবার ডাটা টেনে আনা
       await fetchMyData(); 
-      
       alert("Neural Link Updated!");
     } catch (err) {
       console.error("Upload error:", err);
@@ -93,6 +114,7 @@ const MyProfile = () => {
     }
   };
 
+  // টেক্সট ডাটা (Name, Bio, Location) আপডেট হ্যান্ডলার
   const handleUpdateText = async (e) => {
     e.preventDefault();
     try {
@@ -105,6 +127,7 @@ const MyProfile = () => {
       alert("Identity synced!");
     } catch (err) {
       console.error("Update error:", err);
+      alert("Failed to sync identity.");
     }
   };
 
@@ -188,7 +211,7 @@ const MyProfile = () => {
           </div>
         </div>
 
-        {/* --- Media Posts (Neural Feed) --- */}
+        {/* --- Media Posts (Transmission Logs) --- */}
         <div className="mt-16">
           <div className="flex items-center gap-4 mb-10">
             <h3 className="text-[10px] font-black uppercase tracking-[0.5em] text-[#1877F2]">Transmission Logs</h3>
@@ -222,7 +245,7 @@ const MyProfile = () => {
                   )}
 
                   <div className="p-8">
-                    <p className="text-zinc-300 text-sm mb-6 leading-relaxed font-medium">{post.content}</p>
+                    <p className="text-zinc-300 text-sm mb-6 leading-relaxed font-medium">{post.content || post.text}</p>
                     <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-tighter text-zinc-500 border-t border-white/5 pt-6">
                       <span>{new Date(post.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</span>
                       <div className="flex gap-6">

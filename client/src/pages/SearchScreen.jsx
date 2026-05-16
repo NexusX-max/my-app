@@ -1,12 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import axios from 'axios';
 import { FaArrowLeft } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import AISearchBar from '../components/AISearchBar';
 
-// OnyxMessengerHome থেকে পাঠানো 'onSelect' প্রপটি এখানে রিসিভ করা হয়েছে
+// --- AUTH CONTEXT IMPORT ---
+import { AuthContext } from '../context/AuthContext';
+
+// OnyxMessengerHome থেকে পাঠানো 'onSelect' প্রপটি এখানে রিসিভ করা হয়েছে
 const SearchScreen = ({ onBack, onSelect }) => {
+  // গ্লোবাল AuthContext থেকে ইউজার ডাটা অ্যাক্সেস করা হচ্ছে (প্রয়োজনে ব্যবহারের জন্য)
+  const { user: currentUser } = useContext(AuthContext);
+  
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -37,7 +43,12 @@ const SearchScreen = ({ onBack, onSelect }) => {
         }
       );
       
-      setSearchResults(response.data.results || []);
+      // সার্চ রেজাল্ট থেকে নিজের নোড/আইডি স্বয়ংক্রিয়ভাবে ফিল্টার করে বাদ দেওয়া হচ্ছে
+      const filteredResults = (response.data.results || []).filter(
+        (node) => (node._id || node.id) !== currentUser?._id
+      );
+
+      setSearchResults(filteredResults);
     } catch (err) {
       console.error("❌ Neural search error:", err);
       if (err.response?.status === 401) {
@@ -61,7 +72,7 @@ const SearchScreen = ({ onBack, onSelect }) => {
     const userData = {
       _id: targetId,
       fullName: user.fullName || user.username || "Unknown Node",
-      profilePic: user.profilePic || user.userAvatar,
+      profilePic: user.profilePic || user.userAvatar || user.avatar || null,
       online: true 
     };
 
@@ -69,7 +80,7 @@ const SearchScreen = ({ onBack, onSelect }) => {
     if (onSelect && typeof onSelect === 'function') {
       onSelect(userData); 
     } else {
-      // যদি কোনো কারণে প্রপ না থাকে তবে সরাসরি মেসেজ পেজে নিয়ে যাবে
+      // যদি কোনো কারণে প্রপ না থাকে তবে সরাসরি মেসেজ পেজে নিয়ে যাবে
       navigate(`/messages/${targetId}`);
     }
   };
@@ -113,7 +124,7 @@ const SearchScreen = ({ onBack, onSelect }) => {
               >
                 <div className="relative shrink-0">
                   <img 
-                    src={user.profilePic || user.userAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName || user.username)}&background=06b6d4&color=fff&bold=true`} 
+                    src={user.profilePic || user.userAvatar || user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName || user.username || "Drifter")}&background=06b6d4&color=fff&bold=true`} 
                     className="w-14 h-14 rounded-2xl object-cover border border-white/10 group-hover:border-cyan-500/50 transition-colors" 
                     alt="" 
                   />

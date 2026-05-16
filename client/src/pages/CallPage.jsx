@@ -2,19 +2,12 @@ import React, { useEffect, useRef, useState, useContext } from 'react';
 import { useParams, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash } from 'react-icons/fa';
-import Peer from 'simple-peer'; 
+import AgoraRTC from 'agora-rtc-sdk-ng'; 
 import axios from 'axios'; 
 import { AuthContext } from '../context/AuthContext';
 
-const iceServers = [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    {
-      urls: "turn:free.expressturn.com:3478", 
-      username: "000000002092873381",        
-      credential: "41a1p2kRNdmvElbOfj71IniQi7Q=" 
-    }
-];
+// ⚠️ আপনার আগোরা কনসোল (dashboard.agora.io) থেকে প্রাপ্ত App ID এখানে বসান
+const AGORA_APP_ID = "4feceac3c45a4f19ae8074935cf4e94e"; 
 
 const CallPage = () => {
   const { roomId } = useParams();
@@ -24,23 +17,24 @@ const CallPage = () => {
   const { user, socket } = useContext(AuthContext);
 
   const callType = searchParams.get('type') || 'video';
-  const incomingSignal = location.state?.incomingSignal;
   const callerId = location.state?.callerId;
 
-  const [stream, setStream] = useState(null);
   const [callAccepted, setCallAccepted] = useState(false);
   const [callStatus, setCallStatus] = useState('idle'); 
   const [remoteUser, setRemoteUser] = useState(null);
   
   const [isMicOn, setIsMicOn] = useState(true);
   const [isVideoOn, setIsVideoOn] = useState(callType === 'video');
-
-  // টাইমার স্টেট
   const [callDuration, setCallDuration] = useState(0);
+
+  // আগোরা ক্লায়েন্ট এবং লোকাল ট্র্যাক রেফারেন্স
+  const agoraClientRef = useRef(null);
+  const localAudioTrackRef = useRef(null);
+  const localVideoTrackRef = useRef(null);
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
-  const connectionRef = useRef(null);
+  const isMediaInitialized = useRef(false);
 
   // ১. কল টাইমার লজিক
   useEffect(() => {
@@ -59,7 +53,7 @@ const CallPage = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // ২. রিমোট ইউজারের ডাটা ফেচ
+  // ২. রিমোট ইউজারের প্রোফাইল ডাটা ফেচ (আপনার আগের লজিক অপরিবর্তিত)
   useEffect(() => {
     const fetchRemoteUser = async () => {
       try {
@@ -77,45 +71,89 @@ const CallPage = () => {
     if (user) fetchRemoteUser();
   }, [roomId, callerId, user]);
 
-  // ৩. সকেট লিসেনার এবং মিডিয়া ইনিশিয়ালাইজেশন
+  // ৩. আগোরা কোর ইঞ্জিন ইনিশিয়ালাইজেশন
   useEffect(() => {
-    if (!socket || !user) return;
+    if (!socket || !user || isMediaInitialized.current) return;
+    isMediaInitialized.current = true; // রিঅ্যাক্ট ১৮-এর ডাবল রেন্ডার লক ট্রিক
 
-    const initMedia = async () => {
+    const initAgoraCall = async () => {
       try {
-        const currentStream = await navigator.mediaDevices.getUserMedia({
-          video: callType === 'video' ? { width: 1280, height: 720 } : false,
-          audio: true,
+        // আগোরা আরটিসি ক্লায়েন্ট অবজেক্ট তৈরি
+        agoraClientRef.current = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+
+        // রিমোট ট্র্যাক লিসেনার (অন্য প্রান্তের ইউজার ক্যামের/মাইক অন করলে এখানে ধরা পড়বে)
+        agoraClientRef.current.on("user-published", async (remoteUserObj, mediaType) => {
+          await agoraClientRef.current.subscribe(remoteUserObj, mediaType);
+          setCallAccepted(true);
+          setCallStatus('connected');
+
+          if (mediaType === "video" && remoteVideoRef.current) {
+            // রিমোট ভিডিও প্লেব্যাক (আগোরা ডিরেক্ট ডম হ্যান্ডেল করে)
+            remoteUserObj.videoTrack.play(remoteVideoRef.current);
+          }
+          if (mediaType === "audio") {
+            // রিমোট অডিও প্লেব্যাক (অটো-প্লে বাগ ছাড়াই প্লে হবে)
+            remoteUserObj.audioTrack.play();
+          }
         });
 
-        setStream(currentStream);
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = currentStream;
+        // অন্য প্রান্ত থেকে কল কেটে দিলে বা চ্যানেল থেকে বের হয়ে গেলে
+        agoraClientRef.current.on("user-unpublished", () => {
+          cleanupAndExit();
+        });
+
+        // আগোরা চ্যানেলে জয়েন করা (সিকিউরিটি না থাকলে টোকেন আপাতত null রাখা হয়েছে)
+        await agoraClientRef.current.join(AGORA_APP_ID, roomId, null, user._id);
+
+        // লোকাল মাইক্রোফোন এবং ক্যামেরা ট্র্যাক তৈরি করা
+        const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks(
+          { encoderConfig: "music_standard" },
+          { encoderConfig: "720p_1" }
+        );
+
+        localAudioTrackRef.current = audioTrack;
+        localVideoTrackRef.current = videoTrack;
+
+        // নিজের ফেস লোকাল উইন্ডোতে দেখানো
+        if (localVideoRef.current && callType === 'video') {
+          localVideoTrackRef.current.play(localVideoRef.current);
         }
 
-        const targetId = callerId || roomId.split("-").find(id => id !== user?._id);
-
-        if (incomingSignal) {
-          setCallStatus('connecting');
-          answerCall(currentStream, incomingSignal, targetId);
+        // নিজের স্ট্রিম বা ট্র্যাকগুলো আগোরা গ্লোবাল সার্ভারে পাবলিশ করা
+        if (callType === 'video') {
+          await agoraClientRef.current.publish([localAudioTrackRef.current, localVideoTrackRef.current]);
         } else {
-          setCallStatus('ringing');
-          callUser(currentStream, targetId);
+          await agoraClientRef.current.publish([localAudioTrackRef.current]);
+          localVideoTrackRef.current.close(); // অডিও কল হলে ক্যামেরা হার্ডওয়্যার ফ্রি করে দেওয়া
         }
-      } catch (err) {
-        console.error("❌ Media Error:", err);
+
+        // আপনার আগের Socket.io সিগন্যালিং নোটিফিকেশন ফ্লো
+        const targetId = callerId || roomId.split("-").find(id => id !== user?._id);
+        if (!location.state?.incomingSignal) {
+          setCallStatus('ringing');
+          socket.emit("callUser", { 
+            userToCall: targetId,
+            from: user._id,
+            name: user.fullName || "Onyx User",
+            type: callType,
+            roomId: roomId
+          });
+        } else {
+          setCallStatus('connecting');
+        }
+
+      } catch (error) {
+        console.error("❌ Agora Media Engine Error:", error);
         navigate('/messages');
       }
     };
 
-    initMedia();
+    initAgoraCall();
 
-    socket.on("callAccepted", (signal) => {
+    // সকেট মেসেজ লিসেনার (কল কাটলে রিঅ্যাক্ট করার জন্য)
+    socket.on("callAccepted", () => {
       setCallAccepted(true);
       setCallStatus('connected');
-      if (connectionRef.current) {
-        connectionRef.current.signal(signal);
-      }
     });
 
     socket.on("callEnded", () => cleanupAndExit());
@@ -123,68 +161,27 @@ const CallPage = () => {
     return () => {
       socket.off("callAccepted");
       socket.off("callEnded");
-      if (connectionRef.current) connectionRef.current.destroy();
+      leaveAgoraChannels();
     };
   }, [socket, user, roomId]);
 
-  /* ==========================================================
-      📞 পিয়ার ফাংশনস (রিমোট ফেস এবং অডিও ফিক্স)
-  ========================================================== */
-
-  const callUser = (stream, targetId) => {
-    const peer = new Peer({ initiator: true, trickle: false, stream, config: { iceServers } });
-
-    peer.on("signal", (data) => {
-      socket.emit("callUser", { 
-        userToCall: targetId,
-        signalData: data,
-        from: user._id,
-        name: user.fullName || "Onyx User",
-        type: callType,
-        roomId: roomId
-      });
-    });
-
-    peer.on("stream", (remoteStream) => {
-      setCallAccepted(true);
-      // অডিও ফিক্স: সরাসরি প্লে করার চেষ্টা
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = remoteStream;
-        remoteVideoRef.current.onloadedmetadata = () => {
-          remoteVideoRef.current.play().catch(e => console.log("Audio Playback Error:", e));
-        };
-      }
-    });
-
-    connectionRef.current = peer;
-  };
-
-  const answerCall = (stream, signal, targetId) => {
-    const peer = new Peer({ initiator: false, trickle: false, stream, config: { iceServers } });
-
-    peer.on("signal", (data) => {
-      socket.emit("answerCall", { signal: data, to: targetId });
-    });
-
-    peer.on("stream", (remoteStream) => {
-      setCallAccepted(true);
-      setCallStatus('connected');
-      // অডিও ফিক্স: সরাসরি প্লে করার চেষ্টা
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = remoteStream;
-        remoteVideoRef.current.onloadedmetadata = () => {
-          remoteVideoRef.current.play().catch(e => console.log("Audio Playback Error:", e));
-        };
-      }
-    });
-
-    peer.signal(signal);
-    connectionRef.current = peer;
+  // আগোরা হার্ডওয়্যার রিসোর্স রিলিজ এবং চ্যানেল লিভ করার ফাংশন
+  const leaveAgoraChannels = () => {
+    if (localAudioTrackRef.current) {
+      localAudioTrackRef.current.stop();
+      localAudioTrackRef.current.close();
+    }
+    if (localVideoTrackRef.current) {
+      localVideoTrackRef.current.stop();
+      localVideoTrackRef.current.close();
+    }
+    if (agoraClientRef.current) {
+      agoraClientRef.current.leave();
+    }
   };
 
   const cleanupAndExit = () => {
-    if (stream) stream.getTracks().forEach(track => track.stop());
-    if (connectionRef.current) connectionRef.current.destroy();
+    leaveAgoraChannels();
     navigate('/messages');
     setTimeout(() => window.location.reload(), 200); 
   };
@@ -195,23 +192,17 @@ const CallPage = () => {
     cleanupAndExit();
   };
 
-  const toggleMic = () => {
-    if (stream) {
-      const audioTrack = stream.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !isMicOn;
-        setIsMicOn(!isMicOn);
-      }
+  const toggleMic = async () => {
+    if (localAudioTrackRef.current) {
+      await localAudioTrackRef.current.setEnabled(!isMicOn);
+      setIsMicOn(!isMicOn);
     }
   };
 
-  const toggleVideo = () => {
-    if (stream && callType === 'video') {
-      const videoTrack = stream.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.enabled = !isVideoOn;
-        setIsVideoOn(!isVideoOn);
-      }
+  const toggleVideo = async () => {
+    if (localVideoTrackRef.current && callType === 'video') {
+      await localVideoTrackRef.current.setEnabled(!isVideoOn);
+      setIsVideoOn(!isVideoOn);
     }
   };
 
@@ -221,11 +212,9 @@ const CallPage = () => {
       {/* রিমোট ভিডিও গ্রিড (অন্য পাশের ফেস) */}
       <div className="absolute inset-0 bg-[#020617] flex items-center justify-center">
         {callAccepted ? (
-            /* অডিওর জন্য muted={false} এবং playsInline নিশ্চিত করা হয়েছে */
-            <video 
+            /* আগোরার জন্য জাস্ট একটি খালি HTML রিলেটিভ Container লাগবে, ভিডিও এর ভেতর ইনজেক্ট হবে */
+            <div 
               ref={remoteVideoRef} 
-              autoPlay 
-              playsInline 
               className="w-full h-full object-cover" 
             />
         ) : (
@@ -250,7 +239,7 @@ const CallPage = () => {
         )}
       </div>
 
-      {/* কল টাইমার (Call Duration) */}
+      {/* কল টাইমার */}
       {callAccepted && (
         <div className="absolute top-10 z-[60] bg-black/40 backdrop-blur-xl px-5 py-2 rounded-full border border-cyan-500/30">
           <p className="text-cyan-400 font-black tracking-widest text-sm font-mono">
@@ -265,11 +254,8 @@ const CallPage = () => {
         dragConstraints={{ left: -150, right: 150, top: -200, bottom: 200 }}
         className="absolute top-10 right-6 w-32 md:w-44 aspect-[3/4] bg-zinc-900 rounded-[2rem] border border-white/10 overflow-hidden shadow-2xl z-50 ring-1 ring-cyan-500/30 backdrop-blur-3xl"
       >
-        <video 
+        <div 
           ref={localVideoRef} 
-          autoPlay 
-          playsInline 
-          muted 
           className={`w-full h-full object-cover scale-x-[-1] transition-opacity duration-500 ${!isVideoOn ? 'opacity-0' : 'opacity-100'}`} 
         />
         {!isVideoOn && <div className="absolute inset-0 flex items-center justify-center bg-zinc-800"><FaVideoSlash className="text-zinc-600" size={24} /></div>}
