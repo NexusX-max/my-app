@@ -10,6 +10,11 @@ import { AuthContext } from '../context/AuthContext';
 
 const ONYX_SECRET_KEY = "onyx_neural_shield_2026"; 
 
+// --- ZegoCloud Neural Environment Config ---
+// আপনার দেওয়া ক্রেডেনশিয়ালস এখানে ডিরেক্ট গার্ড মেকানিজম হিসেবে ইন্টিগ্রেট করে দেওয়া হলো
+const ZEGO_APP_ID = Number(import.meta.env.VITE_ZEGO_APP_ID) || 1822629215;
+const ZEGO_SERVER_SECRET = import.meta.env.VITE_ZEGO_SERVER_SECRET || "c90ccf1f9bf7ee0e27a29539fc4d03ed";
+
 // --- Encryption Helpers ---
 const encryptMessage = (text) => CryptoJS.AES.encrypt(text, ONYX_SECRET_KEY).toString();
 const decryptMessage = (cipherText) => {
@@ -29,7 +34,7 @@ const getAvatarUrl = (target) => {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=06b6d4&color=fff&bold=true`;
 };
 
-// ✅ ফাইলের নামের সাথে মিল রেখে কম্পোনেন্টের নাম CallPage দেওয়া হলো
+// ✅ ফাইল এবং ওনিক্স রুট ডিরেক্টরি অনুযায়ী কম্পোনেন্ট নাম লকড
 const CallPage = ({ activeChat, onBack, isGroup = false }) => {
   const { user, socket } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -125,14 +130,14 @@ const CallPage = ({ activeChat, onBack, isGroup = false }) => {
     }
   };
 
-  // ৪. 📞 ZEGO CLOUD ROOM SYNC CALLING
+  // ৪. 📞 ZEGO CLOUD ROOM SYNC CALLING (With Secret Key Matrix)
   const handleCallClick = (type) => {
     if (!chatId || !user?._id || !socket?.connected) {
       alert("Neural connection unstable. Please wait...");
       return;
     }
 
-    // OnyxMessengerHome এর ড্যাশ (-) আর্কিটেকচারের সাথে ১০০% সিঙ্ক
+    // হোমসক্রিনের ড্যাশ (-) আর্কিটেকচারের সাথে ১০০% সিঙ্ক করা রুম আইডি জেনারেটর
     const roomId = [user._id, chatId].sort().join("-"); 
     
     const callMetadata = {
@@ -143,7 +148,10 @@ const CallPage = ({ activeChat, onBack, isGroup = false }) => {
       name: user.fullName || user.name || "Onyx Drifter",
       avatar: getAvatarUrl(user),
       type: type, 
-      roomId: roomId
+      roomId: roomId,
+      // জেড ক্লাউড কোর এনভায়রনমেন্ট পাসিং প্যারামিটার
+      zegoAppId: ZEGO_APP_ID,
+      zegoSecret: ZEGO_SERVER_SECRET
     };
 
     handleSend(`Incoming ${type} call...`, type, callMetadata);
@@ -152,7 +160,9 @@ const CallPage = ({ activeChat, onBack, isGroup = false }) => {
       state: { 
         callType: type,
         mode: 'outbound',
-        callerId: user._id
+        callerId: user._id,
+        appId: ZEGO_APP_ID,
+        serverSecret: ZEGO_SERVER_SECRET
       } 
     });
   };
@@ -267,5 +277,4 @@ const CallPage = ({ activeChat, onBack, isGroup = false }) => {
   );
 };
 
-// ✅ ফাইলের নাম অনুযায়ী এক্সপোর্ট ডিফাইন করা হলো
 export default CallPage;

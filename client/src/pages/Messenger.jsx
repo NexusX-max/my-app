@@ -7,8 +7,8 @@ import {
 
 import { AuthContext } from '../context/AuthContext';
 import SearchScreen from './SearchScreen'; 
-// ✅ ফাইল এবং কম্পোনেন্টের নাম সুন্দরভাবে সিঙ্ক করা হলো
- import CallPage from "./CallPage";
+// ✅ পাথ এবং ফাইল নেমিং কেস-সেন্সিটিভিটি ১০০% ম্যাচ করা হলো
+import CallPage from "./CallPage"; 
 import SettingsScreen from './SettingsScreen'; 
 
 // --- Sound Assets ---
@@ -17,9 +17,10 @@ const CALL_SOUND = "https://assets.mixkit.co/active_storage/sfx/1357/1357-84.wav
 
 const getAvatarUrl = (target) => {
   if (!target) return `https://ui-avatars.com/api/?name=User&background=27272a&color=fff`;
-  const pic = target.profilePic || target.avatar || target.profileImage;
+  const pic = target.profilePic || target.avatar || target.profileImage || target.userAvatar;
   if (pic && typeof pic === 'string' && pic.startsWith('http')) return pic;
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(target.fullName || target.name || target.username || "Onyx")}&background=06b6d4&color=fff&bold=true`;
+  const displayName = target.fullName || target.name || target.username || "Onyx";
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=06b6d4&color=fff&bold=true`;
 };
 
 const OnyxMessengerHome = () => {
@@ -37,7 +38,7 @@ const OnyxMessengerHome = () => {
   const [chatList, setChatList] = useState(() => {
     const savedChats = localStorage.getItem('onyx_recent_connections');
     return savedChats ? JSON.parse(savedChats) : [
-      { _id: "u1", fullName: "Onyx Support", lastMsg: "System status: Optimal.", time: "Online", online: true },
+      { _id: "u1", id: "u1", fullName: "Onyx Support", name: "Onyx Support", lastMsg: "System status: Optimal.", time: "Online", online: true },
     ];
   });
 
@@ -58,7 +59,9 @@ const OnyxMessengerHome = () => {
         const filtered = prev.filter(c => c._id !== data.senderId);
         const updatedChat = {
           _id: data.senderId,
+          id: data.senderId, // ডাবল আইডি বাইন্ডিং সেফটি গার্ড
           fullName: data.senderName || "Unknown Node",
+          name: data.senderName || "Unknown Node",
           lastMsg: data.text || "Encrypted transmission...",
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           online: true,
@@ -72,7 +75,7 @@ const OnyxMessengerHome = () => {
       }
     };
 
-    // ✅ ডুপ্লিকেট নোটিফিকেশন এড়াতে সিঙ্গেল চ্যানেল ফিল্টার
+    // ডুপ্লিকেট নোটিফিকেশন এড়াতে সিঙ্গেল চ্যানেল ফিল্টার
     const handleIncomingCall = (data) => {
       if (data.from === user?._id) return;
       
@@ -88,7 +91,7 @@ const OnyxMessengerHome = () => {
     };
 
     socket.on("getMessage", handleIncomingMessage);
-    socket.on("$incomingCall", handleIncomingCall); // প্রাইমারি ওনিক্স নোটিফিকেশন চ্যানেল
+    socket.on("$incomingCall", handleIncomingCall); 
     socket.on("callEnded", handleCallEnded);
     socket.on("endCall", handleCallEnded);
 
@@ -107,9 +110,10 @@ const OnyxMessengerHome = () => {
       📞 CALL ACTIONS (ZegoCloud Room Routing)
   ========================================================== */
   const initiateCall = useCallback((targetUser, type) => {
-    if (!targetUser?._id || !user?._id) return;
+    const targetId = targetUser?._id || targetUser?.id;
+    if (!targetId || !user?._id) return;
     
-    const roomId = [user._id, targetUser._id].sort().join("-"); 
+    const roomId = [user._id, targetId].sort().join("-"); 
     
     navigate(`/call/${roomId}`, {
       state: {
@@ -153,7 +157,7 @@ const OnyxMessengerHome = () => {
   };
 
   /* ==========================================================
-      🎯 USER SELECTION
+      🎯 USER SELECTION (Fixes Name/Id/Avatar Visibility Issues)
   ========================================================== */
   const handleUserSelect = useCallback((u) => {
     if (!u) return;
@@ -161,17 +165,20 @@ const OnyxMessengerHome = () => {
     const userId = u._id || u.id;
     if (!userId) return;
 
+    // ✅ এখানে অবজেক্ট প্রোপার্টিগুলো ডাবল-ম্যাপ করা হলো যাতে চাইল্ড স্ক্রিনে ডেটা মিস না হয়
     const normalizedUser = {
       _id: userId,
-      fullName: u.fullName || u.name || u.username || "Drifter",
-      profilePic: u.profilePic || u.avatar || u.profileImage,
+      id: userId, 
+      fullName: u.fullName || u.name || u.username || "Onyx Drifter",
+      name: u.fullName || u.name || u.username || "Onyx Drifter",
+      profilePic: u.profilePic || u.avatar || u.profileImage || u.userAvatar,
       lastMsg: "Neural link established",
       time: "Just now",
       online: true
     };
 
     setChatList(prev => {
-      const filtered = prev.filter(c => c._id !== userId);
+      const filtered = prev.filter(c => (c._id !== userId && c.id !== userId));
       return [normalizedUser, ...filtered];
     });
 
@@ -217,7 +224,7 @@ const OnyxMessengerHome = () => {
               {chatList.map((chat) => (
                 <motion.div 
                   layout 
-                  key={chat._id} 
+                  key={chat._id || chat.id} 
                   className="flex items-center gap-4 p-4 rounded-[1.8rem] bg-zinc-900/20 border border-white/5 hover:border-cyan-500/30 transition-all group"
                 >
                   <div 
@@ -229,7 +236,7 @@ const OnyxMessengerHome = () => {
                       {chat.online && <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 border-[3px] border-black rounded-full" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-bold text-sm text-zinc-100 truncate">{chat.fullName}</h4>
+                      <h4 className="font-bold text-sm text-zinc-100 truncate">{chat.fullName || chat.name}</h4>
                       <p className="text-[11px] text-zinc-500 truncate">{chat.lastMsg}</p>
                     </div>
                   </div>
@@ -289,7 +296,7 @@ const OnyxMessengerHome = () => {
 
         {selectedChat && (
           <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: "spring", damping: 30, stiffness: 200 }} className="fixed inset-0 z-[5000] bg-black">
-            {/* ✅ এখানে ChatInterface এর বদলে ইম্পোর্ট করা CallPage কম্পোনেন্টটি সঠিকভাবে বসানো হলো */}
+            {/* ✅ এখানে `<CallPage />` ট্যাগটি বড় হাতের 'P' দিয়ে সঠিকভাবে লক করা হলো */}
             <CallPage activeChat={selectedChat} onBack={() => setSelectedChat(null)} />
           </motion.div>
         )}
