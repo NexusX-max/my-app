@@ -1,5 +1,4 @@
 import React, { useState, useContext } from 'react';
-import axios from 'axios';
 import { FaArrowLeft } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
@@ -10,15 +9,15 @@ import { AuthContext } from '../context/AuthContext';
 
 // OnyxMessengerHome থেকে পাঠানো 'onSelect' প্রপটি এখানে রিসিভ করা হয়েছে
 const SearchScreen = ({ onBack, onSelect }) => {
-  // গ্লোবাল AuthContext থেকে ইউজার ডাটা অ্যাক্সেস করা হচ্ছে (প্রয়োজনে ব্যবহারের জন্য)
-  const { user: currentUser } = useContext(AuthContext);
+  // গ্লোবাল AuthContext থেকে currentUser এবং কাস্টম api ইনস্ট্যান্স আনা হলো
+  const { user: currentUser, api } = useContext(AuthContext);
   
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   /* ==========================================================
-      ⚡ NEURAL SEARCH ENGINE
+      ⚡ NEURAL SEARCH ENGINE (FIXED)
   ========================================================== */
   const handleNeuralSearch = async (query) => {
     if (!query || !query.trim()) return;
@@ -32,19 +31,11 @@ const SearchScreen = ({ onBack, onSelect }) => {
         return;
       }
 
-      const response = await axios.post(
-        'https://my-app-3-kn3k.onrender.com', 'https://my-app-2-uzoi.onrender.com','https://my-app-v6xz.onrender.com','https://my-app-4-btda.onrender.com',
-        { query: query.trim() },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          }
-        }
-      );
+      // 🛠️ ফিক্সড লজিক: আলাদা লিঙ্ক বা হার্ডকোডেড ইউআরএল বাদ দিয়ে AuthContext-এর api ইন্টারসেপ্টর ব্যবহার করা হয়েছে
+      const response = await api.post('/users/search', { query: query.trim() });
       
-      // সার্চ রেজাল্ট থেকে নিজের নোড/আইডি স্বয়ংক্রিয়ভাবে ফিল্টার করে বাদ দেওয়া হচ্ছে
-      const filteredResults = (response.data.results || []).filter(
+      // সার্চ রেজাল্ট থেকে নিজের নোড/아이디 স্বয়ংক্রিয়ভাবে ফিল্টার করে বাদ দেওয়া হচ্ছে
+      const filteredResults = (response.data.results || response.data || []).filter(
         (node) => (node._id || node.id) !== currentUser?._id
       );
 
