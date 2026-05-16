@@ -1,4 +1,4 @@
-import React, { Suspense, useContext, useState, useEffect, useRef } from "react";
+import React, { Suspense, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, useLocation, Navigate, useParams, useNavigate } from "react-router-dom";
 import { Toaster, toast } from 'react-hot-toast';
 import { AuthContext } from './context/AuthContext';
@@ -18,7 +18,6 @@ import Settings from "./pages/Settings";
 import ReelsFeed from "./pages/ReelsFeed";
 import LoginPage from "./pages/LoginPage"; 
 import JoinPage from "./pages/JoinPage";
-import CallPage from "./pages/CallPage";
 import FollowingPage from "./pages/FollowingPage"; 
 import ReelsEditor from "./pages/ReelsEditor";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -45,125 +44,99 @@ const ProfileSwitch = () => {
 function AppContent() {
   const location = useLocation();
   const navigate = useNavigate(); 
-  
-  // AuthContext থেকে গ্লোবাল সকেট এবং নোটিফিকেশন স্টেটগুলো নিয়ে আসা হলো
-  const { 
-    user, 
-    loading, 
-    api, 
-    socket, 
-    globalIncomingCall, 
-    globalNotification, 
-    clearGlobalCallState 
-  } = useContext(AuthContext);
+  const { user, loading, api, socket } = useContext(AuthContext);
   
   const [reelsData, setReelsData] = useState([]);
   const [reelsLoading, setReelsLoading] = useState(true);
 
-  // Audio Refs (হাই-কোয়ালিটি অডিও লিংক)
+  // Audio Refs
   const msgSound = useRef(new Audio("https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3"));
-  const ringtone = useRef(new Audio("https://assets.mixkit.co/active_storage/sfx/1357/1357-84.wav"));
+  const ringtone = useRef(new Audio("https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3"));
 
   /* ==========================================================
-      ⚡ NEURAL NOTIFICATION & CALL ENGINE (ZEGO SYNCED)
+      ⚡ NEURAL NOTIFICATION & IN-APP CALL ENGINE
   ========================================================== */
   useEffect(() => {
     if (user && socket) {
       const onConnect = () => {
-        console.log("%c 🚀 Onyx Link Active: " + socket.id, "color: #06b6d4; font-weight: bold;");
+        console.log("%c 🚀 Neural link established: " + socket.id, "color: #06b6d4; font-weight: bold;");
         socket.emit("addNewUser", user._id);
-        socket.emit("registerUser", user._id); // কল ট্র্যাকিংয়ের জন্য ব্যাকএন্ডের সাথে সিঙ্ক
       };
 
-      // গ্লোবাল পুশ বা মেসেজ নোটিফিকেশন আসলে
       const onNotification = (data) => {
-        // যদি এটা কল সিগন্যাল হয়, তবে মেসেজ রিং বাজাবো না
-        if (data.isCallSignal || data.isIncomingCall) return;
-
         msgSound.current.play().catch(() => {});
-        const senderName = data?.senderName || "Onyx Drifter";
-        toast(`${senderName}: ${data?.content || data?.text || "sent a quantum transmission"}`, {
-          icon: '💬',
+        const senderName = data?.senderName || "Onyx Member";
+        toast(`${senderName}: ${data?.content || "sent a signal"}`, {
+          icon: '🔔',
           style: {
-            borderRadius: '16px',
-            background: '#09090b',
+            borderRadius: '12px',
+            background: '#0a0a0a',
             color: '#06b6d4',
             border: '1px solid rgba(6,182,212,0.2)',
             fontSize: '11px',
-            fontFamily: 'monospace',
-            backdropFilter: '12px'
+            fontFamily: 'monospace'
           },
         });
       };
 
-      // 📞 ইনকামিং কল রিসিভ লিসেনার (Zego Cloud সিগন্যালিং ম্যাচড)
+      // 📞 ইনকামিং কল সিগন্যাল হ্যান্ডেলার (সরাসরি মেসেঞ্জার ইন্টারফেসে নিয়ে যাওয়ার লজিক)
       const onIncomingCall = (data) => {
-        if (data.from === user._id) return; // নিজের করা কল ফিল্টার
-
-        // রিংটোন লুপ অন করে প্লে করা শুরু
         ringtone.current.loop = true;
-        ringtone.current.play().catch(() => console.log("Autoplay blocked. Tap anywhere to hear ringtone."));
+        ringtone.current.play().catch(() => console.log("Audio blocked by browser safety protocol"));
 
+        // গ্লোবাল ওনিক্স কলিং পপ-আপ টোস্ট নোটিফিকেশন
         toast((t) => (
-          <div className="flex flex-col gap-3 p-2 min-w-[250px] font-sans selection:bg-transparent">
+          <div className="flex flex-col gap-3 p-1 min-w-[220px]">
             <div className="flex items-center gap-3">
-              {data.avatar ? (
-                <img src={data.avatar} className="w-10 h-10 rounded-xl border border-white/10 object-cover animate-pulse" alt="" />
-              ) : (
-                <div className="w-2 h-2 bg-cyan-500 animate-ping rounded-full" />
-              )}
-              <div className="flex flex-col">
-                <span className="text-[12px] font-black uppercase text-white tracking-wide flex items-center gap-1.5">
-                  Incoming {data?.type || 'video'} Call
-                </span>
-                <span className="text-[10px] font-mono text-zinc-400">
-                  Node: {data?.name || 'Anonymous'}
-                </span>
-              </div>
+              <div className="w-2 h-2 bg-cyan-500 animate-ping rounded-full" />
+              <span className="text-[11px] font-bold uppercase tracking-tighter text-cyan-400">
+                Incoming {data?.type || 'video'} Core Call
+              </span>
             </div>
+            <p className="text-[10px] text-zinc-400 font-mono truncate">Origin Node: {data?.name || 'Unknown Drifter'}</p>
             <div className="flex gap-2 mt-1">
-              {/* Accept Button */}
               <button 
                 onClick={() => {
                   ringtone.current.pause();
                   ringtone.current.currentTime = 0;
                   toast.dismiss(t.id);
-                  if (clearGlobalCallState) clearGlobalCallState(); // গ্লোবাল স্টেট রিসেট
-
-                  // ZegoCloud পেজে পাঠানো হচ্ছে টাইপ এবং ইউনিক রুম আইডি সহ
-                  navigate(`/call/${data.roomId}`, { 
+                  
+                  // ১. ইউনিক রুম আইডি মেকানিজম বা কলার আইডি অ্যাসাইনমেন্ট
+                  const callRoomId = data.roomId || data.from;
+                  
+                  // ২. সরাসরি কল পেজের বদলে মেসেঞ্জার রাউটের চ্যাট ইন্টারফেসে স্টেট পুশ
+                  navigate(`/messages/${callRoomId}`, { 
                     state: { 
+                      incomingSignal: data.signal || data.signalData, 
+                      callerId: data.from,
+                      callerName: data.name,
                       callType: data.type || 'video',
                       mode: 'inbound',
-                      callerId: data.from
+                      autoAccept: true
                     } 
                   });
                 }}
-                className="flex-1 bg-cyan-500 hover:bg-cyan-400 text-black py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(6,182,212,0.4)]"
+                className="flex-1 bg-cyan-600 hover:bg-cyan-500 py-2 rounded-lg text-[10px] font-black uppercase text-white transition-all shadow-[0_0_15px_rgba(6,182,212,0.4)]"
               >
                 Accept
               </button>
-
-              {/* Decline Button */}
               <button 
                 onClick={() => {
                   ringtone.current.pause();
                   ringtone.current.currentTime = 0;
                   toast.dismiss(t.id);
-                  if (clearGlobalCallState) clearGlobalCallState();
                   socket.emit("endCall", { to: data.from });
-                  socket.emit("callEnded", { to: data.from });
                 }}
-                className="flex-1 bg-zinc-800 hover:bg-red-950/40 text-red-400 border border-red-500/20 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all"
+                className="flex-1 bg-zinc-800 hover:bg-red-600 text-zinc-300 hover:text-white py-2 rounded-lg text-[10px] font-black uppercase transition-all"
               >
                 Decline
               </button>
             </div>
           </div>
         ), {
-          duration: 45000, // ৪৫ সেকেন্ড রিং হবে যতক্ষণ না রিসিভ/কাটছে
+          duration: 45000, // ৪৫ সেকেন্ড পর্যন্ত রিংটোন বাজবে
           position: "top-center",
-          style: { background: '#09090b', color: '#fff', border: '1px solid rgba(6,182,212,0.3)', borderRadius: '24px' }
+          style: { background: '#0a0a0a', color: '#fff', border: '1px solid rgba(6,182,212,0.3)', p: '12px' }
         });
       };
 
@@ -171,28 +144,23 @@ function AppContent() {
         ringtone.current.pause();
         ringtone.current.currentTime = 0;
         toast.dismiss();
-        if (clearGlobalCallState) clearGlobalCallState();
       };
 
       socket.on("connect", onConnect);
       socket.on("getNotification", onNotification);
-      socket.on("getMessage", onNotification); 
-      socket.on("$incomingCall", onIncomingCall); 
-      socket.on("incomingCall", onIncomingCall);  
+      socket.on("incomingCall", onIncomingCall);
+      socket.on("$incomingCall", onIncomingCall); // ব্যাকআপ ইভেন্ট স্ট্রিম লিসেনার
       socket.on("callEnded", onCallEnded);
-      socket.on("endCall", onCallEnded);
 
       return () => {
         socket.off("connect", onConnect);
         socket.off("getNotification", onNotification);
-        socket.off("getMessage", onNotification);
-        socket.off("$incomingCall", onIncomingCall);
         socket.off("incomingCall", onIncomingCall);
+        socket.off("$incomingCall", onIncomingCall);
         socket.off("callEnded", onCallEnded);
-        socket.off("endCall", onCallEnded);
       };
     }
-  }, [user, socket, navigate, clearGlobalCallState]);
+  }, [user, socket, navigate]);
 
   /* ==========================================================
       🎬 REELS SYNC LOGIC
@@ -226,11 +194,11 @@ function AppContent() {
   const isAuthPage = authRoutes.includes(location.pathname) || location.pathname.startsWith("/reset-password/");
   const isMessenger = location.pathname.startsWith("/messages");
   const isReels = location.pathname === "/reels";
+  const isSearch = location.pathname === "/search"; 
   const showNav = user && !isAuthPage && !isMessenger && !isReels;
 
   return (
     <div className="min-h-screen bg-[#020617] text-gray-200 selection:bg-cyan-500/30 overflow-x-hidden relative">
-      {/* গ্লোবাল টোস্ট কন্টেইনার */}
       <Toaster position="top-right" />
       <CustomCursor />
 
@@ -264,17 +232,18 @@ function AppContent() {
                     <SearchScreen 
                       onBack={() => navigate(-1)} 
                       onSelectUser={(u) => navigate(`/messages/${u._id || u.id}`)} 
-                      
                     />
                   </Protected>
                 } />
                 
                 <Route path="/my-profile" element={<Protected><ProfilePage /></Protected>} />
                 <Route path="/notifications" element={<Protected><div className="max-w-2xl mx-auto p-10"><Notification /></div></Protected>} />
+                
+                {/* 📌 CallPage সরিয়ে সরাসরি চ্যাট ইন্টারফেস হ্যান্ডেল করার জন্য মেসেঞ্জার রাউট ব্যবহার করা হলো */}
                 <Route path="/messages" element={<Protected><Messenger /></Protected>} />
-                <Route path="/messages/:id" element={<Protected><Messenger /></Protected>} />
+                <Route path="/messages/:roomId" element={<Protected><Messenger /></Protected>} />
+                
                 <Route path="/settings" element={<Protected><Settings /></Protected>} />
-                <Route path="/call/:roomId" element={<Protected><CallPage /></Protected>} />
                 <Route path="/onyx-ai" element={<Protected><div className="pt-10 max-w-2xl mx-auto px-4"><OnyxAI /></div></Protected>} />
                 <Route path="/reels-editor" element={<Protected><ReelsEditor /></Protected>} />
                 <Route path="/reels-editor/:id" element={<Protected><ReelsEditor /></Protected>} />

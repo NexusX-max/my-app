@@ -1,8 +1,9 @@
 import React, { createContext, useState, useEffect, useContext, useMemo, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 
-// ✅ ১. গ্লোবাল ওনিক্স নেটওয়ার্ক নোডস
+// ✅ ১. গ্লোবাল ওনিক্স নেটওয়ার্ক নোডস
 const API_NODES = [
   'https://my-app-v6xz.onrender.com', // 🚀 মাস্টার নোড: সকেট এবং গ্লোবাল সিগন্যালিং ট্রাফিক মেইনটেইন করবে
   'https://my-app-2-uzoi.onrender.com',
@@ -10,12 +11,10 @@ const API_NODES = [
   'https://my-app-4-btda.onrender.com'
 ];
 
-// সকেট এবং সেশন মিসম্যাচ রোধ করতে মাস্টার নোড আর্কিটেকচার
 const getLiveNode = () => {
   if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
     return "http://localhost:5005";
   }
-  // প্লে স্টোর এবং Zego রিংটোন ১০০% সাকসেসফুল রাখতে সকেট ও কোর এপিআই মাস্টার নোডে ফিক্সড রাখা হলো
   return API_NODES[0]; 
 };
 
@@ -30,7 +29,6 @@ export const AuthProvider = ({ children }) => {
   const [socket, setSocket] = useState(null);
   const [loading, setLoading] = useState(true);
   
-  // সকেট কানেকশন ট্র্যাকিং
   const socketConnecting = useRef(false);
 
   // 🛠️ ২. Axios Instance কনফিগারেশন
@@ -65,7 +63,7 @@ export const AuthProvider = ({ children }) => {
     socketConnecting.current = false;
   }, [socket, user?._id]);
 
-  // 🛠️ ৪. সকেট কানেকশন (Stable Signal Syncing)
+  // 🛠️ ৪. সকেট কানেকশন ও গ্লোবাল কলিং পাইপলাইন সিঙ্কিং
   useEffect(() => {
     let socketInstance = null;
 
@@ -73,10 +71,9 @@ export const AuthProvider = ({ children }) => {
       socketConnecting.current = true;
       const currentUserId = user._id;
 
-      // সকেট এখন ১টি স্টেবল নোডে হিট করবে যাতে সব ইউজার একে অপরকে অনলাইনে পায়
       socketInstance = io(BASE_URL, {
         query: { userId: currentUserId },
-        transports: ['websocket'], // স্পিড ও ক্যাপাসিটর ফ্রেন্ডলি কানেকশন
+        transports: ['websocket'], 
         reconnection: true,
         reconnectionAttempts: 15, 
         reconnectionDelay: 1000,
@@ -87,9 +84,36 @@ export const AuthProvider = ({ children }) => {
       socketInstance.on("connect", () => {
         console.log(`%c 🚀 Onyx Synapse Connected: ${BASE_URL}`, "color: #06b6d4; font-weight: bold;");
         window.socket = socketInstance;
+        
+        // ব্যাকএন্ডকে জানানো যে ইউজার অনলাইনে একটিভ এবং ইউনিক আইডিতে ম্যাপড
         socketInstance.emit("addNewUser", currentUserId);
-        socketInstance.emit("registerUser", currentUserId); // ব্যাকএন্ড কল সিঙ্কিং ইভেন্ট ট্র্রিগার
+        socketInstance.emit("registerUser", currentUserId); 
+        
         setSocket(socketInstance);
+      });
+
+      /* ==========================================================
+          📞 GLOBAL CALL SYNAPSE LISTENERS (রিসিভার ট্র্যাকিং ফিক্স)
+         ========================================================== */
+      
+      // চ্যাট ইন্টারফেসের পাঠানো $incomingCall ইভেন্ট গ্লোবালি ক্যাচ করা
+      socketInstance.on("incomingCall", (data) => {
+        console.log("📡 Incoming Onyx Pulse Detected:", data);
+        
+        // রিসিভার যদি অন্য কোনো পেজেও থাকে, তাকে সরাসরি রিয়েল-টাইম কলিং রুমে পুশ করবে
+        if (window.location.pathname !== `/call/${data.roomId}`) {
+          // কাস্টম নোটিফিকেশন ট্রিগার (অপশনাল ব্রাউজার অ্যালার্ট ব্যাকআপ)
+          if (Notification.permission === "granted") {
+            new Notification(`Onyx Call from ${data.name}`, { body: `Tap to accept ${data.type} link.` });
+          }
+          
+          // গ্লোবাল উইন্ডো রিমোট রাউটিং মেকানিজম (Vite/React Router সাপোর্টেড সেফ নেভিগেশন স্টেট)
+          window.location.href = `/call/${data.roomId}?type=${data.type}&mode=inbound`;
+          
+          // দ্রষ্টব্য: এটি রিসিভারের ব্রাউজারে 'incomingSignal' হিসেবে ডাটার SDP অফারটি পাস করে দেবে
+          sessionStorage.setItem("onyx_incoming_signal", JSON.stringify(data.signal));
+          sessionStorage.setItem("onyx_caller_id", data.from);
+        }
       });
 
       socketInstance.on("connect_error", (err) => {
