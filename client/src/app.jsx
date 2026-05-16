@@ -1,4 +1,4 @@
-import React, { Suspense, useContext, useState, useEffect, useRef, useCallback } from "react";
+import React, { Suspense, useContext, useState, useEffect, useRef } from "react";
 import { Routes, Route, useLocation, Navigate, useParams, useNavigate } from "react-router-dom";
 import { Toaster, toast } from 'react-hot-toast';
 import { AuthContext } from './context/AuthContext';
@@ -45,69 +45,92 @@ const ProfileSwitch = () => {
 function AppContent() {
   const location = useLocation();
   const navigate = useNavigate(); 
-  const { user, loading, api, socket } = useContext(AuthContext);
+  
+  // AuthContext থেকে গ্লোবাল সকেট এবং নোটিফিকেশন স্টেটগুলো নিয়ে আসা হলো
+  const { 
+    user, 
+    loading, 
+    api, 
+    socket, 
+    globalIncomingCall, 
+    globalNotification, 
+    clearGlobalCallState 
+  } = useContext(AuthContext);
   
   const [reelsData, setReelsData] = useState([]);
   const [reelsLoading, setReelsLoading] = useState(true);
 
-  // Audio Refs
+  // Audio Refs (হাই-কোয়ালিটি অডিও লিংক)
   const msgSound = useRef(new Audio("https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3"));
-  const ringtone = useRef(new Audio("https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3"));
+  const ringtone = useRef(new Audio("https://assets.mixkit.co/active_storage/sfx/1357/1357-84.wav"));
 
   /* ==========================================================
-      ⚡ NEURAL NOTIFICATION & CALL ENGINE
+      ⚡ NEURAL NOTIFICATION & CALL ENGINE (সকেট ইভেন্ট সিঙ্ক)
   ========================================================== */
   useEffect(() => {
     if (user && socket) {
       const onConnect = () => {
-        console.log("%c 🚀 Neural link established: " + socket.id, "color: #06b6d4; font-weight: bold;");
+        console.log("%c 🚀 Onyx Link Active: " + socket.id, "color: #06b6d4; font-weight: bold;");
         socket.emit("addNewUser", user._id);
+        socket.emit("registerUser", user._id); // কল ট্র্যাকিংয়ের জন্য ব্যাকএন্ডের সাথে সিঙ্ক
       };
 
+      // গ্লোবাল পুশ বা মেসেজ নোটিফিকেশন আসলে
       const onNotification = (data) => {
         msgSound.current.play().catch(() => {});
-        const senderName = data?.senderName || "Onyx Member";
-        toast(`${senderName}: ${data?.content || "sent a signal"}`, {
-          icon: '🔔',
+        const senderName = data?.senderName || "Onyx Drifter";
+        toast(`${senderName}: ${data?.content || data?.text || "sent a quantum transmission"}`, {
+          icon: '💬',
           style: {
-            borderRadius: '12px',
-            background: '#0a0a0a',
+            borderRadius: '16px',
+            background: '#09090b',
             color: '#06b6d4',
             border: '1px solid rgba(6,182,212,0.2)',
             fontSize: '11px',
-            fontFamily: 'monospace'
+            fontFamily: 'monospace',
+            backdropBlur: '12px'
           },
         });
       };
 
+      // 📞 ইনকামিং কল রিসিভ লিসেনার (কোড নেমিং ফিক্সড: $incomingCall)
       const onIncomingCall = (data) => {
+        if (data.from === user._id) return; // নিজের করা কল ফিল্টার
+
         ringtone.current.loop = true;
-        ringtone.current.play().catch(() => console.log("Audio blocked by browser"));
+        ringtone.current.play().catch(() => console.log("Ringtone muted by browser autoplay rules. Wait for click."));
 
         toast((t) => (
-          <div className="flex flex-col gap-3 p-1 min-w-[220px]">
+          <div className="flex flex-col gap-3 p-2 min-w-[240px] font-sans selection:bg-transparent">
             <div className="flex items-center gap-3">
-              <div className="w-2 h-2 bg-green-500 animate-ping rounded-full" />
-              <span className="text-[11px] font-bold uppercase tracking-tighter">
-                Incoming {data?.type} call from {data?.name || 'Node'}
-              </span>
+              <div className="w-2 h-2 bg-cyan-500 animate-ping rounded-full" />
+              <div className="flex flex-col">
+                <span className="text-[12px] font-black uppercase text-white tracking-wide">
+                  Incoming {data?.type || 'video'} Call
+                </span>
+                <span className="text-[10px] font-mono text-zinc-400">
+                  Node: {data?.name || 'Anonymous'}
+                </span>
+              </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 mt-1">
               <button 
                 onClick={() => {
                   ringtone.current.pause();
                   ringtone.current.currentTime = 0;
                   toast.dismiss(t.id);
-                  navigate(`/call/${data.from}`, { 
+                  if (clearGlobalCallState) clearGlobalCallState(); // গ্লোবাল স্টেট রিসেট
+
+                  // কলিং পেজে রাউট এবং সিগন্যাল ডাটা পাস
+                  navigate(`/call/${data.roomId || data.from}`, { 
                     state: { 
-                      incomingSignal: data.signal, 
+                      incomingSignal: data.signalData || data.signal, 
                       callerId: data.from,
-                      callerName: data.name,
-                      callType: data.type 
+                      callType: data.type || 'video'
                     } 
                   });
                 }}
-                className="flex-1 bg-green-600 hover:bg-green-500 py-2 rounded-lg text-[10px] font-black uppercase text-white transition-all shadow-[0_0_15px_rgba(22,163,74,0.4)]"
+                className="flex-1 bg-cyan-500 hover:bg-cyan-400 text-black py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(6,182,212,0.4)]"
               >
                 Accept
               </button>
@@ -116,18 +139,19 @@ function AppContent() {
                   ringtone.current.pause();
                   ringtone.current.currentTime = 0;
                   toast.dismiss(t.id);
+                  if (clearGlobalCallState) clearGlobalCallState();
                   socket.emit("endCall", { to: data.from });
                 }}
-                className="flex-1 bg-red-600/20 hover:bg-red-600/40 text-red-500 py-2 rounded-lg text-[10px] font-black uppercase transition-all"
+                className="flex-1 bg-zinc-800 hover:bg-red-950/40 text-red-400 border border-red-500/20 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all"
               >
                 Decline
               </button>
             </div>
           </div>
         ), {
-          duration: 30000,
+          duration: 35000, // ৩৫ সেকেন্ড পর্যন্ত রিং হবে
           position: "top-center",
-          style: { background: '#0a0a0a', color: '#fff', border: '1px solid #22c55e' }
+          style: { background: '#09090b', color: '#fff', border: '1px solid rgba(6,182,212,0.3)', borderRadius: '24px' }
         });
       };
 
@@ -135,21 +159,28 @@ function AppContent() {
         ringtone.current.pause();
         ringtone.current.currentTime = 0;
         toast.dismiss();
+        if (clearGlobalCallState) clearGlobalCallState();
       };
 
       socket.on("connect", onConnect);
       socket.on("getNotification", onNotification);
-      socket.on("incomingCall", onIncomingCall);
+      socket.on("getMessage", onNotification); // চ্যাট মেসেজের জন্যও গ্লোবাল পপ-আপ অ্যালার্ট
+      socket.on("$incomingCall", onIncomingCall); // ওনিক্স স্ট্যান্ডার্ড $ সিগন্যালিং
+      socket.on("incomingCall", onIncomingCall);  // ফলব্যাক সিকিউরিটি
       socket.on("callEnded", onCallEnded);
+      socket.on("endCall", onCallEnded);
 
       return () => {
         socket.off("connect", onConnect);
         socket.off("getNotification", onNotification);
+        socket.off("getMessage", onNotification);
+        socket.off("$incomingCall", onIncomingCall);
         socket.off("incomingCall", onIncomingCall);
         socket.off("callEnded", onCallEnded);
+        socket.off("endCall", onCallEnded);
       };
     }
-  }, [user, socket, navigate]);
+  }, [user, socket, navigate, clearGlobalCallState]);
 
   /* ==========================================================
       🎬 REELS SYNC LOGIC
@@ -183,11 +214,11 @@ function AppContent() {
   const isAuthPage = authRoutes.includes(location.pathname) || location.pathname.startsWith("/reset-password/");
   const isMessenger = location.pathname.startsWith("/messages");
   const isReels = location.pathname === "/reels";
-  const isSearch = location.pathname === "/search"; 
   const showNav = user && !isAuthPage && !isMessenger && !isReels;
 
   return (
     <div className="min-h-screen bg-[#020617] text-gray-200 selection:bg-cyan-500/30 overflow-x-hidden relative">
+      {/* গ্লোবাল টোস্ট কন্টেইনার */}
       <Toaster position="top-right" />
       <CustomCursor />
 
@@ -239,8 +270,6 @@ function AppContent() {
               </Routes>
             </div>
           </Suspense>
-
-          {/* NeuralAssistant (Voice Button) সরানো হয়েছে */}
 
           {showNav && (
             <div className="md:hidden fixed bottom-0 left-0 w-full z-[1000] border-t border-white/5 bg-black/80 backdrop-blur-3xl">
