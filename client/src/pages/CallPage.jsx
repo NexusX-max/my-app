@@ -272,4 +272,4 @@ const ChatInterface = ({ activeChat, onBack, isGroup = false }) => {
   );
 };
 
-export default Callpage;
+export default CallPage;
