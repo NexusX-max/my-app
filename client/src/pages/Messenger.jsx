@@ -98,8 +98,8 @@ const OnyxMessengerHome = () => {
     };
   }, [socket, selectedChat]);
 
-  /* ==========================================================
-      📞 CALL ACTIONS (Updated for Native WebRTC Pipeline)
+ /* ==========================================================
+      📞 CALL ACTIONS (Fixed Routing to Messenger instead of /call)
   ========================================================== */
   const initiateCall = useCallback((targetUser, type) => {
     if (!targetUser?._id || !user?._id) return;
@@ -107,8 +107,8 @@ const OnyxMessengerHome = () => {
     // ইউনিক ডাইনামিক রুম আইডি কম্বিনেশন
     const roomId = [user._id, targetUser._id].sort().join("-"); 
     
-    // কাস্টম Native CallPage-এ সঠিক স্টেট প্যারামিটার সহ পুশ
-    navigate(`/call/${roomId}`, {
+    // 🚀 ফিক্স: '/call/' এর বদলে সরাসরি মেসেঞ্জার রাউটে চ্যাট ইন্টারফেস পুশ করা হলো
+    navigate(`/messages/${roomId}`, {
       state: { 
         callType: type, 
         mode: 'outbound', 
@@ -126,28 +126,20 @@ const OnyxMessengerHome = () => {
     
     const roomId = incomingCall.roomId || [user._id, incomingCall.from].sort().join("-");
     const callType = incomingCall.callType || incomingCall.type || 'video';
-    const sdpSignal = incomingCall.signalData || incomingCall.signal; // ডাবল কি চ্যাকিং ব্যাকআপ
+    const sdpSignal = incomingCall.signalData || incomingCall.signal;
 
-    // Native WebRTC এর জন্য incomingSignal পাসিং নিশ্চিত করা হলো
-    navigate(`/call/${roomId}`, {
+    // 🚀 ফিক্স: ইনকামিং কল এক্সেপ্ট করলেও যেন সরাসরি মেসেঞ্জার ইন্টারফেসে ল্যান্ড করে
+    navigate(`/messages/${roomId}`, {
       state: { 
         incomingSignal: sdpSignal, 
         callerId: incomingCall.from,
         callType: callType,
-        mode: 'inbound'
+        mode: 'inbound',
+        autoAccept: true
       }
     });
     
     setIncomingCall(null);
-  };
-
-  const declineCall = () => {
-    if (incomingCall) {
-      socket.emit("endCall", { to: incomingCall.from });
-      callAudio.current.pause();
-      callAudio.current.currentTime = 0;
-      setIncomingCall(null);
-    }
   };
 
   /* ==========================================================
