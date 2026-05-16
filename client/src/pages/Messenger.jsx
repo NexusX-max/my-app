@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useContext, useCallback } from 'react';
+import React, { useState, useContext, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -8,10 +8,11 @@ import {
 import { AuthContext } from '../context/AuthContext';
 import SearchScreen from './SearchScreen'; 
 import ChatInterface from './ChatInterface';
-import SettingsScreen from './SettingsScreen';
+import SettingsScreen from './SettingsScreen'; // SettingsScreen ইমপোর্ট করা হলো
 
+// --- Sound Assets ---
 const MSG_SOUND = "https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3"; 
-const CALL_SOUND = "https://assets.mixkit.co/active_storage/sfx/1357/1357-84.wav";
+const CALL_SOUND = "https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3";
 
 const getAvatarUrl = (target) => {
   if (!target) return `https://ui-avatars.com/api/?name=User&background=27272a&color=fff`;
@@ -29,8 +30,9 @@ const OnyxMessengerHome = () => {
   const [incomingCall, setIncomingCall] = useState(null);
 
   const msgAudio = useRef(new Audio(MSG_SOUND));
-  const callAudio = useRef(null);
+  const callAudio = useRef(new Audio(CALL_SOUND));
 
+  // চ্যাট লিস্ট স্টেট (Local Storage sync সহ)
   const [chatList, setChatList] = useState(() => {
     const savedChats = localStorage.getItem('onyx_recent_connections');
     return savedChats ? JSON.parse(savedChats) : [
@@ -42,18 +44,11 @@ const OnyxMessengerHome = () => {
     localStorage.setItem('onyx_recent_connections', JSON.stringify(chatList));
   }, [chatList]);
 
-  const stopRingtone = () => {
-    if (callAudio.current) {
-      callAudio.current.pause();
-      callAudio.current.currentTime = 0;
-    }
-  };
-
   /* ==========================================================
       ⚡ NEURAL SIGNAL HANDLING (Socket Logic)
   ========================================================== */
   useEffect(() => {
-    if (!socket || !user) return;
+    if (!socket) return;
 
     const handleIncomingMessage = (data) => {
       if (data.isIncomingCall || data.isCallSignal) return;
@@ -77,36 +72,27 @@ const OnyxMessengerHome = () => {
     };
 
     const handleIncomingCall = (data) => {
-      // সেফটি গেটওয়ে: কলটি শুধু যদি আমার উদ্দেশ্যে আসে, তবেই পপ-আপ ফায়ার হবে
-      if (data.userToCall === user._id && data.from !== user._id) {
-        setIncomingCall(data);
-
-        if (!callAudio.current) {
-          callAudio.current = new Audio(CALL_SOUND);
-          callAudio.current.loop = true;
-        }
-        
-        callAudio.current.play().catch(e => console.warn("Audio blocked by browser config"));
-      }
+      setIncomingCall(data);
+      callAudio.current.loop = true;
+      callAudio.current.play().catch(e => console.warn("Audio blocked by browser policy"));
     };
 
     const handleCallEnded = () => {
-      stopRingtone();
       setIncomingCall(null);
+      callAudio.current.pause();
+      callAudio.current.currentTime = 0;
     };
 
     socket.on("getMessage", handleIncomingMessage);
     socket.on("$incomingCall", handleIncomingCall);
     socket.on("callEnded", handleCallEnded);
-    socket.on("endCall", handleCallEnded);
 
     return () => {
       socket.off("getMessage", handleIncomingMessage);
       socket.off("$incomingCall", handleIncomingCall);
       socket.off("callEnded", handleCallEnded);
-      socket.off("endCall", handleCallEnded);
     };
-  }, [socket, selectedChat, user]);
+  }, [socket, selectedChat]);
 
   /* ==========================================================
       📞 CALL ACTIONS
@@ -119,29 +105,31 @@ const OnyxMessengerHome = () => {
 
   const acceptCall = () => {
     if (!incomingCall || !user) return;
-    stopRingtone();
-
-    socket.emit("callAccepted", { to: incomingCall.from });
-
+    callAudio.current.pause();
+    callAudio.current.currentTime = 0;
     const roomId = incomingCall.roomId || [user._id, incomingCall.from].sort().join("-");
-    const callType = incomingCall.callType || 'video';
-    
+    const callType = incomingCall.callType || incomingCall.type || 'video';
     navigate(`/call/${roomId}?type=${callType}&mode=inbound`, {
-      state: { incomingSignal: true, callerId: incomingCall.from }
+      state: { incomingSignal: incomingCall.signalData, callerId: incomingCall.from }
     });
     setIncomingCall(null);
   };
 
   const declineCall = () => {
     if (incomingCall) {
-      socket.emit("endCall", { to: incomingCall.from, roomId: incomingCall.roomId });
-      stopRingtone();
+      socket.emit("endCall", { to: incomingCall.from });
+      callAudio.current.pause();
+      callAudio.current.currentTime = 0;
       setIncomingCall(null);
     }
   };
 
+  /* ==========================================================
+      🎯 USER SELECTION
+  ========================================================== */
   const handleUserSelect = useCallback((u) => {
     if (!u) return;
+    
     const userId = u._id || u.id;
     if (!userId) return;
 
@@ -185,6 +173,7 @@ const OnyxMessengerHome = () => {
               </div>
             </div>
             
+            {/* Search Bar Trigger */}
             <div 
               onClick={() => setShowSearch(true)} 
               className="relative mb-4 bg-zinc-900/40 border border-white/5 rounded-2xl py-4 pl-5 cursor-text text-zinc-500 text-[11px] uppercase tracking-widest hover:bg-zinc-900/60 transition-all flex items-center gap-3"
@@ -237,6 +226,7 @@ const OnyxMessengerHome = () => {
           </main>
         </>
       ) : (
+        /* Settings Tab: আপনার নতুন SettingsScreen এখানে লোড হবে */
         <SettingsScreen onBack={() => setActiveTab('chats')} />
       )}
 
@@ -254,9 +244,7 @@ const OnyxMessengerHome = () => {
               <div className="absolute top-0 left-0 w-full h-1 bg-cyan-500 animate-pulse" />
               <img src={getAvatarUrl({ name: incomingCall.name, profilePic: incomingCall.avatar })} className="w-24 h-24 rounded-[30px] mx-auto mb-6 border-2 border-cyan-500/30 p-1 object-cover" alt="caller" />
               <h3 className="text-xl font-black uppercase mb-1 tracking-tight">{incomingCall.name || "Unknown Link"}</h3>
-              <p className="text-cyan-500 text-[10px] font-black uppercase tracking-[0.4em] mb-10 animate-pulse">
-                Incoming {incomingCall.callType || 'video'} Pulse...
-              </p>
+              <p className="text-cyan-500 text-[10px] font-black uppercase tracking-[0.4em] mb-10 animate-pulse">Incoming Pulse</p>
               <div className="flex justify-center gap-10">
                 <button onClick={declineCall} className="w-16 h-16 flex items-center justify-center bg-zinc-800 hover:bg-red-600 rounded-full text-white transition-all shadow-lg"><FaTimes size={24} /></button>
                 <button onClick={acceptCall} className="w-16 h-16 flex items-center justify-center bg-cyan-600 hover:bg-cyan-500 rounded-full text-white transition-all shadow-[0_0_20px_rgba(6,182,212,0.4)]"><FaCheck size={24} /></button>
