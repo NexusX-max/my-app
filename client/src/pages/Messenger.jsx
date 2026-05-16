@@ -8,7 +8,7 @@ import {
 import { AuthContext } from '../context/AuthContext';
 import SearchScreen from './SearchScreen'; 
 // ✅ ফাইল এবং কম্পোনেন্টের নাম সুন্দরভাবে সিঙ্ক করা হলো
-import CallPage from "./pages/CallPage"; 
+ import CallPage from "./CallPage";
 import SettingsScreen from './SettingsScreen'; 
 
 // --- Sound Assets ---
