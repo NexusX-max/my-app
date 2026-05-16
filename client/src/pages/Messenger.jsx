@@ -75,7 +75,7 @@ const OnyxMessengerHome = () => {
       }
     };
 
-    // ডুপ্লিকেট নোটিফিকেশন এড়াতে সিঙ্গেল চ্যানেল ফিল্টার
+    // ডুপ্লিকেট নোটিফিকেশন এড়াতে সিঙ্গেল চ্যানেল ফিল্টার
     const handleIncomingCall = (data) => {
       if (data.from === user?._id) return;
       
@@ -107,19 +107,22 @@ const OnyxMessengerHome = () => {
   }, [socket, selectedChat, user?._id]);
 
   /* ==========================================================
-      📞 CALL ACTIONS (ZegoCloud Room Routing)
+      📞 CALL ACTIONS (ZegoCloud Room Routing Fix)
   ========================================================== */
   const initiateCall = useCallback((targetUser, type) => {
     const targetId = targetUser?._id || targetUser?.id;
     if (!targetId || !user?._id) return;
     
+    // রুম আইডি মেকার (আইডি ওলটপালট হওয়া লক করে দেবে)
     const roomId = [user._id, targetId].sort().join("-"); 
     
     navigate(`/call/${roomId}`, {
       state: {
         callType: type || 'video',
         mode: 'outbound',
-        callerId: user._id
+        callerId: user._id,
+        receiverId: targetId,
+        receiverName: targetUser?.fullName || targetUser?.name || "Onyx Drifter"
       }
     });
   }, [user, navigate]);
@@ -165,7 +168,6 @@ const OnyxMessengerHome = () => {
     const userId = u._id || u.id;
     if (!userId) return;
 
-    // ✅ এখানে অবজেক্ট প্রোপার্টিগুলো ডাবল-ম্যাপ করা হলো যাতে চাইল্ড স্ক্রিনে ডেটা মিস না হয়
     const normalizedUser = {
       _id: userId,
       id: userId, 
@@ -241,15 +243,34 @@ const OnyxMessengerHome = () => {
                     </div>
                   </div>
                   
+                  {/* ✅ কল বাটনের অবজেক্ট ডেটা ম্যাপ রিকনস্ট্রাক্ট করা হলো যাতে আইডি লিক না হয় */}
                   <div className="flex gap-2 shrink-0">
                      <button 
-                      onClick={(e) => { e.stopPropagation(); initiateCall(chat, 'audio'); }} 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        const safeTarget = {
+                          _id: chat._id || chat.id,
+                          id: chat._id || chat.id,
+                          fullName: chat.fullName || chat.name,
+                          name: chat.fullName || chat.name
+                        };
+                        initiateCall(safeTarget, 'audio'); 
+                      }} 
                       className="p-3.5 rounded-xl bg-zinc-800/50 text-zinc-400 hover:bg-cyan-500 hover:text-black transition-all active:scale-90"
                      >
                        <FaPhoneAlt size={12} />
                      </button>
                      <button 
-                      onClick={(e) => { e.stopPropagation(); initiateCall(chat, 'video'); }} 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        const safeTarget = {
+                          _id: chat._id || chat.id,
+                          id: chat._id || chat.id,
+                          fullName: chat.fullName || chat.name,
+                          name: chat.fullName || chat.name
+                        };
+                        initiateCall(safeTarget, 'video'); 
+                      }} 
                       className="p-3.5 rounded-xl bg-zinc-800/50 text-zinc-400 hover:bg-cyan-500 hover:text-black transition-all active:scale-90"
                      >
                        <FaVideo size={12} />
@@ -296,7 +317,6 @@ const OnyxMessengerHome = () => {
 
         {selectedChat && (
           <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: "spring", damping: 30, stiffness: 200 }} className="fixed inset-0 z-[5000] bg-black">
-            {/* ✅ এখানে `<CallPage />` ট্যাগটি বড় হাতের 'P' দিয়ে সঠিকভাবে লক করা হলো */}
             <CallPage activeChat={selectedChat} onBack={() => setSelectedChat(null)} />
           </motion.div>
         )}
