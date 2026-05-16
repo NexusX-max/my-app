@@ -17,7 +17,7 @@ const SearchScreen = ({ onBack, onSelect }) => {
   const navigate = useNavigate();
 
   /* ==========================================================
-      ⚡ NEURAL SEARCH ENGINE (FIXED)
+      ⚡ NEURAL SEARCH ENGINE (FIXED FOR GET & REQ.QUERY)
   ========================================================== */
   const handleNeuralSearch = async (query) => {
     if (!query || !query.trim()) return;
@@ -31,11 +31,14 @@ const SearchScreen = ({ onBack, onSelect }) => {
         return;
       }
 
-      // 🛠️ ফিক্সড লজিক: আলাদা লিঙ্ক বা হার্ডকোডেড ইউআরএল বাদ দিয়ে AuthContext-এর api ইন্টারসেপ্টর ব্যবহার করা হয়েছে
-      const response = await api.post('/users/search', { query: query.trim() });
+      // 🛠️ ব্যাকএন্ডের router.get-এর সাথে মিল রেখে GET রিকোয়েস্ট এবং কোয়েরি প্যারামস পাঠানো হলো
+      const response = await api.get(`/users/search?query=${encodeURIComponent(query.trim())}`);
       
-      // সার্চ রেজাল্ট থেকে নিজের নোড/아이디 স্বয়ংক্রিয়ভাবে ফিল্টার করে বাদ দেওয়া হচ্ছে
-      const filteredResults = (response.data.results || response.data || []).filter(
+      // ব্যাকএন্ড সরাসরি অ্যারে পাঠাচ্ছে (response.data), তাই এটি সরাসরি নেওয়া হলো
+      const results = response.data || [];
+      
+      // নিজের আইডি ফিল্টার করার কোড (যদিও ব্যাকএন্ড অলরেডি $ne: myId দিয়ে ফিল্টার করছে, তাও সুরক্ষার জন্য রাখা হলো)
+      const filteredResults = results.filter(
         (node) => (node._id || node.id) !== currentUser?._id
       );
 
@@ -60,10 +63,14 @@ const SearchScreen = ({ onBack, onSelect }) => {
       return;
     }
 
+    // ব্যাকএন্ডের স্কিমা অনুযায়ী ফুল নেম এবং অ্যাভাটার প্রিপেয়ার করা হচ্ছে
+    const fullName = user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.nickname || user.username || "Unknown Node";
+    const profilePic = user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=06b6d4&color=fff&bold=true`;
+
     const userData = {
       _id: targetId,
-      fullName: user.fullName || user.username || "Unknown Node",
-      profilePic: user.profilePic || user.userAvatar || user.avatar || null,
+      fullName: fullName,
+      profilePic: profilePic,
       online: true 
     };
 
@@ -107,36 +114,42 @@ const SearchScreen = ({ onBack, onSelect }) => {
               </p>
             </div>
           ) : searchResults.length > 0 ? (
-            searchResults.map(user => (
-              <div 
-                key={user._id || user.id} 
-                onClick={() => handleUserSelect(user)} 
-                className="p-4 bg-zinc-900/30 border border-white/5 rounded-[2rem] flex items-center gap-4 hover:bg-zinc-800/40 hover:border-cyan-500/20 transition-all cursor-pointer group"
-              >
-                <div className="relative shrink-0">
-                  <img 
-                    src={user.profilePic || user.userAvatar || user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName || user.username || "Drifter")}&background=06b6d4&color=fff&bold=true`} 
-                    className="w-14 h-14 rounded-2xl object-cover border border-white/10 group-hover:border-cyan-500/50 transition-colors" 
-                    alt="" 
-                  />
-                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-4 border-[#000] rounded-full"></div>
-                </div>
+            searchResults.map(user => {
+              // ব্যাকএন্ড স্কিমার সাথে মিল রেখে ডাইনামিক ফিল্ড ম্যাপিং
+              const fullName = user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.nickname || user.username || "Unknown Drifter";
+              const userAvatar = user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=06b6d4&color=fff&bold=true`;
 
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-white font-bold text-sm tracking-tight truncate group-hover:text-cyan-400">
-                    {user.fullName || user.username}
-                  </h3>
-                  <p className="text-zinc-500 text-[10px] font-medium flex items-center gap-1 mt-0.5">
-                    <span className="w-1.5 h-1.5 bg-cyan-500/40 rounded-full"></span>
-                    {user.location || "Global Node"}
-                  </p>
-                </div>
+              return (
+                <div 
+                  key={user._id || user.id} 
+                  onClick={() => handleUserSelect(user)} 
+                  className="p-4 bg-zinc-900/30 border border-white/5 rounded-[2rem] flex items-center gap-4 hover:bg-zinc-800/40 hover:border-cyan-500/20 transition-all cursor-pointer group"
+                >
+                  <div className="relative shrink-0">
+                    <img 
+                      src={userAvatar} 
+                      className="w-14 h-14 rounded-2xl object-cover border border-white/10 group-hover:border-cyan-500/50 transition-colors" 
+                      alt="" 
+                    />
+                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-4 border-[#000] rounded-full"></div>
+                  </div>
 
-                <div className="w-9 h-9 rounded-full bg-zinc-800/50 flex items-center justify-center text-zinc-500 group-hover:bg-cyan-500 group-hover:text-black transition-all">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 12h14m-7-7 7 7-7 7"/></svg>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-white font-bold text-sm tracking-tight truncate group-hover:text-cyan-400">
+                      {fullName}
+                    </h3>
+                    <p className="text-zinc-500 text-[10px] font-medium flex items-center gap-1 mt-0.5">
+                      <span className="w-1.5 h-1.5 bg-cyan-500/40 rounded-full"></span>
+                      {user.bio || "Active Node"}
+                    </p>
+                  </div>
+
+                  <div className="w-9 h-9 rounded-full bg-zinc-800/50 flex items-center justify-center text-zinc-500 group-hover:bg-cyan-500 group-hover:text-black transition-all">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 12h14m-7-7 7 7-7 7"/></svg>
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           ) : (
             <div className="text-center py-24 border border-dashed border-zinc-900 rounded-[3rem] opacity-60">
               <p className="text-zinc-600 text-[10px] font-black uppercase tracking-[0.2em]">No nodes found</p>
