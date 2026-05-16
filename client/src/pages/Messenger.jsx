@@ -1,4 +1,4 @@
-import React, { useState, useContext, useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useContext, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -8,11 +8,12 @@ import {
 import { AuthContext } from '../context/AuthContext';
 import SearchScreen from './SearchScreen'; 
 import ChatInterface from './ChatInterface';
-import SettingsScreen from './SettingsScreen'; // SettingsScreen ইমপোর্ট করা হলো
+import SettingsScreen from './SettingsScreen';
 
 // --- Sound Assets ---
 const MSG_SOUND = "https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3"; 
-const CALL_SOUND = "https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3";
+// হাই-কোয়ালিটি লুপেড কলিং টিউন
+const CALL_SOUND = "https://assets.mixkit.co/active_storage/sfx/1357/1357-84.wav";
 
 const getAvatarUrl = (target) => {
   if (!target) return `https://ui-avatars.com/api/?name=User&background=27272a&color=fff`;
@@ -30,7 +31,7 @@ const OnyxMessengerHome = () => {
   const [incomingCall, setIncomingCall] = useState(null);
 
   const msgAudio = useRef(new Audio(MSG_SOUND));
-  const callAudio = useRef(new Audio(CALL_SOUND));
+  const callAudio = useRef(null);
 
   // চ্যাট লিস্ট স্টেট (Local Storage sync সহ)
   const [chatList, setChatList] = useState(() => {
@@ -43,6 +44,14 @@ const OnyxMessengerHome = () => {
   useEffect(() => {
     localStorage.setItem('onyx_recent_connections', JSON.stringify(chatList));
   }, [chatList]);
+
+  // রিংটোন বন্ধ করার সেফ মেথড
+  const stopRingtone = () => {
+    if (callAudio.current) {
+      callAudio.current.pause();
+      callAudio.current.currentTime = 0;
+    }
+  };
 
   /* ==========================================================
       ⚡ NEURAL SIGNAL HANDLING (Socket Logic)
@@ -71,28 +80,38 @@ const OnyxMessengerHome = () => {
       }
     };
 
+    // ⚡ ইনকামিং কল রিসিভ এবং রিংটোন লজিক
     const handleIncomingCall = (data) => {
+      // নিজের পাঠানো সিগন্যাল নিজেই ক্যাচ করা বন্ধ করার চেক
+      if (data.from === user?._id) return;
+
       setIncomingCall(data);
-      callAudio.current.loop = true;
-      callAudio.current.play().catch(e => console.warn("Audio blocked by browser policy"));
+
+      if (!callAudio.current) {
+        callAudio.current = new Audio(CALL_SOUND);
+        callAudio.current.loop = true;
+      }
+      
+      callAudio.current.play().catch(e => console.warn("Audio blocked by browser policy until interaction"));
     };
 
     const handleCallEnded = () => {
+      stopRingtone();
       setIncomingCall(null);
-      callAudio.current.pause();
-      callAudio.current.currentTime = 0;
     };
 
     socket.on("getMessage", handleIncomingMessage);
     socket.on("$incomingCall", handleIncomingCall);
     socket.on("callEnded", handleCallEnded);
+    socket.on("endCall", handleCallEnded);
 
     return () => {
       socket.off("getMessage", handleIncomingMessage);
       socket.off("$incomingCall", handleIncomingCall);
       socket.off("callEnded", handleCallEnded);
+      socket.off("endCall", handleCallEnded);
     };
-  }, [socket, selectedChat]);
+  }, [socket, selectedChat, user]);
 
   /* ==========================================================
       📞 CALL ACTIONS
@@ -100,26 +119,31 @@ const OnyxMessengerHome = () => {
   const initiateCall = useCallback((targetUser, type) => {
     if (!targetUser?._id || !user?._id) return;
     const roomId = [user._id, targetUser._id].sort().join("-"); 
+    // কলার পেজে ডাইরেক্ট পুশ মোড
     navigate(`/call/${roomId}?type=${type}&mode=outbound`);
   }, [user, navigate]);
 
   const acceptCall = () => {
     if (!incomingCall || !user) return;
-    callAudio.current.pause();
-    callAudio.current.currentTime = 0;
+    stopRingtone();
+
+    // কলার এন্ডে একসেপ্ট ইভেন্ট পাস করা
+    socket.emit("callAccepted", { to: incomingCall.from });
+
     const roomId = incomingCall.roomId || [user._id, incomingCall.from].sort().join("-");
     const callType = incomingCall.callType || incomingCall.type || 'video';
+    
+    // রিসিভারকে ইনবাউন্ড মোডে রিডাইরেক্ট
     navigate(`/call/${roomId}?type=${callType}&mode=inbound`, {
-      state: { incomingSignal: incomingCall.signalData, callerId: incomingCall.from }
+      state: { incomingSignal: true, callerId: incomingCall.from }
     });
     setIncomingCall(null);
   };
 
   const declineCall = () => {
     if (incomingCall) {
-      socket.emit("endCall", { to: incomingCall.from });
-      callAudio.current.pause();
-      callAudio.current.currentTime = 0;
+      socket.emit("endCall", { to: incomingCall.from, roomId: incomingCall.roomId });
+      stopRingtone();
       setIncomingCall(null);
     }
   };
@@ -226,7 +250,6 @@ const OnyxMessengerHome = () => {
           </main>
         </>
       ) : (
-        /* Settings Tab: আপনার নতুন SettingsScreen এখানে লোড হবে */
         <SettingsScreen onBack={() => setActiveTab('chats')} />
       )}
 
@@ -244,7 +267,9 @@ const OnyxMessengerHome = () => {
               <div className="absolute top-0 left-0 w-full h-1 bg-cyan-500 animate-pulse" />
               <img src={getAvatarUrl({ name: incomingCall.name, profilePic: incomingCall.avatar })} className="w-24 h-24 rounded-[30px] mx-auto mb-6 border-2 border-cyan-500/30 p-1 object-cover" alt="caller" />
               <h3 className="text-xl font-black uppercase mb-1 tracking-tight">{incomingCall.name || "Unknown Link"}</h3>
-              <p className="text-cyan-500 text-[10px] font-black uppercase tracking-[0.4em] mb-10 animate-pulse">Incoming Pulse</p>
+              <p className="text-cyan-500 text-[10px] font-black uppercase tracking-[0.4em] mb-10 animate-pulse">
+                Incoming {incomingCall.callType || 'video'} Pulse...
+              </p>
               <div className="flex justify-center gap-10">
                 <button onClick={declineCall} className="w-16 h-16 flex items-center justify-center bg-zinc-800 hover:bg-red-600 rounded-full text-white transition-all shadow-lg"><FaTimes size={24} /></button>
                 <button onClick={acceptCall} className="w-16 h-16 flex items-center justify-center bg-cyan-600 hover:bg-cyan-500 rounded-full text-white transition-all shadow-[0_0_20px_rgba(6,182,212,0.4)]"><FaCheck size={24} /></button>
