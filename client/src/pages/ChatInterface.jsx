@@ -92,14 +92,14 @@ const ChatInterface = ({ activeChat, onBack, isGroup = false }) => {
     const messageId = `${Date.now()}-${Math.random()}`;
     const isCall = additionalData.isCallSignal || additionalData.isIncomingCall;
     
-    // কল হলে এনক্রিপশন ছাড়াই পাঠানো হচ্ছে যাতে রিসিভার সহজে প্রসেস করতে পারে
+    // কল হলে এনক্রিপশন ছাড়াই পাঠানো হচ্ছে যাতে রিসিভার সহজে প্রসেস করতে পারে
     const finalContent = (type === 'text' && !isCall) ? encryptMessage(textToSend) : textToSend;
 
     const msgPayload = {
       id: messageId, 
       receiverId: chatId, 
       senderId: user._id,
-      senderName: user.fullName,
+      senderName: user.fullName || user.name || "Onyx Member",
       text: finalContent, 
       type,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -107,9 +107,10 @@ const ChatInterface = ({ activeChat, onBack, isGroup = false }) => {
     };
 
     if (socket?.connected) {
-      // কল ডাটা হলে তোমার কনসোলে থাকা '$incomingCall' ইভেন্টে পাঠানো হচ্ছে
+      // কল ডাটা হলে ওনিক্স নোটিফিকেশন সিস্টেমের সকেট ইভেন্টে সিগন্যাল পাঠানো হচ্ছে
       if (isCall) {
         socket.emit("$incomingCall", msgPayload);
+        socket.emit("incomingCall", msgPayload); // ব্যাকআপ ফলব্যাক ইভেন্ট
       } else {
         socket.emit("sendMessage", msgPayload);
       }
@@ -126,31 +127,39 @@ const ChatInterface = ({ activeChat, onBack, isGroup = false }) => {
     }
   };
 
-  // ৪. কলিং লজিক (Updated for $incomingCall event)
+  // ৪. 📞 ZEGO CLOUD INTEGRATED CALLING LOGIC
   const handleCallClick = (type) => {
     if (!chatId || !user?._id || !socket?.connected) {
       alert("Neural connection unstable. Please wait...");
       return;
     }
 
-    const roomId = [user._id, chatId].sort().join("-");
+    // উইন্ডোজ/লিনাক্স ক্রস নোড সিঙ্কের জন্য ইউজার আইডিগুলোকে সর্ট করে ইউনিক রুম আইডি তৈরি
+    const roomId = `room_${[user._id, chatId].sort().join("_")}`;
     
-    // রিসিভার সাইড এবং তোমার কনসোল লগের ইভেন্ট অনুযায়ী ডাটা স্ট্রাকচার
+    // রিসিভার হ্যান্ডশেক ডাটা স্ট্রাকচার
     const callMetadata = {
       isIncomingCall: true,
+      isCallSignal: true,
       userToCall: chatId,
       from: user._id,
-      name: user.fullName || "Onyx User",
+      name: user.fullName || user.name || "Onyx Drifter",
       avatar: getAvatarUrl(user),
-      callType: type,
+      type: type, // 'audio' অথবা 'video'
       roomId: roomId
     };
 
-    // সিগন্যাল ট্রান্সমিট করা
+    // পার্টনারের ফোনে রিংটোন এবং কাস্টম টোস্ট পপ-আপ ট্রিগার করার জন্য সিগন্যাল পাঠানো
     handleSend(`Incoming ${type} call...`, type, callMetadata);
 
-    // আউটগোয়িং স্ক্রিনে নেভিগেট করা
-    navigate(`/call/${roomId}?type=${type}&mode=outbound`);
+    // নিজে সরাসরি কলিং পেজে নেভিগেট করা (রুম আইডি এবং টাইপ স্টেট সহ)
+    navigate(`/call/${roomId}`, { 
+      state: { 
+        callType: type,
+        mode: 'outbound',
+        callerId: user._id
+      } 
+    });
   };
 
   const startVoiceCapture = () => {
@@ -195,6 +204,7 @@ const ChatInterface = ({ activeChat, onBack, isGroup = false }) => {
           </div>
         </div>
         
+        {/* Call Buttons */}
         <div className="flex gap-2">
            <button onClick={() => handleCallClick('audio')} className="p-3.5 bg-zinc-900 rounded-2xl text-cyan-500 hover:bg-cyan-500/10 transition-all border border-white/5 shadow-lg active:scale-95">
              <FaPhone size={13}/>
