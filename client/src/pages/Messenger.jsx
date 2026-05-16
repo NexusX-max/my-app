@@ -7,24 +7,22 @@ import {
 
 import { AuthContext } from '../context/AuthContext';
 import SearchScreen from './SearchScreen'; 
-// ✅ পাথ এবং ফাইল নেমিং কেস-সেন্সিটিভিটি ১০০% ম্যাচ করা হলো
-import CallPage from "./CallPage"; 
-import SettingsScreen from './SettingsScreen'; 
+import ChatInterface from './CallPage';
+import SettingsScreen from './SettingsScreen'; // SettingsScreen ইমপোর্ট করা হলো
 
 // --- Sound Assets ---
 const MSG_SOUND = "https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3"; 
-const CALL_SOUND = "https://assets.mixkit.co/active_storage/sfx/1357/1357-84.wav"; 
+const CALL_SOUND = "https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3";
 
 const getAvatarUrl = (target) => {
   if (!target) return `https://ui-avatars.com/api/?name=User&background=27272a&color=fff`;
-  const pic = target.profilePic || target.avatar || target.profileImage || target.userAvatar;
+  const pic = target.profilePic || target.avatar || target.profileImage;
   if (pic && typeof pic === 'string' && pic.startsWith('http')) return pic;
-  const displayName = target.fullName || target.name || target.username || "Onyx";
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=06b6d4&color=fff&bold=true`;
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(target.fullName || target.name || target.username || "Onyx")}&background=06b6d4&color=fff&bold=true`;
 };
 
 const OnyxMessengerHome = () => {
-  const { user, socket, clearGlobalCallState } = useContext(AuthContext);
+  const { user, socket } = useContext(AuthContext);
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('chats');
   const [selectedChat, setSelectedChat] = useState(null);
@@ -38,7 +36,7 @@ const OnyxMessengerHome = () => {
   const [chatList, setChatList] = useState(() => {
     const savedChats = localStorage.getItem('onyx_recent_connections');
     return savedChats ? JSON.parse(savedChats) : [
-      { _id: "u1", id: "u1", fullName: "Onyx Support", name: "Onyx Support", lastMsg: "System status: Optimal.", time: "Online", online: true },
+      { _id: "u1", fullName: "Onyx Support", lastMsg: "System status: Optimal.", time: "Online", online: true },
     ];
   });
 
@@ -47,7 +45,7 @@ const OnyxMessengerHome = () => {
   }, [chatList]);
 
   /* ==========================================================
-      ⚡ NEURAL SIGNAL HANDLING (Clean Stream Lock)
+      ⚡ NEURAL SIGNAL HANDLING (Socket Logic)
   ========================================================== */
   useEffect(() => {
     if (!socket) return;
@@ -59,9 +57,7 @@ const OnyxMessengerHome = () => {
         const filtered = prev.filter(c => c._id !== data.senderId);
         const updatedChat = {
           _id: data.senderId,
-          id: data.senderId, // ডাবল আইডি বাইন্ডিং সেফটি গার্ড
           fullName: data.senderName || "Unknown Node",
-          name: data.senderName || "Unknown Node",
           lastMsg: data.text || "Encrypted transmission...",
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           online: true,
@@ -75,13 +71,10 @@ const OnyxMessengerHome = () => {
       }
     };
 
-    // ডুপ্লিকেট নোটিফিকেশন এড়াতে সিঙ্গেল চ্যানেল ফিল্টার
     const handleIncomingCall = (data) => {
-      if (data.from === user?._id) return;
-      
       setIncomingCall(data);
       callAudio.current.loop = true;
-      callAudio.current.play().catch(e => console.warn("Ringtone muted. Waiting for interaction."));
+      callAudio.current.play().catch(e => console.warn("Audio blocked by browser policy"));
     };
 
     const handleCallEnded = () => {
@@ -91,59 +84,33 @@ const OnyxMessengerHome = () => {
     };
 
     socket.on("getMessage", handleIncomingMessage);
-    socket.on("$incomingCall", handleIncomingCall); 
+    socket.on("$incomingCall", handleIncomingCall);
     socket.on("callEnded", handleCallEnded);
-    socket.on("endCall", handleCallEnded);
 
     return () => {
       socket.off("getMessage", handleIncomingMessage);
       socket.off("$incomingCall", handleIncomingCall);
       socket.off("callEnded", handleCallEnded);
-      socket.off("endCall", handleCallEnded);
-      
-      callAudio.current.pause();
-      callAudio.current.currentTime = 0;
     };
-  }, [socket, selectedChat, user?._id]);
+  }, [socket, selectedChat]);
 
   /* ==========================================================
-      📞 CALL ACTIONS (ZegoCloud Room Routing Fix)
+      📞 CALL ACTIONS
   ========================================================== */
   const initiateCall = useCallback((targetUser, type) => {
-    const targetId = targetUser?._id || targetUser?.id;
-    if (!targetId || !user?._id) return;
-    
-    // রুম আইডি মেকার (আইডি ওলটপালট হওয়া লক করে দেবে)
-    const roomId = [user._id, targetId].sort().join("-"); 
-    
-    navigate(`/call/${roomId}`, {
-      state: {
-        callType: type || 'video',
-        mode: 'outbound',
-        callerId: user._id,
-        receiverId: targetId,
-        receiverName: targetUser?.fullName || targetUser?.name || "Onyx Drifter"
-      }
-    });
+    if (!targetUser?._id || !user?._id) return;
+    const roomId = [user._id, targetUser._id].sort().join("-"); 
+    navigate(`/call/${roomId}?type=${type}&mode=outbound`);
   }, [user, navigate]);
 
   const acceptCall = () => {
     if (!incomingCall || !user) return;
-    
     callAudio.current.pause();
     callAudio.current.currentTime = 0;
-    
     const roomId = incomingCall.roomId || [user._id, incomingCall.from].sort().join("-");
     const callType = incomingCall.callType || incomingCall.type || 'video';
-    
-    if (clearGlobalCallState) clearGlobalCallState();
-
-    navigate(`/call/${roomId}`, {
-      state: { 
-        callType: callType, 
-        mode: 'inbound', 
-        callerId: incomingCall.from 
-      }
+    navigate(`/call/${roomId}?type=${callType}&mode=inbound`, {
+      state: { incomingSignal: incomingCall.signalData, callerId: incomingCall.from }
     });
     setIncomingCall(null);
   };
@@ -151,16 +118,14 @@ const OnyxMessengerHome = () => {
   const declineCall = () => {
     if (incomingCall) {
       socket.emit("endCall", { to: incomingCall.from });
-      socket.emit("callEnded", { to: incomingCall.from });
       callAudio.current.pause();
       callAudio.current.currentTime = 0;
-      if (clearGlobalCallState) clearGlobalCallState();
       setIncomingCall(null);
     }
   };
 
   /* ==========================================================
-      🎯 USER SELECTION (Fixes Name/Id/Avatar Visibility Issues)
+      🎯 USER SELECTION
   ========================================================== */
   const handleUserSelect = useCallback((u) => {
     if (!u) return;
@@ -170,17 +135,15 @@ const OnyxMessengerHome = () => {
 
     const normalizedUser = {
       _id: userId,
-      id: userId, 
-      fullName: u.fullName || u.name || u.username || "Onyx Drifter",
-      name: u.fullName || u.name || u.username || "Onyx Drifter",
-      profilePic: u.profilePic || u.avatar || u.profileImage || u.userAvatar,
+      fullName: u.fullName || u.name || u.username || "Drifter",
+      profilePic: u.profilePic || u.avatar || u.profileImage,
       lastMsg: "Neural link established",
       time: "Just now",
       online: true
     };
 
     setChatList(prev => {
-      const filtered = prev.filter(c => (c._id !== userId && c.id !== userId));
+      const filtered = prev.filter(c => c._id !== userId);
       return [normalizedUser, ...filtered];
     });
 
@@ -189,7 +152,7 @@ const OnyxMessengerHome = () => {
   }, []);
 
   return (
-    <div className="bg-black h-[100dvh] text-white flex flex-col overflow-hidden font-sans select-none relative">
+    <div className="bg-black h-[100dvh] text-white flex flex-col overflow-hidden font-sans select-none">
       
       {activeTab === 'chats' ? (
         <>
@@ -226,7 +189,7 @@ const OnyxMessengerHome = () => {
               {chatList.map((chat) => (
                 <motion.div 
                   layout 
-                  key={chat._id || chat.id} 
+                  key={chat._id} 
                   className="flex items-center gap-4 p-4 rounded-[1.8rem] bg-zinc-900/20 border border-white/5 hover:border-cyan-500/30 transition-all group"
                 >
                   <div 
@@ -238,40 +201,21 @@ const OnyxMessengerHome = () => {
                       {chat.online && <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 border-[3px] border-black rounded-full" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-bold text-sm text-zinc-100 truncate">{chat.fullName || chat.name}</h4>
+                      <h4 className="font-bold text-sm text-zinc-100 truncate">{chat.fullName}</h4>
                       <p className="text-[11px] text-zinc-500 truncate">{chat.lastMsg}</p>
                     </div>
                   </div>
                   
-                  {/* ✅ কল বাটনের অবজেক্ট ডেটা ম্যাপ রিকনস্ট্রাক্ট করা হলো যাতে আইডি লিক না হয় */}
                   <div className="flex gap-2 shrink-0">
                      <button 
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        const safeTarget = {
-                          _id: chat._id || chat.id,
-                          id: chat._id || chat.id,
-                          fullName: chat.fullName || chat.name,
-                          name: chat.fullName || chat.name
-                        };
-                        initiateCall(safeTarget, 'audio'); 
-                      }} 
-                      className="p-3.5 rounded-xl bg-zinc-800/50 text-zinc-400 hover:bg-cyan-500 hover:text-black transition-all active:scale-90"
+                      onClick={(e) => { e.stopPropagation(); initiateCall(chat, 'audio'); }} 
+                      className="p-3.5 rounded-xl bg-zinc-800/50 text-zinc-400 hover:bg-cyan-500 hover:text-black transition-all"
                      >
                        <FaPhoneAlt size={12} />
                      </button>
                      <button 
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        const safeTarget = {
-                          _id: chat._id || chat.id,
-                          id: chat._id || chat.id,
-                          fullName: chat.fullName || chat.name,
-                          name: chat.fullName || chat.name
-                        };
-                        initiateCall(safeTarget, 'video'); 
-                      }} 
-                      className="p-3.5 rounded-xl bg-zinc-800/50 text-zinc-400 hover:bg-cyan-500 hover:text-black transition-all active:scale-90"
+                      onClick={(e) => { e.stopPropagation(); initiateCall(chat, 'video'); }} 
+                      className="p-3.5 rounded-xl bg-zinc-800/50 text-zinc-400 hover:bg-purple-500 hover:text-white transition-all"
                      >
                        <FaVideo size={12} />
                      </button>
@@ -282,7 +226,7 @@ const OnyxMessengerHome = () => {
           </main>
         </>
       ) : (
-        /* Settings Tab */
+        /* Settings Tab: আপনার নতুন SettingsScreen এখানে লোড হবে */
         <SettingsScreen onBack={() => setActiveTab('chats')} />
       )}
 
@@ -302,8 +246,8 @@ const OnyxMessengerHome = () => {
               <h3 className="text-xl font-black uppercase mb-1 tracking-tight">{incomingCall.name || "Unknown Link"}</h3>
               <p className="text-cyan-500 text-[10px] font-black uppercase tracking-[0.4em] mb-10 animate-pulse">Incoming Pulse</p>
               <div className="flex justify-center gap-10">
-                <button onClick={declineCall} className="w-16 h-16 flex items-center justify-center bg-zinc-800 hover:bg-red-600 rounded-full text-white transition-all shadow-lg active:scale-95"><FaTimes size={24} /></button>
-                <button onClick={acceptCall} className="w-16 h-16 flex items-center justify-center bg-cyan-600 hover:bg-cyan-500 rounded-full text-white transition-all shadow-[0_0_20px_rgba(6,182,212,0.4)] active:scale-95"><FaCheck size={24} /></button>
+                <button onClick={declineCall} className="w-16 h-16 flex items-center justify-center bg-zinc-800 hover:bg-red-600 rounded-full text-white transition-all shadow-lg"><FaTimes size={24} /></button>
+                <button onClick={acceptCall} className="w-16 h-16 flex items-center justify-center bg-cyan-600 hover:bg-cyan-500 rounded-full text-white transition-all shadow-[0_0_20px_rgba(6,182,212,0.4)]"><FaCheck size={24} /></button>
               </div>
             </div>
           </motion.div>
@@ -317,7 +261,7 @@ const OnyxMessengerHome = () => {
 
         {selectedChat && (
           <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: "spring", damping: 30, stiffness: 200 }} className="fixed inset-0 z-[5000] bg-black">
-            <CallPage activeChat={selectedChat} onBack={() => setSelectedChat(null)} />
+            <ChatInterface activeChat={selectedChat} onBack={() => setSelectedChat(null)} />
           </motion.div>
         )}
       </AnimatePresence>
