@@ -7,12 +7,13 @@ import {
 
 import { AuthContext } from '../context/AuthContext';
 import SearchScreen from './SearchScreen'; 
- import CallPage from "./pages/CallPage"; // P বড় হাতের নিশ্চিত করুন
+// ✅ ফাইল এবং কম্পোনেন্টের নাম সুন্দরভাবে সিঙ্ক করা হলো
+import CallPage from "./pages/CallPage"; 
 import SettingsScreen from './SettingsScreen'; 
 
 // --- Sound Assets ---
 const MSG_SOUND = "https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3"; 
-const CALL_SOUND = "https://assets.mixkit.co/active_storage/sfx/1357/1357-84.wav"; // AppContent এর সাথে রিংটোন সিঙ্ক করা হলো
+const CALL_SOUND = "https://assets.mixkit.co/active_storage/sfx/1357/1357-84.wav"; 
 
 const getAvatarUrl = (target) => {
   if (!target) return `https://ui-avatars.com/api/?name=User&background=27272a&color=fff`;
@@ -45,7 +46,7 @@ const OnyxMessengerHome = () => {
   }, [chatList]);
 
   /* ==========================================================
-      ⚡ NEURAL SIGNAL HANDLING (Memory Leak Proof)
+      ⚡ NEURAL SIGNAL HANDLING (Clean Stream Lock)
   ========================================================== */
   useEffect(() => {
     if (!socket) return;
@@ -71,11 +72,10 @@ const OnyxMessengerHome = () => {
       }
     };
 
-    // গ্লোবাল নোটিফিকেশন ইন্টারসেপ্টর (ডুপ্লিকেট রিংটোন প্রতিরোধ লক)
+    // ✅ ডুপ্লিকেট নোটিফিকেশন এড়াতে সিঙ্গেল চ্যানেল ফিল্টার
     const handleIncomingCall = (data) => {
       if (data.from === user?._id) return;
       
-      // শুধুমাত্র তখনই পপআপ দেখাবে যদি ইউজার এই মেসেঞ্জার হোমস্ক্রিনে অ্যাক্টিভ থাকে
       setIncomingCall(data);
       callAudio.current.loop = true;
       callAudio.current.play().catch(e => console.warn("Ringtone muted. Waiting for interaction."));
@@ -88,19 +88,16 @@ const OnyxMessengerHome = () => {
     };
 
     socket.on("getMessage", handleIncomingMessage);
-    socket.on("$incomingCall", handleIncomingCall);
-    socket.on("incomingCall", handleIncomingCall);
+    socket.on("$incomingCall", handleIncomingCall); // প্রাইমারি ওনিক্স নোটিফিকেশন চ্যানেল
     socket.on("callEnded", handleCallEnded);
     socket.on("endCall", handleCallEnded);
 
     return () => {
       socket.off("getMessage", handleIncomingMessage);
       socket.off("$incomingCall", handleIncomingCall);
-      socket.off("incomingCall", handleIncomingCall);
       socket.off("callEnded", handleCallEnded);
       socket.off("endCall", handleCallEnded);
       
-      // স্ক্রিন আনমাউন্ট হলে রিংটোন পুরোপুরি কিল করার সেফটি গার্ড
       callAudio.current.pause();
       callAudio.current.currentTime = 0;
     };
@@ -112,10 +109,8 @@ const OnyxMessengerHome = () => {
   const initiateCall = useCallback((targetUser, type) => {
     if (!targetUser?._id || !user?._id) return;
     
-    // ইউনিক ক্রিপ্টোগ্রাফিক রুম আইডি জেনারেট
     const roomId = [user._id, targetUser._id].sort().join("-"); 
     
-    // কলিং স্ক্রিনে পুশ (আউটবাউন্ড মোড)
     navigate(`/call/${roomId}`, {
       state: {
         callType: type || 'video',
@@ -294,7 +289,8 @@ const OnyxMessengerHome = () => {
 
         {selectedChat && (
           <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: "spring", damping: 30, stiffness: 200 }} className="fixed inset-0 z-[5000] bg-black">
-            <ChatInterface activeChat={selectedChat} onBack={() => setSelectedChat(null)} />
+            {/* ✅ এখানে ChatInterface এর বদলে ইম্পোর্ট করা CallPage কম্পোনেন্টটি সঠিকভাবে বসানো হলো */}
+            <CallPage activeChat={selectedChat} onBack={() => setSelectedChat(null)} />
           </motion.div>
         )}
       </AnimatePresence>

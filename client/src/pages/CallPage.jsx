@@ -29,7 +29,8 @@ const getAvatarUrl = (target) => {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=06b6d4&color=fff&bold=true`;
 };
 
-const ChatInterface = ({ activeChat, onBack, isGroup = false }) => {
+// ✅ ফাইলের নামের সাথে মিল রেখে কম্পোনেন্টের নাম CallPage দেওয়া হলো
+const CallPage = ({ activeChat, onBack, isGroup = false }) => {
   const { user, socket } = useContext(AuthContext);
   const navigate = useNavigate();
   const scrollRef = useRef(null);
@@ -56,7 +57,6 @@ const ChatInterface = ({ activeChat, onBack, isGroup = false }) => {
   // ২. ইনকামিং মেসেজ লিসেনার
   const handleGetMessage = useCallback((data) => {
     if (data.senderId === chatId) {
-      // কল সিগন্যাল হলে মেসেজ বক্সে দেখানোর দরকার নেই
       if (data.isCallSignal || data.isIncomingCall) return; 
 
       const decryptedText = data.type === 'media' ? data.text : decryptMessage(data.text);
@@ -92,7 +92,6 @@ const ChatInterface = ({ activeChat, onBack, isGroup = false }) => {
     const messageId = `${Date.now()}-${Math.random()}`;
     const isCall = additionalData.isCallSignal || additionalData.isIncomingCall;
     
-    // কল হলে এনক্রিপশন ছাড়াই পাঠানো হচ্ছে যাতে রিসিভার সহজে প্রসেস করতে পারে
     const finalContent = (type === 'text' && !isCall) ? encryptMessage(textToSend) : textToSend;
 
     const msgPayload = {
@@ -107,10 +106,9 @@ const ChatInterface = ({ activeChat, onBack, isGroup = false }) => {
     };
 
     if (socket?.connected) {
-      // কল ডাটা হলে ওনিক্স নোটিফিকেশন সিস্টেমের সকেট ইভেন্টে সিগন্যাল পাঠানো হচ্ছে
       if (isCall) {
         socket.emit("$incomingCall", msgPayload);
-        socket.emit("incomingCall", msgPayload); // ব্যাকআপ ফলব্যাক ইভেন্ট
+        socket.emit("incomingCall", msgPayload); 
       } else {
         socket.emit("sendMessage", msgPayload);
       }
@@ -127,17 +125,16 @@ const ChatInterface = ({ activeChat, onBack, isGroup = false }) => {
     }
   };
 
-  // ৪. 📞 ZEGO CLOUD INTEGRATED CALLING LOGIC
+  // ৪. 📞 ZEGO CLOUD ROOM SYNC CALLING
   const handleCallClick = (type) => {
     if (!chatId || !user?._id || !socket?.connected) {
       alert("Neural connection unstable. Please wait...");
       return;
     }
 
-    // উইন্ডোজ/লিনাক্স ক্রস নোড সিঙ্কের জন্য ইউজার আইডিগুলোকে সর্ট করে ইউনিক রুম আইডি তৈরি
-    const roomId = `room_${[user._id, chatId].sort().join("_")}`;
+    // OnyxMessengerHome এর ড্যাশ (-) আর্কিটেকচারের সাথে ১০০% সিঙ্ক
+    const roomId = [user._id, chatId].sort().join("-"); 
     
-    // রিসিভার হ্যান্ডশেক ডাটা স্ট্রাকচার
     const callMetadata = {
       isIncomingCall: true,
       isCallSignal: true,
@@ -145,14 +142,12 @@ const ChatInterface = ({ activeChat, onBack, isGroup = false }) => {
       from: user._id,
       name: user.fullName || user.name || "Onyx Drifter",
       avatar: getAvatarUrl(user),
-      type: type, // 'audio' অথবা 'video'
+      type: type, 
       roomId: roomId
     };
 
-    // পার্টনারের ফোনে রিংটোন এবং কাস্টম টোস্ট পপ-আপ ট্রিগার করার জন্য সিগন্যাল পাঠানো
     handleSend(`Incoming ${type} call...`, type, callMetadata);
 
-    // নিজে সরাসরি কলিং পেজে নেভিগেট করা (রুম আইডি এবং টাইপ স্টেট সহ)
     navigate(`/call/${roomId}`, { 
       state: { 
         callType: type,
@@ -272,4 +267,5 @@ const ChatInterface = ({ activeChat, onBack, isGroup = false }) => {
   );
 };
 
+// ✅ ফাইলের নাম অনুযায়ী এক্সপোর্ট ডিফাইন করা হলো
 export default CallPage;
