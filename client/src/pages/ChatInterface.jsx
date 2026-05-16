@@ -6,7 +6,7 @@ import AgoraRTC from 'agora-rtc-sdk-ng';
 import axios from 'axios'; 
 import { AuthContext } from '../context/AuthContext';
 
-// ⚠️ আপনার আগোরা কনসোল (dashboard.agora.io) থেকে প্রাপ্ত App ID এখানে বসান
+// ⚠️ আগোরা কনসোল থেকে প্রাপ্ত App ID
 const AGORA_APP_ID = "4feceac3c45a4f19ae8074935cf4e94e"; 
 
 const CallPage = () => {
@@ -53,14 +53,16 @@ const CallPage = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // ২. রিমোট ইউজারের প্রোফাইল ডাটা ফেচ (আপনার আগের লজিক অপরিবর্তিত)
+  // ২. রিমোট ইউজারের প্রোফাইল ডাটা ফেচ
   useEffect(() => {
     const fetchRemoteUser = async () => {
       try {
+        if (!roomId) return;
         const targetId = callerId || roomId.split("-").find(id => id !== user?._id);
         if (targetId) {
+          const token = localStorage.getItem('onyx_token') || localStorage.getItem('token');
           const response = await axios.get(`/api/users/${targetId}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+            headers: { Authorization: `Bearer ${token}` }
           });
           setRemoteUser(response.data);
         }
@@ -68,42 +70,48 @@ const CallPage = () => {
         console.error("Failed to fetch remote user profile:", err);
       }
     };
-    if (user) fetchRemoteUser();
+    if (user && roomId) fetchRemoteUser();
   }, [roomId, callerId, user]);
 
   // ৩. আগোরা কোর ইঞ্জিন ইনিশিয়ালাইজেশন
   useEffect(() => {
-    if (!socket || !user || isMediaInitialized.current) return;
-    isMediaInitialized.current = true; // রিঅ্যাক্ট ১৮-এর ডাবল রেন্ডার লক ট্রিক
+    // 🛠️ সেফটি চেক: সকেট, ইউজার অথবা roomId না থাকলে বা অলরেডি ইনিশিয়েট হলে রিটার্ন করবে
+    if (!socket || !user || !roomId || isMediaInitialized.current) return;
+    isMediaInitialized.current = true; 
+
+    // চ্যানেল নেম ভ্যালিডেশন এবং ফরম্যাটিং (Safe Lock)
+    const validChannelName = String(roomId).trim();
+    if (!validChannelName || validChannelName === 'undefined') {
+      console.error("❌ Invalid Channel Name dynamic intercept!");
+      navigate('/messages');
+      return;
+    }
 
     const initAgoraCall = async () => {
       try {
         // আগোরা আরটিসি ক্লায়েন্ট অবজেক্ট তৈরি
         agoraClientRef.current = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
 
-        // রিমোট ট্র্যাক লিসেনার (অন্য প্রান্তের ইউজার ক্যামের/মাইক অন করলে এখানে ধরা পড়বে)
+        // রিমোট ট্র্যাক লিসেনার
         agoraClientRef.current.on("user-published", async (remoteUserObj, mediaType) => {
           await agoraClientRef.current.subscribe(remoteUserObj, mediaType);
           setCallAccepted(true);
           setCallStatus('connected');
 
           if (mediaType === "video" && remoteVideoRef.current) {
-            // রিমোট ভিডিও প্লেব্যাক (আগোরা ডিরেক্ট ডম হ্যান্ডেল করে)
             remoteUserObj.videoTrack.play(remoteVideoRef.current);
           }
           if (mediaType === "audio") {
-            // রিমোট অডিও প্লেব্যাক (অটো-প্লে বাগ ছাড়াই প্লে হবে)
             remoteUserObj.audioTrack.play();
           }
         });
 
-        // অন্য প্রান্ত থেকে কল কেটে দিলে বা চ্যানেল থেকে বের হয়ে গেলে
         agoraClientRef.current.on("user-unpublished", () => {
           cleanupAndExit();
         });
 
-        // আগোরা চ্যানেলে জয়েন করা (সিকিউরিটি না থাকলে টোকেন আপাতত null রাখা হয়েছে)
-        await agoraClientRef.current.join(AGORA_APP_ID, roomId, null, user._id);
+        // 🛠️ ফিক্সড: নিশ্চিতভাবে সঠিক এবং ভ্যালিড চ্যানেল নেম পাস করা হচ্ছে
+        await agoraClientRef.current.join(AGORA_APP_ID, validChannelName, null, user._id);
 
         // লোকাল মাইক্রোফোন এবং ক্যামেরা ট্র্যাক তৈরি করা
         const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks(
@@ -119,24 +127,26 @@ const CallPage = () => {
           localVideoTrackRef.current.play(localVideoRef.current);
         }
 
-        // নিজের স্ট্রিম বা ট্র্যাকগুলো আগোরা গ্লোবাল সার্ভারে পাবলিশ করা
+        // নিজের স্ট্রিম গ্লোবাল সার্ভারে পাবলিশ করা
         if (callType === 'video') {
           await agoraClientRef.current.publish([localAudioTrackRef.current, localVideoTrackRef.current]);
         } else {
           await agoraClientRef.current.publish([localAudioTrackRef.current]);
-          localVideoTrackRef.current.close(); // অডিও কল হলে ক্যামেরা হার্ডওয়্যার ফ্রি করে দেওয়া
+          localVideoTrackRef.current.close(); 
         }
 
-        // আপনার আগের Socket.io সিগন্যালিং নোটিফিকেশন ফ্লো
-        const targetId = callerId || roomId.split("-").find(id => id !== user?._id);
+        // ⚡ সকেট সিগন্যালিং পাইপলাইন ফিক্স ($incomingCall এর সাথে মিল রেখে)
+        const targetId = callerId || validChannelName.split("-").find(id => id !== user?._id);
         if (!location.state?.incomingSignal) {
           setCallStatus('ringing');
-          socket.emit("callUser", { 
+          socket.emit("$incomingCall", { 
+            isIncomingCall: true,
+            isCallSignal: true,
             userToCall: targetId,
             from: user._id,
             name: user.fullName || "Onyx User",
-            type: callType,
-            roomId: roomId
+            callType: callType,
+            roomId: validChannelName
           });
         } else {
           setCallStatus('connecting');
@@ -144,36 +154,40 @@ const CallPage = () => {
 
       } catch (error) {
         console.error("❌ Agora Media Engine Error:", error);
-        navigate('/messages');
+        cleanupAndExit();
       }
     };
 
     initAgoraCall();
 
-    // সকেট মেসেজ লিসেনার (কল কাটলে রিঅ্যাক্ট করার জন্য)
+    // ⚡ সিঙ্ক লিসেনার্স (সরাসরি সকেট গেটওয়ে ট্র্যাকিং)
     socket.on("callAccepted", () => {
       setCallAccepted(true);
       setCallStatus('connected');
     });
 
     socket.on("callEnded", () => cleanupAndExit());
+    socket.on("endCall", () => cleanupAndExit());
 
     return () => {
       socket.off("callAccepted");
       socket.off("callEnded");
+      socket.off("endCall");
       leaveAgoraChannels();
     };
   }, [socket, user, roomId]);
 
-  // আগোরা হার্ডওয়্যার রিসোর্স রিলিজ এবং চ্যানেল লিভ করার ফাংশন
+  // আগোরা হার্ডওয়্যার রিসোর্স রিলিজ এবং চ্যানেল লিভ
   const leaveAgoraChannels = () => {
     if (localAudioTrackRef.current) {
       localAudioTrackRef.current.stop();
       localAudioTrackRef.current.close();
+      localAudioTrackRef.current = null;
     }
     if (localVideoTrackRef.current) {
       localVideoTrackRef.current.stop();
       localVideoTrackRef.current.close();
+      localVideoTrackRef.current = null;
     }
     if (agoraClientRef.current) {
       agoraClientRef.current.leave();
@@ -188,7 +202,7 @@ const CallPage = () => {
 
   const endCall = () => {
     const targetId = callerId || roomId.split("-").find(id => id !== user?._id);
-    socket.emit("endCall", { to: targetId });
+    socket.emit("endCall", { to: targetId, roomId: roomId });
     cleanupAndExit();
   };
 
@@ -209,10 +223,9 @@ const CallPage = () => {
   return (
     <div className="h-screen bg-black flex flex-col items-center justify-center relative overflow-hidden font-sans">
       
-      {/* রিমোট ভিডিও গ্রিড (অন্য পাশের ফেস) */}
+      {/* রিমোট ভিডিও গ্রিড */}
       <div className="absolute inset-0 bg-[#020617] flex items-center justify-center">
         {callAccepted ? (
-            /* আগোরার জন্য জাস্ট একটি খালি HTML রিলেটিভ Container লাগবে, ভিডিও এর ভেতর ইনজেক্ট হবে */
             <div 
               ref={remoteVideoRef} 
               className="w-full h-full object-cover" 
@@ -223,7 +236,7 @@ const CallPage = () => {
                 <div className="absolute inset-0 rounded-[2.5rem] border-2 border-cyan-500 animate-ping opacity-10" />
                 <div className="w-32 h-32 rounded-[2rem] bg-zinc-800 overflow-hidden border border-white/5 flex items-center justify-center shadow-2xl">
                     <img 
-                      src={remoteUser?.profilePic || `https://ui-avatars.com/api/?name=${remoteUser?.fullName || 'Onyx'}&background=06b6d4&color=fff&size=128`} 
+                      src={remoteUser?.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteUser?.fullName || 'Onyx')}&background=06b6d4&color=fff&size=128`} 
                       className="w-full h-full object-cover" 
                       alt="avatar" 
                     />
