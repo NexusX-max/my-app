@@ -10,9 +10,7 @@ import SearchScreen from './SearchScreen';
 import ChatInterface from './ChatInterface';
 import SettingsScreen from './SettingsScreen';
 
-// --- Sound Assets ---
 const MSG_SOUND = "https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3"; 
-// হাই-কোয়ালিটি লুপেড কলিং টিউন
 const CALL_SOUND = "https://assets.mixkit.co/active_storage/sfx/1357/1357-84.wav";
 
 const getAvatarUrl = (target) => {
@@ -33,7 +31,6 @@ const OnyxMessengerHome = () => {
   const msgAudio = useRef(new Audio(MSG_SOUND));
   const callAudio = useRef(null);
 
-  // চ্যাট লিস্ট স্টেট (Local Storage sync সহ)
   const [chatList, setChatList] = useState(() => {
     const savedChats = localStorage.getItem('onyx_recent_connections');
     return savedChats ? JSON.parse(savedChats) : [
@@ -45,7 +42,6 @@ const OnyxMessengerHome = () => {
     localStorage.setItem('onyx_recent_connections', JSON.stringify(chatList));
   }, [chatList]);
 
-  // রিংটোন বন্ধ করার সেফ মেথড
   const stopRingtone = () => {
     if (callAudio.current) {
       callAudio.current.pause();
@@ -57,7 +53,7 @@ const OnyxMessengerHome = () => {
       ⚡ NEURAL SIGNAL HANDLING (Socket Logic)
   ========================================================== */
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !user) return;
 
     const handleIncomingMessage = (data) => {
       if (data.isIncomingCall || data.isCallSignal) return;
@@ -80,19 +76,18 @@ const OnyxMessengerHome = () => {
       }
     };
 
-    // ⚡ ইনকামিং কল রিসিভ এবং রিংটোন লজিক
     const handleIncomingCall = (data) => {
-      // নিজের পাঠানো সিগন্যাল নিজেই ক্যাচ করা বন্ধ করার চেক
-      if (data.from === user?._id) return;
+      // সেফটি গেটওয়ে: কলটি শুধু যদি আমার উদ্দেশ্যে আসে, তবেই পপ-আপ ফায়ার হবে
+      if (data.userToCall === user._id && data.from !== user._id) {
+        setIncomingCall(data);
 
-      setIncomingCall(data);
-
-      if (!callAudio.current) {
-        callAudio.current = new Audio(CALL_SOUND);
-        callAudio.current.loop = true;
+        if (!callAudio.current) {
+          callAudio.current = new Audio(CALL_SOUND);
+          callAudio.current.loop = true;
+        }
+        
+        callAudio.current.play().catch(e => console.warn("Audio blocked by browser config"));
       }
-      
-      callAudio.current.play().catch(e => console.warn("Audio blocked by browser policy until interaction"));
     };
 
     const handleCallEnded = () => {
@@ -119,7 +114,6 @@ const OnyxMessengerHome = () => {
   const initiateCall = useCallback((targetUser, type) => {
     if (!targetUser?._id || !user?._id) return;
     const roomId = [user._id, targetUser._id].sort().join("-"); 
-    // কলার পেজে ডাইরেক্ট পুশ মোড
     navigate(`/call/${roomId}?type=${type}&mode=outbound`);
   }, [user, navigate]);
 
@@ -127,13 +121,11 @@ const OnyxMessengerHome = () => {
     if (!incomingCall || !user) return;
     stopRingtone();
 
-    // কলার এন্ডে একসেপ্ট ইভেন্ট পাস করা
     socket.emit("callAccepted", { to: incomingCall.from });
 
     const roomId = incomingCall.roomId || [user._id, incomingCall.from].sort().join("-");
-    const callType = incomingCall.callType || incomingCall.type || 'video';
+    const callType = incomingCall.callType || 'video';
     
-    // রিসিভারকে ইনবাউন্ড মোডে রিডাইরেক্ট
     navigate(`/call/${roomId}?type=${callType}&mode=inbound`, {
       state: { incomingSignal: true, callerId: incomingCall.from }
     });
@@ -148,12 +140,8 @@ const OnyxMessengerHome = () => {
     }
   };
 
-  /* ==========================================================
-      🎯 USER SELECTION
-  ========================================================== */
   const handleUserSelect = useCallback((u) => {
     if (!u) return;
-    
     const userId = u._id || u.id;
     if (!userId) return;
 
@@ -197,7 +185,6 @@ const OnyxMessengerHome = () => {
               </div>
             </div>
             
-            {/* Search Bar Trigger */}
             <div 
               onClick={() => setShowSearch(true)} 
               className="relative mb-4 bg-zinc-900/40 border border-white/5 rounded-2xl py-4 pl-5 cursor-text text-zinc-500 text-[11px] uppercase tracking-widest hover:bg-zinc-900/60 transition-all flex items-center gap-3"

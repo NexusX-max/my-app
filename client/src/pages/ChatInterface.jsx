@@ -6,7 +6,6 @@ import AgoraRTC from 'agora-rtc-sdk-ng';
 import axios from 'axios'; 
 import { AuthContext } from '../context/AuthContext';
 
-// ⚠️ আগোরা কনসোল থেকে প্রাপ্ত App ID
 const AGORA_APP_ID = "4feceac3c45a4f19ae8074935cf4e94e"; 
 
 const CallPage = () => {
@@ -17,7 +16,7 @@ const CallPage = () => {
   const { user, socket } = useContext(AuthContext);
 
   const callType = searchParams.get('type') || 'video';
-  const mode = searchParams.get('mode') || 'outbound'; // outbound = কলার, inbound = রিসিভার
+  const mode = searchParams.get('mode') || 'outbound'; 
   const callerId = location.state?.callerId;
 
   const [callAccepted, setCallAccepted] = useState(mode === 'inbound');
@@ -28,7 +27,6 @@ const CallPage = () => {
   const [isVideoOn, setIsVideoOn] = useState(callType === 'video');
   const [callDuration, setCallDuration] = useState(0);
 
-  // আগোরা ক্লায়েন্ট এবং লোকাল ট্র্যাক রেফারেন্স
   const agoraClientRef = useRef(null);
   const localAudioTrackRef = useRef(null);
   const localVideoTrackRef = useRef(null);
@@ -37,7 +35,6 @@ const CallPage = () => {
   const remoteVideoRef = useRef(null);
   const isMediaInitialized = useRef(false);
 
-  // ১. কল টাইমার লজিক
   useEffect(() => {
     let interval;
     if (callAccepted) {
@@ -54,7 +51,6 @@ const CallPage = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // ২. রিমোট ইউজারের প্রোফাইল ডাটা ফেচ
   useEffect(() => {
     const fetchRemoteUser = async () => {
       try {
@@ -74,14 +70,12 @@ const CallPage = () => {
     if (user && roomId) fetchRemoteUser();
   }, [roomId, callerId, user]);
 
-  // ৩. আগোরা কোর ইঞ্জিন ইনিশিয়ালাইজেশন
   useEffect(() => {
     if (!socket || !user || !roomId || isMediaInitialized.current) return;
     isMediaInitialized.current = true; 
 
     const validChannelName = String(roomId).trim();
     if (!validChannelName || validChannelName === 'undefined') {
-      console.error("❌ Invalid Channel Name!");
       navigate('/messages');
       return;
     }
@@ -90,7 +84,6 @@ const CallPage = () => {
       try {
         agoraClientRef.current = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
 
-        // রিমোট ট্র্যাক লিসেনার
         agoraClientRef.current.on("user-published", async (remoteUserObj, mediaType) => {
           await agoraClientRef.current.subscribe(remoteUserObj, mediaType);
           setCallAccepted(true);
@@ -110,7 +103,6 @@ const CallPage = () => {
 
         await agoraClientRef.current.join(AGORA_APP_ID, validChannelName, null, user._id);
 
-        // ট্র্যাক তৈরি করা
         const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks(
           { encoderConfig: "music_standard" },
           { encoderConfig: "720p_1" }
@@ -130,31 +122,28 @@ const CallPage = () => {
           localVideoTrackRef.current.close(); 
         }
 
-        // ⚡ সিগন্যালিং ট্রিগার: যদি আমি নিজে কল দাতা (outbound) হই, তবেই শুধু সিগন্যাল পাঠাবো
+        // ⚡ সিগন্যালিং পেলোড ফিক্স করা হলো যাতে রিসিভারের অবজেক্ট ফিল্টার ক্লিয়ার হয়
         const targetId = callerId || validChannelName.split("-").find(id => id !== user?._id);
         if (mode === 'outbound') {
           setCallStatus('ringing');
           socket.emit("$incomingCall", { 
-            isIncomingCall: true,
-            isCallSignal: true,
             userToCall: targetId,
             from: user._id,
-            name: user.fullName || "Onyx User",
-            avatar: user.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName || 'Onyx')}&background=06b6d4&color=fff`,
+            name: user.fullName || "Onyx Drifter",
+            avatar: user.profilePic || "",
             callType: callType,
             roomId: validChannelName
           });
         }
 
       } catch (error) {
-        console.error("❌ Agora Media Engine Error:", error);
+        console.error("❌ Agora Engine Error:", error);
         cleanupAndExit();
       }
     };
 
     initAgoraCall();
 
-    // সকেট হ্যান্ডলার্স
     socket.on("callAccepted", () => {
       setCallAccepted(true);
       setCallStatus('connected');
