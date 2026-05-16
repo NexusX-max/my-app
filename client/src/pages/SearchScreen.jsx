@@ -33,7 +33,7 @@ const SearchScreen = ({ onBack, onSelect }) => {
       }
 
       const response = await axios.post(
-        'https://api.onyx-drift.com/api/v1/search/neural', 
+        'https://my-app-3-kn3k.onrender.com', 'https://my-app-2-uzoi.onrender.com','https://my-app-v6xz.onrender.com','https://my-app-4-btda.onrender.com',
         { query: query.trim() },
         {
           headers: {
