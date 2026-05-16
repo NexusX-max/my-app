@@ -11,7 +11,6 @@ import { AuthContext } from '../context/AuthContext';
 const ONYX_SECRET_KEY = "onyx_neural_shield_2026"; 
 
 // --- ZegoCloud Neural Environment Config ---
-// আপনার দেওয়া ক্রেডেনশিয়ালস এখানে ডিরেক্ট গার্ড মেকানিজম হিসেবে ইন্টিগ্রেট করে দেওয়া হলো
 const ZEGO_APP_ID = Number(import.meta.env.VITE_ZEGO_APP_ID) || 1822629215;
 const ZEGO_SERVER_SECRET = import.meta.env.VITE_ZEGO_SERVER_SECRET || "c90ccf1f9bf7ee0e27a29539fc4d03ed";
 
@@ -34,12 +33,12 @@ const getAvatarUrl = (target) => {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=06b6d4&color=fff&bold=true`;
 };
 
-// ✅ ফাইল এবং ওনিক্স রুট ডিরেক্টরি অনুযায়ী কম্পোনেন্ট নাম লকড
 const CallPage = ({ activeChat, onBack, isGroup = false }) => {
   const { user, socket } = useContext(AuthContext);
   const navigate = useNavigate();
   const scrollRef = useRef(null);
   
+  // ✅ আইডি হ্যান্ডলিং এখানে সম্পূর্ণ সেফগার্ড করা হলো যেন কোনোভাবেই ভুল আইডি জেনারেট না হয়
   const chatId = activeChat?._id || activeChat?.id;
   const chatName = activeChat?.fullName || activeChat?.name || "Neural Node";
   const storageKey = isGroup ? `group_chat_${chatId}` : `chat_${chatId}`;
@@ -130,14 +129,14 @@ const CallPage = ({ activeChat, onBack, isGroup = false }) => {
     }
   };
 
-  // ৪. 📞 ZEGO CLOUD ROOM SYNC CALLING (With Secret Key Matrix)
+  // ৪. 📞 ZEGO CLOUD ROOM SYNC CALLING (আইডি ওলটপালট ফিক্সড ম্যাট্রিক্স)
   const handleCallClick = (type) => {
     if (!chatId || !user?._id || !socket?.connected) {
       alert("Neural connection unstable. Please wait...");
       return;
     }
 
-    // হোমসক্রিনের ড্যাশ (-) আর্কিটেকচারের সাথে ১০০% সিঙ্ক করা রুম আইডি জেনারেটর
+    // হোমসক্রিনের ড্যাশ (-) আর্কিটেকচারের সাথে ১০০% লক করা ইউনিক রুম আইডি জেনারেটর
     const roomId = [user._id, chatId].sort().join("-"); 
     
     const callMetadata = {
@@ -149,18 +148,20 @@ const CallPage = ({ activeChat, onBack, isGroup = false }) => {
       avatar: getAvatarUrl(user),
       type: type, 
       roomId: roomId,
-      // জেড ক্লাউড কোর এনভায়রনমেন্ট পাসিং প্যারামিটার
       zegoAppId: ZEGO_APP_ID,
       zegoSecret: ZEGO_SERVER_SECRET
     };
 
+    // রিসিভার এন্ডে নোটিফিকেশন সিগন্যাল ট্রিগার
     handleSend(`Incoming ${type} call...`, type, callMetadata);
 
+    // পুশ রাউটিং বাফারিং ফিক্স
     navigate(`/call/${roomId}`, { 
       state: { 
         callType: type,
         mode: 'outbound',
         callerId: user._id,
+        receiverId: chatId,
         appId: ZEGO_APP_ID,
         serverSecret: ZEGO_SERVER_SECRET
       } 
