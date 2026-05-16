@@ -1,5 +1,4 @@
 import React, { useState, useContext, useEffect } from 'react';
-import axios from 'axios';
 import { 
   CheckCircle, Camera, Edit3, Plus, Loader2, X, Heart, MessageCircle
 } from 'lucide-react';
@@ -8,17 +7,14 @@ import {
 import { AuthContext } from '../context/AuthContext';
 
 const MyProfile = () => {
-  // AuthContext থেকে সরাসরি গ্লোবাল ইউজার ডাটা নেওয়া হচ্ছে
-  const { user: contextUser } = useContext(AuthContext);
+  // 🛠️ ফিক্সড লজিক: AuthContext থেকে সরাসরি গ্লোবাল ইউজার ডাটা এবং কাস্টম api ইনস্ট্যান্স আনা হলো
+  const { user: contextUser, api } = useContext(AuthContext);
   
   const [user, setUser] = useState(null);
   const [posts, setPosts] = useState([]); 
   const [loading, setLoading] = useState(true);
   const [postsLoading, setPostsLoading] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  
-  // আপনার ডোমেইন অনুযায়ী API URL সেট করা হয়েছে
-  const API_BASE = "https://api.onyx-drift.com";
 
   const [editData, setEditData] = useState({
     firstName: '',
@@ -28,7 +24,7 @@ const MyProfile = () => {
     website: ''
   });
 
-  // প্রথমে গ্লোবাল কনটেক্সট এর ডাটা দিয়ে স্টেট ইনিশিয়ালাইজ করা হচ্ছে
+  // প্রথমে গ্লোবাল কনটেক্সট এর ডাটা দিয়ে স্টেট ইনিশিয়ালাইজ করা হচ্ছে
   useEffect(() => {
     if (contextUser) {
       setUser(contextUser);
@@ -44,7 +40,7 @@ const MyProfile = () => {
     fetchMyPosts(); 
   }, [contextUser]);
 
-  // ডাটাবেস থেকে ফ্রেশ প্রোফাইল ডাটা রিট্রিভ করা
+  // 🛠️ ফিক্সড লজিক: হার্ডকোডেড API_BASE বাদ দিয়ে AuthContext-এর api ইন্টারসেপ্টর ব্যবহার করে প্রোফাইল ডাটা রিট্রিভ করা
   const fetchMyData = async () => {
     try {
       const token = localStorage.getItem('onyx_token'); 
@@ -52,9 +48,7 @@ const MyProfile = () => {
         setLoading(false);
         return;
       }
-      const res = await axios.get(`${API_BASE}/api/profile/me`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get('/profile/me');
       setUser(res.data);
       setEditData({
         firstName: res.data.firstName || '',
@@ -70,7 +64,7 @@ const MyProfile = () => {
     }
   };
 
-  // নিজের করা পোস্টগুলো টেনে আনা
+  // 🛠️ ফিক্সড লজিক: api ইনস্ট্যান্স ব্যবহার করে নিজের করা পোস্টগুলো টেনে আনা
   const fetchMyPosts = async () => {
     try {
       const token = localStorage.getItem('onyx_token');
@@ -78,9 +72,7 @@ const MyProfile = () => {
         setPostsLoading(false);
         return;
       }
-      const res = await axios.get(`${API_BASE}/api/posts/me`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get('/posts/me');
       setPosts(res.data);
       setPostsLoading(false);
     } catch (err) {
@@ -89,7 +81,7 @@ const MyProfile = () => {
     }
   };
 
-  // Avatar এবং Cover ইমেজ আপলোড হ্যান্ডলার
+  // 🛠️ ফিক্সড লজিক: api ইনস্ট্যান্স ব্যবহার করে Avatar এবং Cover ইমেজ আপলোড হ্যান্ডলার
   const handleUpload = async (e, type) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -97,11 +89,9 @@ const MyProfile = () => {
     formData.append(type, file);
 
     try {
-      const token = localStorage.getItem('onyx_token');
-      const res = await axios.put(`${API_BASE}/api/profile/update`, formData, {
+      const res = await api.put('/profile/update', formData, {
         headers: { 
-          'Content-Type': 'multipart/form-data',
-          Authorization: `Bearer ${token}` 
+          'Content-Type': 'multipart/form-data'
         }
       });
       
@@ -114,14 +104,11 @@ const MyProfile = () => {
     }
   };
 
-  // টেক্সট ডাটা (Name, Bio, Location) আপডেট হ্যান্ডলার
+  // 🛠️ ফিক্সড লজিক: api ইনস্ট্যান্স ব্যবহার করে টেক্সট ডাটা আপডেট হ্যান্ডলার
   const handleUpdateText = async (e) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem('onyx_token');
-      const res = await axios.put(`${API_BASE}/api/profile/update`, editData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.put('/profile/update', editData);
       setUser(res.data);
       setIsEditModalOpen(false);
       alert("Identity synced!");
