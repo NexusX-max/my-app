@@ -2,29 +2,26 @@ import React, { createContext, useState, useEffect, useContext, useMemo, useCall
 import axios from 'axios';
 import { io } from 'socket.io-client';
 
-// ✅ ১. লোড ব্যালেন্সিং লজিক (৪টি রেন্ডার সার্ভার)
+// ✅ ১. গ্লোবাল ওনিক্স নেটওয়ার্ক নোডস
 const API_NODES = [
-  'https://my-app-v6xz.onrender.com',
+  'https://my-app-v6xz.onrender.com', // 🚀 মাস্টার নোড: সকেট এবং গ্লোবাল সিগন্যালিং ট্রাফিক মেইনটেইন করবে
   'https://my-app-2-uzoi.onrender.com',
   'https://my-app-3-kn3k.onrender.com',
   'https://my-app-4-btda.onrender.com'
 ];
 
-// র‍্যান্ডমলি একটি নোড সিলেক্ট করার ফাংশন
+// সকেট এবং সেশন মিসম্যাচ রোধ করতে মাস্টার নোড আর্কিটেকচার
 const getLiveNode = () => {
   if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
     return "http://localhost:5005";
   }
-  return API_NODES[Math.floor(Math.random() * API_NODES.length)];
+  // প্লে স্টোর এবং Zego রিংটোন ১০০% সাকসেসফুল রাখতে সকেট ও কোর এপিআই মাস্টার নোডে ফিক্সড রাখা হলো
+  return API_NODES[0]; 
 };
 
 const BASE_URL = getLiveNode();
 const API_BASE_URL = `${BASE_URL}/api`;
 const TOKEN_KEY = 'onyx_token';
-
-// --- Sound Assets ---
-const GLOBAL_MSG_SOUND = "https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3"; 
-const GLOBAL_CALL_SOUND = "https://assets.mixkit.co/active_storage/sfx/1357/1357-84.wav";
 
 export const AuthContext = createContext();
 
@@ -33,13 +30,8 @@ export const AuthProvider = ({ children }) => {
   const [socket, setSocket] = useState(null);
   const [loading, setLoading] = useState(true);
   
-  // ─── গ্লোবাল নোটিফিকেশন ও কল স্টেট ──────────────────────────────────
-  const [globalIncomingCall, setGlobalIncomingCall] = useState(null);
-  const [globalNotification, setGlobalNotification] = useState(null);
-  
+  // সকেট কানেকশন ট্র্যাকিং
   const socketConnecting = useRef(false);
-  const msgAudio = useRef(new Audio(GLOBAL_MSG_SOUND));
-  const callAudio = useRef(new Audio(GLOBAL_CALL_SOUND));
 
   // 🛠️ ২. Axios Instance কনফিগারেশন
   const api = useMemo(() => {
@@ -67,19 +59,13 @@ export const AuthProvider = ({ children }) => {
       socket.emit("logout_user", user?._id);
       socket.disconnect();
     }
-    if (callAudio.current) {
-      callAudio.current.pause();
-      callAudio.current.currentTime = 0;
-    }
     setUser(null);
     setSocket(null);
-    setGlobalIncomingCall(null);
-    setGlobalNotification(null);
-    window.socket = null;
+    if (window.socket) window.socket = null;
     socketConnecting.current = false;
   }, [socket, user?._id]);
 
-  // 🛠️ ৪. সকেট কানেকশন এবং গ্লোবাল সিগন্যাল লিসেনিং
+  // 🛠️ ৪. সকেট কানেকশন (Stable Signal Syncing)
   useEffect(() => {
     let socketInstance = null;
 
@@ -87,79 +73,35 @@ export const AuthProvider = ({ children }) => {
       socketConnecting.current = true;
       const currentUserId = user._id;
 
+      // সকেট এখন ১টি স্টেবল নোডে হিট করবে যাতে সব ইউজার একে অপরকে অনলাইনে পায়
       socketInstance = io(BASE_URL, {
         query: { userId: currentUserId },
-        transports: ['websocket'], 
+        transports: ['websocket'], // স্পিড ও ক্যাপাসিটর ফ্রেন্ডলি কানেকশন
         reconnection: true,
-        reconnectionAttempts: 15, // লোড ব্যালেন্সারের জন্য রিকানেকশন বাড়ানো হলো
-        reconnectionDelay: 2000,
+        reconnectionAttempts: 15, 
+        reconnectionDelay: 1000,
         secure: true,
         withCredentials: true
       });
 
       socketInstance.on("connect", () => {
-        console.log(`%c 🚀 Onyx Core Linked: ${BASE_URL}`, "color: #06b6d4; font-weight: bold;");
+        console.log(`%c 🚀 Onyx Synapse Connected: ${BASE_URL}`, "color: #06b6d4; font-weight: bold;");
         window.socket = socketInstance;
-        
-        // ব্যাকএন্ডে সকেট ম্যাপিং রেজিস্টার করা
         socketInstance.emit("addNewUser", currentUserId);
-        socketInstance.emit("registerUser", currentUserId); 
-        
+        socketInstance.emit("registerUser", currentUserId); // ব্যাকএন্ড কল সিঙ্কিং ইভেন্ট ট্র্রিগার
         setSocket(socketInstance);
       });
 
-      // ─── 🔔 গ্লোবাল মেসেজ নোটিফিকেশন লিসেনার ──────────────────────
-      socketInstance.on("getMessage", (data) => {
-        // যদি ডাটা কলের কোনো সিগন্যাল না হয়
-        if (data.isIncomingCall || data.isCallSignal) return;
-
-        // নোটিফিকেশন স্টেট সেট করা (স্ক্রিনে পপ-আপ দেখানোর জন্য)
-        setGlobalNotification({
-          type: 'message',
-          title: data.senderName || "New Transmission",
-          body: data.text || "Encrypted text package received...",
-          senderId: data.senderId
-        });
-
-        // মেসেজ টোন প্লে করা
-        msgAudio.current.play().catch(() => {});
-        
-        // ৫ সেকেন্ড পর নোটিফিকেশন পপ-আপ রিমুভ করা
-        setTimeout(() => setGlobalNotification(null), 5000);
-      });
-
-      // ─── 📞 গ্লোবাল ইনকামিং কল সিগন্যাল লিসেনার ────────────────────
-      socketInstance.on("$incomingCall", (data) => {
-        if (data.from === currentUserId) return; // নিজের কল ফিল্টার
-
-        setGlobalIncomingCall(data);
-        
-        // রিংটোন লুপ অন করে প্লে করা
-        callAudio.current.loop = true;
-        callAudio.current.play().catch(e => console.warn("Ringtone blocked by browser autoplay policy. Waiting for user interaction."));
-      });
-
-      // ─── 📵 কল কেটে দেওয়ার গ্লোবাল লিসেনার ────────────────────────
-      const handleCallStop = () => {
-        setGlobalIncomingCall(null);
-        callAudio.current.pause();
-        callAudio.current.currentTime = 0;
-      };
-
-      socketInstance.on("callEnded", handleCallStop);
-      socketInstance.on("endCall", handleCallStop);
-
       socketInstance.on("connect_error", (err) => {
-        console.warn("📡 Neural Core Signal Weak. Re-routing package...");
-        socketConnecting.current = false;
+        console.warn("📡 Neural Signal Weak. Re-establishing link...");
+        socketConnecting.current = false; 
       });
 
       return () => {
         if (socketInstance) {
           socketInstance.disconnect();
-          window.socket = null;
+          if (window.socket) window.socket = null;
           socketConnecting.current = false;
-          handleCallStop();
           console.log("📡 Neural link closed.");
         }
       };
@@ -219,15 +161,6 @@ export const AuthProvider = ({ children }) => {
     window.location.href = '/';
   }, [clearAuthData]);
 
-  // কল ম্যানুয়ালি রেসপন্স বা রিং বন্ধ করার হেল্পার (UI ক্লিয়ারের জন্য)
-  const clearGlobalCallState = useCallback(() => {
-    if (callAudio.current) {
-      callAudio.current.pause();
-      callAudio.current.currentTime = 0;
-    }
-    setGlobalIncomingCall(null);
-  }, []);
-
   const contextValue = useMemo(() => ({
     user, 
     socket, 
@@ -237,11 +170,8 @@ export const AuthProvider = ({ children }) => {
     logout,
     isAuthenticated: !!user,
     api,
-    currentNode: BASE_URL,
-    globalIncomingCall,      // যে কোনো স্ক্রিন থেকে ইনকামিং কল ট্র্যাক করার জন্য
-    globalNotification,      // যে কোনো স্ক্রিনে মেসেজ নোটিফিকেশন পপ-আপ ট্রিগার করার জন্য
-    clearGlobalCallState     // কল রিসিভ বা রিজেক্টের পর রিংটোন অফ করার ফাংশন
-  }), [user, socket, loading, login, signup, logout, api, globalIncomingCall, globalNotification, clearGlobalCallState]);
+    currentNode: BASE_URL 
+  }), [user, socket, loading, login, signup, logout, api]);
 
   return (
     <AuthContext.Provider value={contextValue}>

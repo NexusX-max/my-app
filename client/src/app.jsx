@@ -46,7 +46,7 @@ function AppContent() {
   const location = useLocation();
   const navigate = useNavigate(); 
   
-  // AuthContext থেকে গ্লোবাল সকেট এবং নোটিফিকেশন স্টেটগুলো নিয়ে আসা হলো
+  // AuthContext থেকে গ্লোবাল সকেট এবং নোটিফিকেশন স্টেটগুলো নিয়ে আসা হলো
   const { 
     user, 
     loading, 
@@ -60,23 +60,26 @@ function AppContent() {
   const [reelsData, setReelsData] = useState([]);
   const [reelsLoading, setReelsLoading] = useState(true);
 
-  // Audio Refs (হাই-কোয়ালিটি অডিও লিংক)
+  // Audio Refs (হাই-কোয়ালিটি অডিও লিংক)
   const msgSound = useRef(new Audio("https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3"));
   const ringtone = useRef(new Audio("https://assets.mixkit.co/active_storage/sfx/1357/1357-84.wav"));
 
   /* ==========================================================
-      ⚡ NEURAL NOTIFICATION & CALL ENGINE (সকেট ইভেন্ট সিঙ্ক)
+      ⚡ NEURAL NOTIFICATION & CALL ENGINE (ZEGO SYNCED)
   ========================================================== */
   useEffect(() => {
     if (user && socket) {
       const onConnect = () => {
         console.log("%c 🚀 Onyx Link Active: " + socket.id, "color: #06b6d4; font-weight: bold;");
         socket.emit("addNewUser", user._id);
-        socket.emit("registerUser", user._id); // কল ট্র্যাকিংয়ের জন্য ব্যাকএন্ডের সাথে সিঙ্ক
+        socket.emit("registerUser", user._id); // কল ট্র্যাকিংয়ের জন্য ব্যাকএন্ডের সাথে সিঙ্ক
       };
 
       // গ্লোবাল পুশ বা মেসেজ নোটিফিকেশন আসলে
       const onNotification = (data) => {
+        // যদি এটা কল সিগন্যাল হয়, তবে মেসেজ রিং বাজাবো না
+        if (data.isCallSignal || data.isIncomingCall) return;
+
         msgSound.current.play().catch(() => {});
         const senderName = data?.senderName || "Onyx Drifter";
         toast(`${senderName}: ${data?.content || data?.text || "sent a quantum transmission"}`, {
@@ -88,24 +91,29 @@ function AppContent() {
             border: '1px solid rgba(6,182,212,0.2)',
             fontSize: '11px',
             fontFamily: 'monospace',
-            backdropBlur: '12px'
+            backdropFilter: '12px'
           },
         });
       };
 
-      // 📞 ইনকামিং কল রিসিভ লিসেনার (কোড নেমিং ফিক্সড: $incomingCall)
+      // 📞 ইনকামিং কল রিসিভ লিসেনার (Zego Cloud সিগন্যালিং ম্যাচড)
       const onIncomingCall = (data) => {
         if (data.from === user._id) return; // নিজের করা কল ফিল্টার
 
+        // রিংটোন লুপ অন করে প্লে করা শুরু
         ringtone.current.loop = true;
-        ringtone.current.play().catch(() => console.log("Ringtone muted by browser autoplay rules. Wait for click."));
+        ringtone.current.play().catch(() => console.log("Autoplay blocked. Tap anywhere to hear ringtone."));
 
         toast((t) => (
-          <div className="flex flex-col gap-3 p-2 min-w-[240px] font-sans selection:bg-transparent">
+          <div className="flex flex-col gap-3 p-2 min-w-[250px] font-sans selection:bg-transparent">
             <div className="flex items-center gap-3">
-              <div className="w-2 h-2 bg-cyan-500 animate-ping rounded-full" />
+              {data.avatar ? (
+                <img src={data.avatar} className="w-10 h-10 rounded-xl border border-white/10 object-cover animate-pulse" alt="" />
+              ) : (
+                <div className="w-2 h-2 bg-cyan-500 animate-ping rounded-full" />
+              )}
               <div className="flex flex-col">
-                <span className="text-[12px] font-black uppercase text-white tracking-wide">
+                <span className="text-[12px] font-black uppercase text-white tracking-wide flex items-center gap-1.5">
                   Incoming {data?.type || 'video'} Call
                 </span>
                 <span className="text-[10px] font-mono text-zinc-400">
@@ -114,6 +122,7 @@ function AppContent() {
               </div>
             </div>
             <div className="flex gap-2 mt-1">
+              {/* Accept Button */}
               <button 
                 onClick={() => {
                   ringtone.current.pause();
@@ -121,19 +130,21 @@ function AppContent() {
                   toast.dismiss(t.id);
                   if (clearGlobalCallState) clearGlobalCallState(); // গ্লোবাল স্টেট রিসেট
 
-                  // কলিং পেজে রাউট এবং সিগন্যাল ডাটা পাস
-                  navigate(`/call/${data.roomId || data.from}`, { 
+                  // ZegoCloud পেজে পাঠানো হচ্ছে টাইপ এবং ইউনিক রুম আইডি সহ
+                  navigate(`/call/${data.roomId}`, { 
                     state: { 
-                      incomingSignal: data.signalData || data.signal, 
-                      callerId: data.from,
-                      callType: data.type || 'video'
+                      callType: data.type || 'video',
+                      mode: 'inbound',
+                      callerId: data.from
                     } 
                   });
                 }}
-                className="flex-1 bg-cyan-500 hover:bg-cyan-400 text-black py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(6,182,212,0.4)]"
+                className="flex-1 bg-cyan-500 hover:bg-cyan-400 text-black py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(6,182,212,0.4)]"
               >
                 Accept
               </button>
+
+              {/* Decline Button */}
               <button 
                 onClick={() => {
                   ringtone.current.pause();
@@ -141,15 +152,16 @@ function AppContent() {
                   toast.dismiss(t.id);
                   if (clearGlobalCallState) clearGlobalCallState();
                   socket.emit("endCall", { to: data.from });
+                  socket.emit("callEnded", { to: data.from });
                 }}
-                className="flex-1 bg-zinc-800 hover:bg-red-950/40 text-red-400 border border-red-500/20 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all"
+                className="flex-1 bg-zinc-800 hover:bg-red-950/40 text-red-400 border border-red-500/20 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all"
               >
                 Decline
               </button>
             </div>
           </div>
         ), {
-          duration: 35000, // ৩৫ সেকেন্ড পর্যন্ত রিং হবে
+          duration: 45000, // ৪৫ সেকেন্ড রিং হবে যতক্ষণ না রিসিভ/কাটছে
           position: "top-center",
           style: { background: '#09090b', color: '#fff', border: '1px solid rgba(6,182,212,0.3)', borderRadius: '24px' }
         });
@@ -164,9 +176,9 @@ function AppContent() {
 
       socket.on("connect", onConnect);
       socket.on("getNotification", onNotification);
-      socket.on("getMessage", onNotification); // চ্যাট মেসেজের জন্যও গ্লোবাল পপ-আপ অ্যালার্ট
-      socket.on("$incomingCall", onIncomingCall); // ওনিক্স স্ট্যান্ডার্ড $ সিগন্যালিং
-      socket.on("incomingCall", onIncomingCall);  // ফলব্যাক সিকিউরিটি
+      socket.on("getMessage", onNotification); 
+      socket.on("$incomingCall", onIncomingCall); 
+      socket.on("incomingCall", onIncomingCall);  
       socket.on("callEnded", onCallEnded);
       socket.on("endCall", onCallEnded);
 
@@ -252,6 +264,7 @@ function AppContent() {
                     <SearchScreen 
                       onBack={() => navigate(-1)} 
                       onSelectUser={(u) => navigate(`/messages/${u._id || u.id}`)} 
+                      
                     />
                   </Protected>
                 } />

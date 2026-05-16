@@ -7,12 +7,12 @@ import {
 
 import { AuthContext } from '../context/AuthContext';
 import SearchScreen from './SearchScreen'; 
-import ChatInterface from './ChatInterface';
-import SettingsScreen from './SettingsScreen'; // SettingsScreen ইমপোর্ট করা হলো
+import ChatInterface from './ChatInterface'; // 🛠️ পাথ ফিক্স করা হলো (CallPage থেকে সরিয়ে সঠিক চ্যাট ইন্টারফেসে)
+import SettingsScreen from './SettingsScreen'; 
 
 // --- Sound Assets ---
 const MSG_SOUND = "https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3"; 
-const CALL_SOUND = "https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3";
+const CALL_SOUND = "https://assets.mixkit.co/active_storage/sfx/1357/1357-84.wav"; // AppContent এর সাথে রিংটোন সিঙ্ক করা হলো
 
 const getAvatarUrl = (target) => {
   if (!target) return `https://ui-avatars.com/api/?name=User&background=27272a&color=fff`;
@@ -22,7 +22,7 @@ const getAvatarUrl = (target) => {
 };
 
 const OnyxMessengerHome = () => {
-  const { user, socket } = useContext(AuthContext);
+  const { user, socket, clearGlobalCallState } = useContext(AuthContext);
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('chats');
   const [selectedChat, setSelectedChat] = useState(null);
@@ -45,7 +45,7 @@ const OnyxMessengerHome = () => {
   }, [chatList]);
 
   /* ==========================================================
-      ⚡ NEURAL SIGNAL HANDLING (Socket Logic)
+      ⚡ NEURAL SIGNAL HANDLING (Memory Leak Proof)
   ========================================================== */
   useEffect(() => {
     if (!socket) return;
@@ -71,10 +71,14 @@ const OnyxMessengerHome = () => {
       }
     };
 
+    // গ্লোবাল নোটিফিকেশন ইন্টারসেপ্টর (ডুপ্লিকেট রিংটোন প্রতিরোধ লক)
     const handleIncomingCall = (data) => {
+      if (data.from === user?._id) return;
+      
+      // শুধুমাত্র তখনই পপআপ দেখাবে যদি ইউজার এই মেসেঞ্জার হোমস্ক্রিনে অ্যাক্টিভ থাকে
       setIncomingCall(data);
       callAudio.current.loop = true;
-      callAudio.current.play().catch(e => console.warn("Audio blocked by browser policy"));
+      callAudio.current.play().catch(e => console.warn("Ringtone muted. Waiting for interaction."));
     };
 
     const handleCallEnded = () => {
@@ -85,32 +89,59 @@ const OnyxMessengerHome = () => {
 
     socket.on("getMessage", handleIncomingMessage);
     socket.on("$incomingCall", handleIncomingCall);
+    socket.on("incomingCall", handleIncomingCall);
     socket.on("callEnded", handleCallEnded);
+    socket.on("endCall", handleCallEnded);
 
     return () => {
       socket.off("getMessage", handleIncomingMessage);
       socket.off("$incomingCall", handleIncomingCall);
+      socket.off("incomingCall", handleIncomingCall);
       socket.off("callEnded", handleCallEnded);
+      socket.off("endCall", handleCallEnded);
+      
+      // স্ক্রিন আনমাউন্ট হলে রিংটোন পুরোপুরি কিল করার সেফটি গার্ড
+      callAudio.current.pause();
+      callAudio.current.currentTime = 0;
     };
-  }, [socket, selectedChat]);
+  }, [socket, selectedChat, user?._id]);
 
   /* ==========================================================
-      📞 CALL ACTIONS
+      📞 CALL ACTIONS (ZegoCloud Room Routing)
   ========================================================== */
   const initiateCall = useCallback((targetUser, type) => {
     if (!targetUser?._id || !user?._id) return;
+    
+    // ইউনিক ক্রিপ্টোগ্রাফিক রুম আইডি জেনারেট
     const roomId = [user._id, targetUser._id].sort().join("-"); 
-    navigate(`/call/${roomId}?type=${type}&mode=outbound`);
+    
+    // কলিং স্ক্রিনে পুশ (আউটবাউন্ড মোড)
+    navigate(`/call/${roomId}`, {
+      state: {
+        callType: type || 'video',
+        mode: 'outbound',
+        callerId: user._id
+      }
+    });
   }, [user, navigate]);
 
   const acceptCall = () => {
     if (!incomingCall || !user) return;
+    
     callAudio.current.pause();
     callAudio.current.currentTime = 0;
+    
     const roomId = incomingCall.roomId || [user._id, incomingCall.from].sort().join("-");
     const callType = incomingCall.callType || incomingCall.type || 'video';
-    navigate(`/call/${roomId}?type=${callType}&mode=inbound`, {
-      state: { incomingSignal: incomingCall.signalData, callerId: incomingCall.from }
+    
+    if (clearGlobalCallState) clearGlobalCallState();
+
+    navigate(`/call/${roomId}`, {
+      state: { 
+        callType: callType, 
+        mode: 'inbound', 
+        callerId: incomingCall.from 
+      }
     });
     setIncomingCall(null);
   };
@@ -118,8 +149,10 @@ const OnyxMessengerHome = () => {
   const declineCall = () => {
     if (incomingCall) {
       socket.emit("endCall", { to: incomingCall.from });
+      socket.emit("callEnded", { to: incomingCall.from });
       callAudio.current.pause();
       callAudio.current.currentTime = 0;
+      if (clearGlobalCallState) clearGlobalCallState();
       setIncomingCall(null);
     }
   };
@@ -152,7 +185,7 @@ const OnyxMessengerHome = () => {
   }, []);
 
   return (
-    <div className="bg-black h-[100dvh] text-white flex flex-col overflow-hidden font-sans select-none">
+    <div className="bg-black h-[100dvh] text-white flex flex-col overflow-hidden font-sans select-none relative">
       
       {activeTab === 'chats' ? (
         <>
@@ -209,13 +242,13 @@ const OnyxMessengerHome = () => {
                   <div className="flex gap-2 shrink-0">
                      <button 
                       onClick={(e) => { e.stopPropagation(); initiateCall(chat, 'audio'); }} 
-                      className="p-3.5 rounded-xl bg-zinc-800/50 text-zinc-400 hover:bg-cyan-500 hover:text-black transition-all"
+                      className="p-3.5 rounded-xl bg-zinc-800/50 text-zinc-400 hover:bg-cyan-500 hover:text-black transition-all active:scale-90"
                      >
                        <FaPhoneAlt size={12} />
                      </button>
                      <button 
                       onClick={(e) => { e.stopPropagation(); initiateCall(chat, 'video'); }} 
-                      className="p-3.5 rounded-xl bg-zinc-800/50 text-zinc-400 hover:bg-purple-500 hover:text-white transition-all"
+                      className="p-3.5 rounded-xl bg-zinc-800/50 text-zinc-400 hover:bg-cyan-500 hover:text-black transition-all active:scale-90"
                      >
                        <FaVideo size={12} />
                      </button>
@@ -226,7 +259,7 @@ const OnyxMessengerHome = () => {
           </main>
         </>
       ) : (
-        /* Settings Tab: আপনার নতুন SettingsScreen এখানে লোড হবে */
+        /* Settings Tab */
         <SettingsScreen onBack={() => setActiveTab('chats')} />
       )}
 
@@ -246,8 +279,8 @@ const OnyxMessengerHome = () => {
               <h3 className="text-xl font-black uppercase mb-1 tracking-tight">{incomingCall.name || "Unknown Link"}</h3>
               <p className="text-cyan-500 text-[10px] font-black uppercase tracking-[0.4em] mb-10 animate-pulse">Incoming Pulse</p>
               <div className="flex justify-center gap-10">
-                <button onClick={declineCall} className="w-16 h-16 flex items-center justify-center bg-zinc-800 hover:bg-red-600 rounded-full text-white transition-all shadow-lg"><FaTimes size={24} /></button>
-                <button onClick={acceptCall} className="w-16 h-16 flex items-center justify-center bg-cyan-600 hover:bg-cyan-500 rounded-full text-white transition-all shadow-[0_0_20px_rgba(6,182,212,0.4)]"><FaCheck size={24} /></button>
+                <button onClick={declineCall} className="w-16 h-16 flex items-center justify-center bg-zinc-800 hover:bg-red-600 rounded-full text-white transition-all shadow-lg active:scale-95"><FaTimes size={24} /></button>
+                <button onClick={acceptCall} className="w-16 h-16 flex items-center justify-center bg-cyan-600 hover:bg-cyan-500 rounded-full text-white transition-all shadow-[0_0_20px_rgba(6,182,212,0.4)] active:scale-95"><FaCheck size={24} /></button>
               </div>
             </div>
           </motion.div>
