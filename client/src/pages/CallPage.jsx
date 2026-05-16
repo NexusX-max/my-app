@@ -1,34 +1,69 @@
 import React, { useEffect, useRef, useState, useContext } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FaArrowLeft, FaShieldAlt } from 'react-icons/fa';
+import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash } from 'react-icons/fa';
+import Peer from 'simple-peer'; 
 import axios from 'axios'; 
 import { AuthContext } from '../context/AuthContext';
 
-// --- ZegoCloud Neural Matrix Config ---
-const ZEGO_APP_ID = Number(import.meta.env.VITE_ZEGO_APP_ID) || 1822629215;
-const ZEGO_SERVER_SECRET = import.meta.env.VITE_ZEGO_SERVER_SECRET || "c90ccf1f9bf7ee0e27a29539fc4d03ed";
+const iceServers = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    {
+      urls: "turn:free.expressturn.com:3478", 
+      username: "000000002092873381",        
+      credential: "41a1p2kRNdmvElbOfj71IniQi7Q=" 
+    }
+];
 
 const CallPage = () => {
   const { roomId } = useParams();
+  const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
   const { user, socket } = useContext(AuthContext);
 
-  const callType = location.state?.callType || 'video';
-  const callerId = location.state?.callerId || location.state?.receiverId;
+  const callType = searchParams.get('type') || 'video';
+  const incomingSignal = location.state?.incomingSignal;
+  const callerId = location.state?.callerId;
 
+  const [stream, setStream] = useState(null);
+  const [callAccepted, setCallAccepted] = useState(false);
+  const [callStatus, setCallStatus] = useState('idle'); 
   const [remoteUser, setRemoteUser] = useState(null);
-  const [zegoInitialized, setZegoInitialized] = useState(false);
-  const videoContainerRef = useRef(null);
-  const zpInstanceRef = useRef(null);
+  
+  const [isMicOn, setIsMicOn] = useState(true);
+  const [isVideoOn, setIsVideoOn] = useState(callType === 'video');
 
-  // ১. রিমোট ইউজারের ডাটা ফেচিং মেকানিজম (UI ব্যাকিং এর জন্য)
+  // টাইমার স্টেট
+  const [callDuration, setCallDuration] = useState(0);
+
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
+  const connectionRef = useRef(null);
+
+  // ১. কল টাইমার লজিক
+  useEffect(() => {
+    let interval;
+    if (callAccepted) {
+      interval = setInterval(() => {
+        setCallDuration((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [callAccepted]);
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // ২. রিমোট ইউজারের ডাটা ফেচ
   useEffect(() => {
     const fetchRemoteUser = async () => {
       try {
-        const targetId = callerId || (roomId && roomId.includes("-") ? roomId.split("-").find(id => id !== user?._id) : null);
-        
+        const targetId = callerId || roomId.split("-").find(id => id !== user?._id);
         if (targetId) {
           const response = await axios.get(`/api/users/${targetId}`, {
             headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
@@ -39,149 +74,223 @@ const CallPage = () => {
         console.error("Failed to fetch remote user profile:", err);
       }
     };
-    if (user && roomId) fetchRemoteUser();
+    if (user) fetchRemoteUser();
   }, [roomId, callerId, user]);
 
-  // ২. ZegoCloud Core SDK এবং UI ইঞ্জিন ইনিশিয়ালাইজেশন
+  // ৩. সকেট লিসেনার এবং মিডিয়া ইনিশিয়ালাইজেশন
   useEffect(() => {
-    if (!user || !roomId || !videoContainerRef.current) return;
+    if (!socket || !user) return;
 
-    const initZegoCall = async () => {
+    const initMedia = async () => {
       try {
-        // ডাইনামিকালি ZegoUIKitPrebuilt ইমপোর্ট করা হচ্ছে ক্লায়েন্ট সাইড বাফারিং এড়াতে
-        const { ZegoUIKitPrebuilt } = await import('@zegocloud/zego-uikit-prebuilt');
-
-        // টোকেন জেনারেটর (ইউনিক রুম আইডি এবং ইউজারের ক্রেডেনশিয়ালস দিয়ে ক্রিপ্টোগ্রাফিক লিংক তৈরি)
-        const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
-          ZEGO_APP_ID,
-          ZEGO_SERVER_SECRET,
-          roomId,
-          user._id || String(Date.now()),
-          user.fullName || user.name || "Onyx Drifter"
-        );
-
-        // ক্লায়েন্ট ইন্সট্যান্স ক্রিয়েশন
-        const zp = ZegoUIKitPrebuilt.create(kitToken);
-        zpInstanceRef.current = zp;
-
-        // ওনিক্স মিনিমালিস্টিক ডার্ক থিম কাস্টমাইজেশন ও UI রেন্ডারিং
-        zp.joinRoom({
-          container: videoContainerRef.current,
-          turnOnMicrophoneWhenJoining: true,
-          turnOnCameraWhenJoining: callType === 'video',
-          showMyCameraToggleButton: callType === 'video',
-          showAudioVideoSettingsButton: true,
-          showScreenSharingButton: false, // ওনিক্স স্পিড অপ্টিমাইজেশনের জন্য অফ রাখা হলো
-          showUserList: false,
-          maxUsers: 2,
-          mode: ZegoUIKitPrebuilt.OneONoneCall,
-          scenario: {
-            mode: ZegoUIKitPrebuilt.GroupCall, // স্মুথ ২-ওয়ে স্ট্রিমিং লকিং এর জন্য গ্রপ মোড ব্যাকআপ
-          },
-          config: {
-            role: ZegoUIKitPrebuilt.Host
-          },
-          onJoinRoom: () => {
-            setZegoInitialized(true);
-          },
-          onLeaveRoom: () => {
-            cleanupAndExit();
-          }
+        const currentStream = await navigator.mediaDevices.getUserMedia({
+          video: callType === 'video' ? { width: 1280, height: 720 } : false,
+          audio: true,
         });
 
-      } catch (error) {
-        console.error("ZegoCloud Initialization Fatal Error:", error);
-        cleanupAndExit();
+        setStream(currentStream);
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = currentStream;
+        }
+
+        const targetId = callerId || roomId.split("-").find(id => id !== user?._id);
+
+        if (incomingSignal) {
+          setCallStatus('connecting');
+          answerCall(currentStream, incomingSignal, targetId);
+        } else {
+          setCallStatus('ringing');
+          callUser(currentStream, targetId);
+        }
+      } catch (err) {
+        console.error("❌ Media Error:", err);
+        navigate('/messages');
       }
     };
 
-    initZegoCall();
+    initMedia();
 
-    // ৩. গ্লোবাল সকেট ইভেন্ট দিয়ে কল এন্ড ট্র্যাকিং সিস্টেমে সিঙ্ক
-    if (socket) {
-      socket.on("callEnded", () => cleanupAndExit());
-    }
+    socket.on("callAccepted", (signal) => {
+      setCallAccepted(true);
+      setCallStatus('connected');
+      if (connectionRef.current) {
+        connectionRef.current.signal(signal);
+      }
+    });
+
+    socket.on("callEnded", () => cleanupAndExit());
 
     return () => {
-      if (socket) socket.off("callEnded");
-      if (zpInstanceRef.current) {
-        try {
-          zpInstanceRef.current.destroy();
-        } catch (e) {
-          console.log("Zego instance cleanup passive log:", e);
-        }
-      }
+      socket.off("callAccepted");
+      socket.off("callEnded");
+      if (connectionRef.current) connectionRef.current.destroy();
     };
-  }, [roomId, user, callType, socket]);
+  }, [socket, user, roomId]);
+
+  /* ==========================================================
+      📞 পিয়ার ফাংশনস (রিমোট ফেস এবং অডিও ফিক্স)
+  ========================================================== */
+
+  const callUser = (stream, targetId) => {
+    const peer = new Peer({ initiator: true, trickle: false, stream, config: { iceServers } });
+
+    peer.on("signal", (data) => {
+      socket.emit("callUser", { 
+        userToCall: targetId,
+        signalData: data,
+        from: user._id,
+        name: user.fullName || "Onyx User",
+        type: callType,
+        roomId: roomId
+      });
+    });
+
+    peer.on("stream", (remoteStream) => {
+      setCallAccepted(true);
+      // অডিও ফিক্স: সরাসরি প্লে করার চেষ্টা
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.onloadedmetadata = () => {
+          remoteVideoRef.current.play().catch(e => console.log("Audio Playback Error:", e));
+        };
+      }
+    });
+
+    connectionRef.current = peer;
+  };
+
+  const answerCall = (stream, signal, targetId) => {
+    const peer = new Peer({ initiator: false, trickle: false, stream, config: { iceServers } });
+
+    peer.on("signal", (data) => {
+      socket.emit("answerCall", { signal: data, to: targetId });
+    });
+
+    peer.on("stream", (remoteStream) => {
+      setCallAccepted(true);
+      setCallStatus('connected');
+      // অডিও ফিক্স: সরাসরি প্লে করার চেষ্টা
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.onloadedmetadata = () => {
+          remoteVideoRef.current.play().catch(e => console.log("Audio Playback Error:", e));
+        };
+      }
+    });
+
+    peer.signal(signal);
+    connectionRef.current = peer;
+  };
 
   const cleanupAndExit = () => {
-    // সকেট এর মাধ্যমে অন্য প্রান্তকে ওনিক্স সেশন ক্লোজ করার নোটিফিকেশন পাঠানো
-    if (socket && user && roomId) {
-      const targetId = callerId || roomId.split("-").find(id => id !== user?._id);
-      socket.emit("endCall", { to: targetId });
-    }
-    
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    if (connectionRef.current) connectionRef.current.destroy();
     navigate('/messages');
-    setTimeout(() => window.location.reload(), 250); // ব্রাউজার মেমোরি ক্লিয়ারিং বাফার
+    setTimeout(() => window.location.reload(), 200); 
+  };
+
+  const endCall = () => {
+    const targetId = callerId || roomId.split("-").find(id => id !== user?._id);
+    socket.emit("endCall", { to: targetId });
+    cleanupAndExit();
+  };
+
+  const toggleMic = () => {
+    if (stream) {
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !isMicOn;
+        setIsMicOn(!isMicOn);
+      }
+    }
+  };
+
+  const toggleVideo = () => {
+    if (stream && callType === 'video') {
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = !isVideoOn;
+        setIsVideoOn(!isVideoOn);
+      }
+    }
   };
 
   return (
-    <div className="h-screen w-screen bg-[#020617] flex flex-col relative overflow-hidden font-sans text-white">
+    <div className="h-screen bg-black flex flex-col items-center justify-center relative overflow-hidden font-sans">
       
-      {/* ওনিক্স নিউরাল সিকিউরিটি টপ বার */}
-      <header className="absolute top-0 left-0 right-0 p-4 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent z-50 backdrop-blur-md border-b border-white/5">
-        <button 
-          onClick={cleanupAndExit}
-          className="p-3 text-zinc-400 hover:text-white transition-all active:scale-90 rounded-2xl bg-white/5 border border-white/5 flex items-center gap-2 text-xs font-bold"
-        >
-          <FaArrowLeft size={14} /> Disconnect
-        </button>
-        <div className="flex items-center gap-1.5 text-cyan-400 text-[10px] font-black uppercase tracking-[0.3em] bg-cyan-500/10 px-3 py-1.5 rounded-xl border border-cyan-500/20">
-          <FaShieldAlt className="animate-pulse" /> E2EE Secure Matrix
-        </div>
-      </header>
-
-      {/* ZegoCloud ভিডিও ইন্টারফেস হোল্ডার */}
-      <div 
-        ref={videoContainerRef} 
-        className="w-full h-full z-10 bg-black zego-custom-container"
-      />
-
-      {/* ওনিক্স কাস্টম ডার্ক বাফারিং স্ক্রিন (Zego কানেক্ট হওয়ার আগ পর্যন্ত দেখাবে) */}
-      {!zegoInitialized && (
-        <div className="absolute inset-0 bg-[#020617] flex flex-col items-center justify-center z-40 space-y-6">
-          <div className="w-36 h-36 rounded-[2.5rem] border border-cyan-500/20 flex items-center justify-center relative bg-zinc-900/50 backdrop-blur-2xl">
-            <div className="absolute inset-0 rounded-[2.5rem] border-2 border-cyan-500 animate-ping opacity-10" />
-            <div className="w-28 h-28 rounded-[2rem] bg-zinc-800 overflow-hidden border border-white/5 flex items-center justify-center shadow-2xl">
-              <img 
-                src={remoteUser?.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteUser?.fullName || 'Onyx')}&background=06b6d4&color=fff&size=128`} 
-                className="w-full h-full object-cover" 
-                alt="Neural Node" 
-              />
-            </div>
+      {/* রিমোট ভিডিও গ্রিড (অন্য পাশের ফেস) */}
+      <div className="absolute inset-0 bg-[#020617] flex items-center justify-center">
+        {callAccepted ? (
+            /* অডিওর জন্য muted={false} এবং playsInline নিশ্চিত করা হয়েছে */
+            <video 
+              ref={remoteVideoRef} 
+              autoPlay 
+              playsInline 
+              className="w-full h-full object-cover" 
+            />
+        ) : (
+          <div className="flex flex-col items-center gap-8">
+             <div className="w-40 h-40 rounded-[2.5rem] border border-cyan-500/20 flex items-center justify-center relative bg-zinc-900/50 backdrop-blur-xl">
+                <div className="absolute inset-0 rounded-[2.5rem] border-2 border-cyan-500 animate-ping opacity-10" />
+                <div className="w-32 h-32 rounded-[2rem] bg-zinc-800 overflow-hidden border border-white/5 flex items-center justify-center shadow-2xl">
+                    <img 
+                      src={remoteUser?.profilePic || `https://ui-avatars.com/api/?name=${remoteUser?.fullName || 'Onyx'}&background=06b6d4&color=fff&size=128`} 
+                      className="w-full h-full object-cover" 
+                      alt="avatar" 
+                    />
+                </div>
+             </div>
+             <div className="text-center space-y-2">
+                <p className="text-white text-xl font-bold tracking-tight">{remoteUser?.fullName || "Syncing Name..."}</p>
+                <p className="text-cyan-500 text-xs font-black uppercase tracking-[0.6em] animate-pulse">
+                    {callStatus === 'ringing' ? 'Initiating_Pulse...' : 'Syncing_Neural_Link...'}
+                </p>
+             </div>
           </div>
-          <div className="text-center space-y-1.5">
-            <h3 className="text-white text-lg font-bold tracking-tight">
-              {remoteUser?.fullName || location.state?.receiverName || "Onyx Node"}
-            </h3>
-            <p className="text-cyan-500 text-[10px] font-black uppercase tracking-[0.5em] animate-pulse">
-              Locking_Secure_Stream...
-            </p>
-          </div>
+        )}
+      </div>
+
+      {/* কল টাইমার (Call Duration) */}
+      {callAccepted && (
+        <div className="absolute top-10 z-[60] bg-black/40 backdrop-blur-xl px-5 py-2 rounded-full border border-cyan-500/30">
+          <p className="text-cyan-400 font-black tracking-widest text-sm font-mono">
+            {formatTime(callDuration)}
+          </p>
         </div>
       )}
 
-      {/* Zego-র ডিফল্ট সাদা ব্যাকগ্রাউন্ড ওভাররাইড করার জন্য গ্লোবাল CSS ইনজেকশন */}
-      <style>{`
-        .zego-custom-container div {
-          background-color: #020617 !important;
-          color: white !important;
-        }
-        .zego-custom-container button {
-          border-radius: 1.25rem !important;
-        }
-      `}</style>
+      {/* লোকাল ভিডিও (Floating Window) */}
+      <motion.div 
+        drag
+        dragConstraints={{ left: -150, right: 150, top: -200, bottom: 200 }}
+        className="absolute top-10 right-6 w-32 md:w-44 aspect-[3/4] bg-zinc-900 rounded-[2rem] border border-white/10 overflow-hidden shadow-2xl z-50 ring-1 ring-cyan-500/30 backdrop-blur-3xl"
+      >
+        <video 
+          ref={localVideoRef} 
+          autoPlay 
+          playsInline 
+          muted 
+          className={`w-full h-full object-cover scale-x-[-1] transition-opacity duration-500 ${!isVideoOn ? 'opacity-0' : 'opacity-100'}`} 
+        />
+        {!isVideoOn && <div className="absolute inset-0 flex items-center justify-center bg-zinc-800"><FaVideoSlash className="text-zinc-600" size={24} /></div>}
+      </motion.div>
 
+      {/* কন্ট্রোল ইন্টারফেস */}
+      <div className="absolute bottom-16 flex items-center gap-8 z-50">
+        <motion.button onClick={toggleMic} className={`p-5 rounded-3xl transition-all ${!isMicOn ? 'bg-red-500' : 'bg-zinc-800/80 hover:bg-zinc-700'}`}>
+          {isMicOn ? <FaMicrophone size={20} className="text-white" /> : <FaMicrophoneSlash size={20} className="text-white" />}
+        </motion.button>
+
+        <motion.button onClick={endCall} className="p-8 rounded-[2.5rem] bg-red-600 text-white shadow-2xl hover:bg-red-500 transition-all border border-red-400/20">
+          <FaPhoneSlash size={32} />
+        </motion.button>
+
+        {callType === 'video' && (
+          <motion.button onClick={toggleVideo} className={`p-5 rounded-3xl transition-all ${!isVideoOn ? 'bg-red-500' : 'bg-zinc-800/80 hover:bg-zinc-700'}`}>
+            {isVideoOn ? <FaVideo size={20} className="text-white" /> : <FaVideoSlash size={20} className="text-white" />}
+          </motion.button>
+        )}
+      </div>
     </div>
   );
 };
