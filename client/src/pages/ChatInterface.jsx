@@ -1,265 +1,284 @@
-import React, { useState, useContext, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
-import CryptoJS from "crypto-js";
-import { 
-  FaArrowLeft, FaPhone, FaVideo, FaPaperPlane, FaMicrophone, 
-  FaLock, FaPlus, FaCheck, FaCheckDouble
-} from 'react-icons/fa';
+import React, { useEffect, useRef, useState, useContext } from 'react';
+import { useParams, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash } from 'react-icons/fa';
+import AgoraRTC from 'agora-rtc-sdk-ng'; 
+import axios from 'axios'; 
 import { AuthContext } from '../context/AuthContext';
 
-const ONYX_SECRET_KEY = "onyx_neural_shield_2026"; 
+// ⚠️ আপনার আগোরা কনসোল (dashboard.agora.io) থেকে প্রাপ্ত App ID এখানে বসান
+const AGORA_APP_ID = "4feceac3c45a4f19ae8074935cf4e94e"; 
 
-// --- Encryption Helpers ---
-const encryptMessage = (text) => CryptoJS.AES.encrypt(text, ONYX_SECRET_KEY).toString();
-const decryptMessage = (cipherText) => {
-    try {
-        const bytes = CryptoJS.AES.decrypt(cipherText, ONYX_SECRET_KEY);
-        const originalText = bytes.toString(CryptoJS.enc.Utf8);
-        return originalText || "⚠️ Decryption Error";
-    } catch (err) { return "⚠️ Encryption Mismatch"; }
-};
-
-// --- Avatar Helper ---
-const getAvatarUrl = (target) => {
-  if (!target) return `https://ui-avatars.com/api/?name=User&background=27272a&color=fff`;
-  const pic = target.profilePic || target.avatar || target.profileImage || target.userAvatar;
-  if (pic && typeof pic === 'string' && pic.startsWith('http')) return pic;
-  const name = target.fullName || target.name || "Onyx";
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=06b6d4&color=fff&bold=true`;
-};
-
-const ChatInterface = ({ activeChat, onBack, isGroup = false }) => {
-  const { user, socket } = useContext(AuthContext);
+const CallPage = () => {
+  const { roomId } = useParams();
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
   const navigate = useNavigate();
-  const scrollRef = useRef(null);
-  
-  const chatId = activeChat?._id || activeChat?.id;
-  const chatName = activeChat?.fullName || activeChat?.name || "Neural Node";
-  const storageKey = isGroup ? `group_chat_${chatId}` : `chat_${chatId}`;
-  
-  const [messages, setMessages] = useState(() => {
-    const saved = localStorage.getItem(storageKey);
-    return saved ? JSON.parse(saved) : [{ id: 'sys-1', text: "Neural link established. E2EE Active. 🔐", sender: 'system' }];
-  });
-  
-  const [msg, setMsg] = useState("");
-  const [isListening, setIsListening] = useState(false);
+  const { user, socket } = useContext(AuthContext);
 
-  // ১. পুশ নোটিফিকেশন পারমিশন
+  const callType = searchParams.get('type') || 'video';
+  const callerId = location.state?.callerId;
+
+  const [callAccepted, setCallAccepted] = useState(false);
+  const [callStatus, setCallStatus] = useState('idle'); 
+  const [remoteUser, setRemoteUser] = useState(null);
+  
+  const [isMicOn, setIsMicOn] = useState(true);
+  const [isVideoOn, setIsVideoOn] = useState(callType === 'video');
+  const [callDuration, setCallDuration] = useState(0);
+
+  // আগোরা ক্লায়েন্ট এবং লোকাল ট্র্যাক রেফারেন্স
+  const agoraClientRef = useRef(null);
+  const localAudioTrackRef = useRef(null);
+  const localVideoTrackRef = useRef(null);
+
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
+  const isMediaInitialized = useRef(false);
+
+  // ১. কল টাইমার লজিক
   useEffect(() => {
-    if ("Notification" in window && Notification.permission !== 'granted') {
-      Notification.requestPermission();
+    let interval;
+    if (callAccepted) {
+      interval = setInterval(() => {
+        setCallDuration((prev) => prev + 1);
+      }, 1000);
     }
-  }, []);
+    return () => clearInterval(interval);
+  }, [callAccepted]);
 
-  // ২. ইনকামিং মেসেজ লিসেনার
-  const handleGetMessage = useCallback((data) => {
-    if (data.senderId === chatId) {
-      // কল সিগন্যাল হলে মেসেজ বক্সে দেখানোর দরকার নেই
-      if (data.isCallSignal || data.isIncomingCall) return; 
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
-      const decryptedText = data.type === 'media' ? data.text : decryptMessage(data.text);
-      const newMsg = { 
-        ...data, 
-        text: decryptedText, 
-        sender: 'them',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
-      };
-
-      setMessages(prev => {
-        if (prev.find(m => m.id === data.id)) return prev;
-        const updated = [...prev, newMsg];
-        localStorage.setItem(storageKey, JSON.stringify(updated));
-        return updated;
-      });
-      
-      socket.emit("messageSeen", { senderId: data.senderId, receiverId: user?._id });
-    }
-  }, [chatId, socket, user?._id, storageKey]);
-
+  // ২. রিমোট ইউজারের প্রোফাইল ডাটা ফেচ (আপনার আগের লজিক অপরিবর্তিত)
   useEffect(() => {
-    if (!socket || !chatId) return;
-    socket.on("getMessage", handleGetMessage);
-    return () => socket.off("getMessage", handleGetMessage);
-  }, [socket, chatId, handleGetMessage]);
-
-  // ৩. মেসেজ পাঠানোর লজিক
-  const handleSend = (content = msg, type = 'text', additionalData = {}) => {
-    const textToSend = typeof content === 'string' ? content : msg;
-    if (!textToSend.trim() || !chatId || !user?._id) return;
-    
-    const messageId = `${Date.now()}-${Math.random()}`;
-    const isCall = additionalData.isCallSignal || additionalData.isIncomingCall;
-    
-    // কল হলে এনক্রিপশন ছাড়াই পাঠানো হচ্ছে যাতে রিসিভার সহজে প্রসেস করতে পারে
-    const finalContent = (type === 'text' && !isCall) ? encryptMessage(textToSend) : textToSend;
-
-    const msgPayload = {
-      id: messageId, 
-      receiverId: chatId, 
-      senderId: user._id,
-      senderName: user.fullName,
-      text: finalContent, 
-      type,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      ...additionalData 
-    };
-
-    if (socket?.connected) {
-      // কল ডাটা হলে তোমার কনসোলে থাকা '$incomingCall' ইভেন্টে পাঠানো হচ্ছে
-      if (isCall) {
-        socket.emit("$incomingCall", msgPayload);
-      } else {
-        socket.emit("sendMessage", msgPayload);
+    const fetchRemoteUser = async () => {
+      try {
+        const targetId = callerId || roomId.split("-").find(id => id !== user?._id);
+        if (targetId) {
+          const response = await axios.get(`/api/users/${targetId}`, {
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+          });
+          setRemoteUser(response.data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch remote user profile:", err);
       }
-    }
+    };
+    if (user) fetchRemoteUser();
+  }, [roomId, callerId, user]);
 
-    if (!isCall) {
-      const myNewMsg = { ...msgPayload, text: textToSend, sender: 'me', status: 'sent' };
-      setMessages(prev => {
-        const updated = [...prev, myNewMsg];
-        localStorage.setItem(storageKey, JSON.stringify(updated));
-        return updated;
-      });
-      setMsg("");
-    }
-  };
+  // ৩. আগোরা কোর ইঞ্জিন ইনিশিয়ালাইজেশন
+  useEffect(() => {
+    if (!socket || !user || isMediaInitialized.current) return;
+    isMediaInitialized.current = true; // রিঅ্যাক্ট ১৮-এর ডাবল রেন্ডার লক ট্রিক
 
-  // ৪. কলিং লজিক (Updated for $incomingCall event)
-  const handleCallClick = (type) => {
-    if (!chatId || !user?._id || !socket?.connected) {
-      alert("Neural connection unstable. Please wait...");
-      return;
-    }
+    const initAgoraCall = async () => {
+      try {
+        // আগোরা আরটিসি ক্লায়েন্ট অবজেক্ট তৈরি
+        agoraClientRef.current = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
 
-    const roomId = [user._id, chatId].sort().join("-");
-    
-    // রিসিভার সাইড এবং তোমার কনসোল লগের ইভেন্ট অনুযায়ী ডাটা স্ট্রাকচার
-    const callMetadata = {
-      isIncomingCall: true,
-      userToCall: chatId,
-      from: user._id,
-      name: user.fullName || "Onyx User",
-      avatar: getAvatarUrl(user),
-      callType: type,
-      roomId: roomId
+        // রিমোট ট্র্যাক লিসেনার (অন্য প্রান্তের ইউজার ক্যামের/মাইক অন করলে এখানে ধরা পড়বে)
+        agoraClientRef.current.on("user-published", async (remoteUserObj, mediaType) => {
+          await agoraClientRef.current.subscribe(remoteUserObj, mediaType);
+          setCallAccepted(true);
+          setCallStatus('connected');
+
+          if (mediaType === "video" && remoteVideoRef.current) {
+            // রিমোট ভিডিও প্লেব্যাক (আগোরা ডিরেক্ট ডম হ্যান্ডেল করে)
+            remoteUserObj.videoTrack.play(remoteVideoRef.current);
+          }
+          if (mediaType === "audio") {
+            // রিমোট অডিও প্লেব্যাক (অটো-প্লে বাগ ছাড়াই প্লে হবে)
+            remoteUserObj.audioTrack.play();
+          }
+        });
+
+        // অন্য প্রান্ত থেকে কল কেটে দিলে বা চ্যানেল থেকে বের হয়ে গেলে
+        agoraClientRef.current.on("user-unpublished", () => {
+          cleanupAndExit();
+        });
+
+        // আগোরা চ্যানেলে জয়েন করা (সিকিউরিটি না থাকলে টোকেন আপাতত null রাখা হয়েছে)
+        await agoraClientRef.current.join(AGORA_APP_ID, roomId, null, user._id);
+
+        // লোকাল মাইক্রোফোন এবং ক্যামেরা ট্র্যাক তৈরি করা
+        const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks(
+          { encoderConfig: "music_standard" },
+          { encoderConfig: "720p_1" }
+        );
+
+        localAudioTrackRef.current = audioTrack;
+        localVideoTrackRef.current = videoTrack;
+
+        // নিজের ফেস লোকাল উইন্ডোতে দেখানো
+        if (localVideoRef.current && callType === 'video') {
+          localVideoTrackRef.current.play(localVideoRef.current);
+        }
+
+        // নিজের স্ট্রিম বা ট্র্যাকগুলো আগোরা গ্লোবাল সার্ভারে পাবলিশ করা
+        if (callType === 'video') {
+          await agoraClientRef.current.publish([localAudioTrackRef.current, localVideoTrackRef.current]);
+        } else {
+          await agoraClientRef.current.publish([localAudioTrackRef.current]);
+          localVideoTrackRef.current.close(); // অডিও কল হলে ক্যামেরা হার্ডওয়্যার ফ্রি করে দেওয়া
+        }
+
+        // আপনার আগের Socket.io সিগন্যালিং নোটিফিকেশন ফ্লো
+        const targetId = callerId || roomId.split("-").find(id => id !== user?._id);
+        if (!location.state?.incomingSignal) {
+          setCallStatus('ringing');
+          socket.emit("callUser", { 
+            userToCall: targetId,
+            from: user._id,
+            name: user.fullName || "Onyx User",
+            type: callType,
+            roomId: roomId
+          });
+        } else {
+          setCallStatus('connecting');
+        }
+
+      } catch (error) {
+        console.error("❌ Agora Media Engine Error:", error);
+        navigate('/messages');
+      }
     };
 
-    // সিগন্যাল ট্রান্সমিট করা
-    handleSend(`Incoming ${type} call...`, type, callMetadata);
+    initAgoraCall();
 
-    // আউটগোয়িং স্ক্রিনে নেভিগেট করা
-    navigate(`/call/${roomId}?type=${type}&mode=outbound`);
+    // সকেট মেসেজ লিসেনার (কল কাটলে রিঅ্যাক্ট করার জন্য)
+    socket.on("callAccepted", () => {
+      setCallAccepted(true);
+      setCallStatus('connected');
+    });
+
+    socket.on("callEnded", () => cleanupAndExit());
+
+    return () => {
+      socket.off("callAccepted");
+      socket.off("callEnded");
+      leaveAgoraChannels();
+    };
+  }, [socket, user, roomId]);
+
+  // আগোরা হার্ডওয়্যার রিসোর্স রিলিজ এবং চ্যানেল লিভ করার ফাংশন
+  const leaveAgoraChannels = () => {
+    if (localAudioTrackRef.current) {
+      localAudioTrackRef.current.stop();
+      localAudioTrackRef.current.close();
+    }
+    if (localVideoTrackRef.current) {
+      localVideoTrackRef.current.stop();
+      localVideoTrackRef.current.close();
+    }
+    if (agoraClientRef.current) {
+      agoraClientRef.current.leave();
+    }
   };
 
-  const startVoiceCapture = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitRecognition;
-    if (!SpeechRecognition) return;
-    const rec = new SpeechRecognition();
-    rec.onstart = () => setIsListening(true);
-    rec.onend = () => setIsListening(false);
-    rec.onresult = (e) => setMsg(e.results[0][0].transcript);
-    rec.start();
+  const cleanupAndExit = () => {
+    leaveAgoraChannels();
+    navigate('/messages');
+    setTimeout(() => window.location.reload(), 200); 
   };
 
-  useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  const endCall = () => {
+    const targetId = callerId || roomId.split("-").find(id => id !== user?._id);
+    socket.emit("endCall", { to: targetId });
+    cleanupAndExit();
+  };
+
+  const toggleMic = async () => {
+    if (localAudioTrackRef.current) {
+      await localAudioTrackRef.current.setEnabled(!isMicOn);
+      setIsMicOn(!isMicOn);
+    }
+  };
+
+  const toggleVideo = async () => {
+    if (localVideoTrackRef.current && callType === 'video') {
+      await localVideoTrackRef.current.setEnabled(!isVideoOn);
+      setIsVideoOn(!isVideoOn);
+    }
+  };
 
   return (
-    <motion.div 
-      initial={{ x: '100%', opacity: 0 }} 
-      animate={{ x: 0, opacity: 1 }} 
-      exit={{ x: '100%', opacity: 0 }}
-      transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-      className="fixed inset-0 bg-[#020617] z-[9999] flex flex-col h-full w-full overflow-hidden"
-    >
-      {/* Header */}
-      <header className="p-4 flex items-center justify-between border-b border-white/5 bg-black/60 backdrop-blur-3xl z-50">
-        <div className="flex items-center gap-2">
-          <button onClick={onBack} className="p-3 text-zinc-400 hover:text-white transition-all active:scale-90 rounded-2xl bg-white/5 border border-white/5">
-            <FaArrowLeft size={16} />
-          </button>
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate(`/profile/${chatId}`)}>
-            <div className="relative">
-              <img src={getAvatarUrl(activeChat)} className="w-11 h-11 rounded-2xl border border-white/10 object-cover" alt="" />
-              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-[#020617] rounded-full"></div>
-            </div>
-            <div>
-              <h4 className="font-bold text-[14px] text-white tracking-tight">{chatName}</h4>
-              <p className="text-[8px] text-cyan-400 font-black uppercase flex items-center gap-1 tracking-widest opacity-80">
-                <FaLock size={7} /> Neural E2EE Active
-              </p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="flex gap-2">
-           <button onClick={() => handleCallClick('audio')} className="p-3.5 bg-zinc-900 rounded-2xl text-cyan-500 hover:bg-cyan-500/10 transition-all border border-white/5 shadow-lg active:scale-95">
-             <FaPhone size={13}/>
-           </button>
-           <button onClick={() => handleCallClick('video')} className="p-3.5 bg-zinc-900 rounded-2xl text-cyan-500 hover:bg-cyan-500/10 transition-all border border-white/5 shadow-lg active:scale-95">
-             <FaVideo size={13}/>
-           </button>
-        </div>
-      </header>
+    <div className="h-screen bg-black flex flex-col items-center justify-center relative overflow-hidden font-sans">
       
-      {/* Messages Area */}
-      <main className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
-        {messages.map((m, idx) => (
-          <div key={m.id || idx} className={`flex ${m.sender === 'me' ? 'justify-end' : m.sender === 'system' ? 'justify-center' : 'justify-start'}`}>
-            <div className={`relative p-3.5 rounded-[1.8rem] max-w-[85%] text-[13px] border shadow-sm ${
-              m.sender === 'me' ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-50 rounded-tr-none' 
-              : m.sender === 'system' ? 'bg-white/5 border-transparent text-zinc-600 text-[8px] font-black uppercase'
-              : 'bg-zinc-900/50 border-white/5 text-zinc-300 rounded-tl-none'
-            }`}>
-              {m.type === 'media' ? (
-                <img src={m.text} className="rounded-2xl max-w-full" alt="Transmission" />
-              ) : (
-                <span className="leading-relaxed">{m.text}</span>
-              )}
-              
-              {m.sender !== 'system' && (
-                <div className="flex items-center justify-end gap-1 mt-1.5 opacity-30 text-[7px] font-black">
-                   {m.timestamp} 
-                   {m.sender === 'me' && (
-                     m.status === 'seen' ? <FaCheckDouble className="text-cyan-400" /> : <FaCheck />
-                   )}
+      {/* রিমোট ভিডিও গ্রিড (অন্য পাশের ফেস) */}
+      <div className="absolute inset-0 bg-[#020617] flex items-center justify-center">
+        {callAccepted ? (
+            /* আগোরার জন্য জাস্ট একটি খালি HTML রিলেটিভ Container লাগবে, ভিডিও এর ভেতর ইনজেক্ট হবে */
+            <div 
+              ref={remoteVideoRef} 
+              className="w-full h-full object-cover" 
+            />
+        ) : (
+          <div className="flex flex-col items-center gap-8">
+             <div className="w-40 h-40 rounded-[2.5rem] border border-cyan-500/20 flex items-center justify-center relative bg-zinc-900/50 backdrop-blur-xl">
+                <div className="absolute inset-0 rounded-[2.5rem] border-2 border-cyan-500 animate-ping opacity-10" />
+                <div className="w-32 h-32 rounded-[2rem] bg-zinc-800 overflow-hidden border border-white/5 flex items-center justify-center shadow-2xl">
+                    <img 
+                      src={remoteUser?.profilePic || `https://ui-avatars.com/api/?name=${remoteUser?.fullName || 'Onyx'}&background=06b6d4&color=fff&size=128`} 
+                      className="w-full h-full object-cover" 
+                      alt="avatar" 
+                    />
                 </div>
-              )}
-            </div>
+             </div>
+             <div className="text-center space-y-2">
+                <p className="text-white text-xl font-bold tracking-tight">{remoteUser?.fullName || "Syncing Name..."}</p>
+                <p className="text-cyan-500 text-xs font-black uppercase tracking-[0.6em] animate-pulse">
+                    {callStatus === 'ringing' ? 'Initiating_Pulse...' : 'Syncing_Neural_Link...'}
+                </p>
+             </div>
           </div>
-        ))}
-        <div ref={scrollRef} />
-      </main>
+        )}
+      </div>
 
-      {/* Footer & Input */}
-      <footer className="p-4 bg-black/80 backdrop-blur-2xl border-t border-white/5 pb-10">
-        <div className="flex items-center gap-2 bg-zinc-900/40 border border-white/5 rounded-[2rem] p-1.5 shadow-inner">
-          <button className="p-3.5 text-zinc-600 hover:text-cyan-500 transition-colors">
-            <FaPlus size={14} />
-          </button>
-          <input 
-            type="text" placeholder="Transmit signal..." 
-            className="flex-1 bg-transparent outline-none text-[14px] text-white px-2 py-2 placeholder:text-zinc-700" 
-            value={msg} onChange={(e) => setMsg(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          />
-          <button onClick={startVoiceCapture} className={`p-3.5 rounded-2xl transition-all ${isListening ? 'text-rose-500 animate-pulse' : 'text-zinc-600'}`}>
-            <FaMicrophone size={14} />
-          </button>
-          <button 
-            onClick={() => handleSend()} 
-            disabled={!msg.trim()} 
-            className="p-3.5 bg-cyan-600 disabled:bg-zinc-800 rounded-2xl text-white active:scale-90 transition-all"
-          >
-            <FaPaperPlane size={14} />
-          </button>
+      {/* কল টাইমার */}
+      {callAccepted && (
+        <div className="absolute top-10 z-[60] bg-black/40 backdrop-blur-xl px-5 py-2 rounded-full border border-cyan-500/30">
+          <p className="text-cyan-400 font-black tracking-widest text-sm font-mono">
+            {formatTime(callDuration)}
+          </p>
         </div>
-      </footer>
-    </motion.div>
+      )}
+
+      {/* লোকাল ভিডিও (Floating Window) */}
+      <motion.div 
+        drag
+        dragConstraints={{ left: -150, right: 150, top: -200, bottom: 200 }}
+        className="absolute top-10 right-6 w-32 md:w-44 aspect-[3/4] bg-zinc-900 rounded-[2rem] border border-white/10 overflow-hidden shadow-2xl z-50 ring-1 ring-cyan-500/30 backdrop-blur-3xl"
+      >
+        <div 
+          ref={localVideoRef} 
+          className={`w-full h-full object-cover scale-x-[-1] transition-opacity duration-500 ${!isVideoOn ? 'opacity-0' : 'opacity-100'}`} 
+        />
+        {!isVideoOn && <div className="absolute inset-0 flex items-center justify-center bg-zinc-800"><FaVideoSlash className="text-zinc-600" size={24} /></div>}
+      </motion.div>
+
+      {/* কন্ট্রোল ইন্টারফেস */}
+      <div className="absolute bottom-16 flex items-center gap-8 z-50">
+        <motion.button onClick={toggleMic} className={`p-5 rounded-3xl transition-all ${!isMicOn ? 'bg-red-500' : 'bg-zinc-800/80 hover:bg-zinc-700'}`}>
+          {isMicOn ? <FaMicrophone size={20} className="text-white" /> : <FaMicrophoneSlash size={20} className="text-white" />}
+        </motion.button>
+
+        <motion.button onClick={endCall} className="p-8 rounded-[2.5rem] bg-red-600 text-white shadow-2xl hover:bg-red-500 transition-all border border-red-400/20">
+          <FaPhoneSlash size={32} />
+        </motion.button>
+
+        {callType === 'video' && (
+          <motion.button onClick={toggleVideo} className={`p-5 rounded-3xl transition-all ${!isVideoOn ? 'bg-red-500' : 'bg-zinc-800/80 hover:bg-zinc-700'}`}>
+            {isVideoOn ? <FaVideo size={20} className="text-white" /> : <FaVideoSlash size={20} className="text-white" />}
+          </motion.button>
+        )}
+      </div>
+    </div>
   );
 };
 
-export default ChatInterface;
+export default CallPage;
