@@ -45,7 +45,7 @@ const OnyxMessengerHome = () => {
   }, [chatList]);
 
   /* ==========================================================
-      ⚡ NEURAL SIGNAL HANDLING (Socket Logic Updated for Call)
+      ⚡ NEURAL SIGNAL HANDLING (Socket Logic)
   ========================================================== */
   useEffect(() => {
     if (!socket) return;
@@ -71,9 +71,7 @@ const OnyxMessengerHome = () => {
       }
     };
 
-    // ব্যাকএন্ড এবং চ্যাট ইন্টারফেসের সিগন্যালিং ডাবল চ্যানেল ট্র্যাকিং ব্যাকআপ
     const handleIncomingCall = (data) => {
-      console.log("📡 Home Incoming Pulse:", data);
       setIncomingCall(data);
       callAudio.current.loop = true;
       callAudio.current.play().catch(e => console.warn("Audio blocked by browser policy"));
@@ -87,33 +85,31 @@ const OnyxMessengerHome = () => {
 
     socket.on("getMessage", handleIncomingMessage);
     socket.on("$incomingCall", handleIncomingCall);
-    socket.on("incomingCall", handleIncomingCall); // ব্যাকএন্ড থেকে ডাইরেক্ট পুশ ইভেন্ট লিসেনার
     socket.on("callEnded", handleCallEnded);
 
     return () => {
       socket.off("getMessage", handleIncomingMessage);
       socket.off("$incomingCall", handleIncomingCall);
-      socket.off("incomingCall", handleIncomingCall);
       socket.off("callEnded", handleCallEnded);
     };
   }, [socket, selectedChat]);
 
- /* ==========================================================
-      📞 CALL ACTIONS (Fixed Routing to Messenger instead of /call)
+  /* ==========================================================
+      📞 CALL ACTIONS (Fixed Routing to ChatInterface via chat-link)
   ========================================================== */
   const initiateCall = useCallback((targetUser, type) => {
     if (!targetUser?._id || !user?._id) return;
     
-    // ইউনিক ডাইনামিক রুম আইডি কম্বিনেশন
     const roomId = [user._id, targetUser._id].sort().join("-"); 
     
-    // 🚀 ফিক্স: '/call/' এর বদলে সরাসরি মেসেঞ্জার রাউটে চ্যাট ইন্টারফেস পুশ করা হলো
-    navigate(`/messages/${roomId}`, {
+    // 🚀 ফিক্স: '/call' এর বদলে সরাসরি '/chat-link' ডাইরেক্ট রাউটে সেশন অবজেক্ট পাঠানো হলো
+    navigate(`/chat-link/${roomId}`, {
       state: { 
         callType: type, 
         mode: 'outbound', 
         receiverId: targetUser._id,
-        receiverName: targetUser.fullName
+        callerName: targetUser.fullName || "Onyx Member",
+        callerId: targetUser._id
       }
     });
   }, [user, navigate]);
@@ -128,11 +124,12 @@ const OnyxMessengerHome = () => {
     const callType = incomingCall.callType || incomingCall.type || 'video';
     const sdpSignal = incomingCall.signalData || incomingCall.signal;
 
-    // 🚀 ফিক্স: ইনকামিং কল এক্সেপ্ট করলেও যেন সরাসরি মেসেঞ্জার ইন্টারফেসে ল্যান্ড করে
-    navigate(`/messages/${roomId}`, {
+    // 🚀 ফিক্স: ইনকামিং কল রিসিভ করলে সরাসরি ডেডিকেটেড ChatInterface হ্যান্ডলারে ট্রান্সমিট করবে
+    navigate(`/chat-link/${roomId}`, {
       state: { 
         incomingSignal: sdpSignal, 
         callerId: incomingCall.from,
+        callerName: incomingCall.name || "Onyx Node",
         callType: callType,
         mode: 'inbound',
         autoAccept: true
@@ -140,6 +137,15 @@ const OnyxMessengerHome = () => {
     });
     
     setIncomingCall(null);
+  };
+
+  const declineCall = () => {
+    if (incomingCall) {
+      socket.emit("endCall", { to: incomingCall.from });
+      callAudio.current.pause();
+      callAudio.current.currentTime = 0;
+      setIncomingCall(null);
+    }
   };
 
   /* ==========================================================
@@ -244,7 +250,7 @@ const OnyxMessengerHome = () => {
           </main>
         </>
       ) : (
-        /* Settings Tab: আপনার নতুন SettingsScreen এখানে লোড হবে */
+        /* Settings Tab: SettingsScreen লোড হবে */
         <SettingsScreen onBack={() => setActiveTab('chats')} />
       )}
 
