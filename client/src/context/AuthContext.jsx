@@ -4,7 +4,7 @@ import { io } from 'socket.io-client';
 
 // ✅ ১. গ্লোবাল ওনিক্স নেটওয়ার্ক নোডস
 const API_NODES = [
-  'https://my-app-v6xz.onrender.com', // 🚀 মাস্টার নোড: সকেট এবং গ্লোবাল সিগন্যালিং ট্রাফিক মেইনটেইন করবে
+  'https://my-app-v6xz.onrender.com', // 🚀マスターノード: সকেট এবং গ্লোবাল সিগন্যালিং ট্রাফিক মেইনটেইন করবে
   'https://my-app-2-uzoi.onrender.com',
   'https://my-app-3-kn3k.onrender.com',
   'https://my-app-4-btda.onrender.com'
@@ -53,7 +53,6 @@ export const AuthProvider = ({ children }) => {
   const clearAuthData = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     if (socket) {
-      // ডাটাবেস অবজেক্টের পারফেক্ট '_id' ফরম্যাট ব্যবহার করা হয়েছে
       socket.emit("logout_user", user?._id);
       socket.disconnect();
     }
@@ -67,7 +66,6 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     let socketInstance = null;
 
-    // ডাটাবেস অবজেক্টের স্ট্রাকচার অনুযায়ী '_id' দিয়ে কড়া সিকিউরিটি চেক
     if (user?._id && !socketConnecting.current) {
       socketConnecting.current = true;
       const currentUserId = user._id;
@@ -97,11 +95,9 @@ export const AuthProvider = ({ children }) => {
           📞 GLOBAL CALL SYNAPSE LISTENERS (রিসিভার ট্র্যাকিং ফিক্স)
          ========================================================== */
       
-      // ব্যাকএন্ড ফরোয়ার্ড করা "$incomingCall" ইভেন্ট এখানে গ্লোবালি হ্যান্ডেল করা হলো
       socketInstance.on("$incomingCall", (data) => {
         console.log("📡 Incoming Onyx Pulse Detected:", data);
         
-        // রিসিভার যদি অলরেডি সেই কল রুমে না থাকে, তবে সেশন ডাটা লক করুন
         if (window.location.pathname !== `/call/${data.roomId}`) {
           
           // ব্রাউজার নোটিফিকেশন ব্যাকআপ
@@ -109,21 +105,18 @@ export const AuthProvider = ({ children }) => {
             new Notification(`Onyx Call from ${data.name}`, { body: `Tap to accept ${data.type} link.` });
           }
           
-          // ডাটাবেস স্কিমা অনুযায়ী ডাটা সেফলি সেভ করা হচ্ছে
+          // ডাটাবেস স্কিমা অনুযায়ী ডাটা সেফলি সেভ করা হচ্ছে
           sessionStorage.setItem("onyx_incoming_signal", JSON.stringify(data.signalData || data.signal));
           sessionStorage.setItem("onyx_caller_id", data.from);
           sessionStorage.setItem("onyx_caller_name", data.name || "Unknown Link");
           sessionStorage.setItem("onyx_caller_avatar", data.avatar || "");
           sessionStorage.setItem("onyx_call_type", data.type);
 
-          // 🎯 CRITICAL FIX: উইন্ডো হার্ড-রিফ্রেশ বন্ধ করা হলো। 
-          // সিগন্যাল রিসিভ করার দায়িত্ব এখন 'AppContent.jsx'-এর গ্লোবাল টোস্ট বা পপআপের ওপর ছেড়ে দেওয়া হলো।
-          // এর ফলে লাইভ কানেকশন ব্রেক না হয়ে ওনিক্স টোস্ট নোটিফিকেশন ইনস্ট্যান্টলি স্ক্রিনে ফায়ার হবে।
           console.log("⚡ Signal captured inside Synapse Core. Dispatching to global UI layer...");
         }
       });
 
-      // কল ক্যান্সেল হয়ে গেলে সেশন স্টোরেজ ক্লিনআপ ইভেন্ট
+      // কল ক্যান্সেল হয়ে গেলে সেশন স্টোরেজ ক্লিনআপ ইভেন্ট
       socketInstance.on("callEnded", () => {
         console.log("🛑 Remote node ended the call session.");
         sessionStorage.removeItem("onyx_incoming_signal");
@@ -138,12 +131,12 @@ export const AuthProvider = ({ children }) => {
         socketConnecting.current = false; 
       });
 
+      // 🎯 CRITICAL FIX: রাউট চেঞ্জের সময় যেন গ্লোবাল সকেট কানেকশন ডিসকানেক্ট না হয়, 
+      // সেজন্য ক্লিনআপ ফাংশন থেকে জোরপূর্বক .disconnect() করা বন্ধ করা হলো।
       return () => {
         if (socketInstance) {
-          socketInstance.disconnect();
-          if (window.socket) window.socket = null;
-          socketConnecting.current = false;
-          console.log("📡 Neural link closed.");
+          console.log("📡 Retaining neural link for active session routing...");
+          // এখানে socketInstance.disconnect() রিমুভ করা হয়েছে যাতে SPA নেভিগেশনে সকেট লাইভ থাকে।
         }
       };
     }
@@ -162,7 +155,6 @@ export const AuthProvider = ({ children }) => {
       try {
         const res = await api.get('/auth/me'); 
         if (isMounted) {
-          // ডাটাবেসের অবজেক্ট অনুযায়ী ইউজার সেশন রিকভারি লজিক স্টেবল করা হলো
           const userData = res.data.user || res.data.data || res.data;
           setUser(userData);
         }
