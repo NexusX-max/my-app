@@ -13,7 +13,7 @@ import Notification from "./components/NotificationSystem";
 // Pages
 import PremiumHomeFeed from "./pages/PremiumHomeFeed";
 import Messenger from "./pages/Messenger";
-import ChatInterface from "./components/ChatInterface"; // 📌 কল ও ডাইরেক্ট লিঙ্কের জন্য সরাসরি ইমপোর্ট করা হলো
+import ChatInterface from "./pages/ChatInterface";
 import ProfilePage from "./pages/Profile.jsx";
 import Settings from "./pages/Settings";
 import ReelsFeed from "./pages/ReelsFeed";
