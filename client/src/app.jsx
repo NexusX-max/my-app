@@ -11,9 +11,9 @@ import OnyxAI from "./components/OnyxAI";
 import Notification from "./components/NotificationSystem";
 
 // Pages
-import ChatInterface from "./pages/ChatInterface.jsx";
 import PremiumHomeFeed from "./pages/PremiumHomeFeed";
 import Messenger from "./pages/Messenger";
+import ChatInterface from "./components/ChatInterface"; // 📌 কল ও ডাইরেক্ট লিঙ্কের জন্য সরাসরি ইমপোর্ট করা হলো
 import ProfilePage from "./pages/Profile.jsx";
 import Settings from "./pages/Settings";
 import ReelsFeed from "./pages/ReelsFeed";
@@ -40,6 +40,28 @@ const ProfileSwitch = () => {
   const { user } = useContext(AuthContext);
   const cleanId = id?.startsWith(':') ? id.slice(1) : id;
   return user && (cleanId === user._id || cleanId === user.id) ? <ProfilePage /> : <PublicProfile />;
+};
+
+// --- Chat Interface Route Handler ---
+// এটি রাউটার প্যারামস থেকে roomId রিড করে সরাসরি চ্যাট ও কল স্ক্রিন রেন্ডার করবে
+const DedicatedChatRoute = () => {
+  const { roomId } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // ওনিক্স চ্যাট ইন্টারফেস তার অ্যাক্টিভ চ্যাট সেশন অবজেক্ট আশা করে
+  const activeChatSession = {
+    _id: location.state?.callerId || roomId?.split("-").find(id => id !== JSON.parse(localStorage.getItem("onyx_user_session"))?._id),
+    fullName: location.state?.callerName || "Onyx Node",
+    isRoomIdDirect: true
+  };
+
+  return (
+    <ChatInterface 
+      activeChat={activeChatSession} 
+      onBack={() => navigate(-1)} 
+    />
+  );
 };
 
 function AppContent() {
@@ -80,7 +102,7 @@ function AppContent() {
         });
       };
 
-      // 📞 ইনকামিং কল সিগন্যাল হ্যান্ডেলার (সরাসরি মেসেঞ্জার ইন্টারফেসে নিয়ে যাওয়ার লজিক)
+      // 📞 ইনকামিং কল সিগন্যাল হ্যান্ডেলার (সরাসরি চ্যাট ইন্টারফেসে রিডাইরেক্ট লজিক)
       const onIncomingCall = (data) => {
         ringtone.current.loop = true;
         ringtone.current.play().catch(() => console.log("Audio blocked by browser safety protocol"));
@@ -102,11 +124,10 @@ function AppContent() {
                   ringtone.current.currentTime = 0;
                   toast.dismiss(t.id);
                   
-                  // ১. ইউনিক রুম আইডি মেকানিজম বা কলার আইডি অ্যাসাইনমেন্ট
                   const callRoomId = data.roomId || data.from;
                   
-                  // ২. সরাসরি কল পেজের বদলে মেসেঞ্জার রাউটের চ্যাট ইন্টারফেসে স্টেট পুশ
-                  navigate(`/messages/${callRoomId}`, { 
+                  // 🚀 ফিক্স: মেসেঞ্জারের বদলে সরাসরি ডেডিকেটেড ChatInterface রাউটে ট্রান্সমিশন পাঠানো হলো
+                  navigate(`/chat-link/${callRoomId}`, { 
                     state: { 
                       incomingSignal: data.signal || data.signalData, 
                       callerId: data.from,
@@ -135,7 +156,7 @@ function AppContent() {
             </div>
           </div>
         ), {
-          duration: 45000, // ৪৫ সেকেন্ড পর্যন্ত রিংটোন বাজবে
+          duration: 45000,
           position: "top-center",
           style: { background: '#0a0a0a', color: '#fff', border: '1px solid rgba(6,182,212,0.3)', p: '12px' }
         });
@@ -150,7 +171,7 @@ function AppContent() {
       socket.on("connect", onConnect);
       socket.on("getNotification", onNotification);
       socket.on("incomingCall", onIncomingCall);
-      socket.on("$incomingCall", onIncomingCall); // ব্যাকআপ ইভেন্ট স্ট্রিম লিসেনার
+      socket.on("$incomingCall", onIncomingCall); 
       socket.on("callEnded", onCallEnded);
 
       return () => {
@@ -194,16 +215,17 @@ function AppContent() {
   const authRoutes = ["/", "/join", "/forgot-password"];
   const isAuthPage = authRoutes.includes(location.pathname) || location.pathname.startsWith("/reset-password/");
   const isMessenger = location.pathname.startsWith("/messages");
+  const isChatDirect = location.pathname.startsWith("/chat-link"); // চ্যাট ইন্টারফেসের জন্য লেআউট অপটিমাইজেশন ট্র্যাকিং
   const isReels = location.pathname === "/reels";
   const isSearch = location.pathname === "/search"; 
-  const showNav = user && !isAuthPage && !isMessenger && !isReels;
+  const showNav = user && !isAuthPage && !isMessenger && !isChatDirect && !isReels;
 
   return (
     <div className="min-h-screen bg-[#020617] text-gray-200 selection:bg-cyan-500/30 overflow-x-hidden relative">
       <Toaster position="top-right" />
       <CustomCursor />
 
-      {!isMessenger && !isReels && (
+      {!isMessenger && !isChatDirect && !isReels && (
         <div className="fixed inset-0 pointer-events-none opacity-20 bg-[radial-gradient(circle_at_50%_-10%,_#06b6d4_0%,_transparent_70%)] z-0" />
       )}
 
@@ -232,7 +254,7 @@ function AppContent() {
                   <Protected>
                     <SearchScreen 
                       onBack={() => navigate(-1)} 
-                      onSelectUser={(u) => navigate(`/messages/${u._id || u.id}`)} 
+                      onSelectUser={(u) => navigate(`/chat-link/${[user?._id || user?.id, u._id || u.id].sort().join("-")}`)} 
                     />
                   </Protected>
                 } />
@@ -240,8 +262,11 @@ function AppContent() {
                 <Route path="/my-profile" element={<Protected><ProfilePage /></Protected>} />
                 <Route path="/notifications" element={<Protected><div className="max-w-2xl mx-auto p-10"><Notification /></div></Protected>} />
                 
-                <Route path="/chatInterface" element={<Protected><ChatInterface /></Protected>} />
-                <Route path="/messages/:roomId" element={<Protected><Messenger /></Protected>} />
+                {/* 📌 মেসেঞ্জারের রেগুলার চ্যাট লিস্ট লোড করার সাধারণ রাউট */}
+                <Route path="/messages" element={<Protected><Messenger /></Protected>} />
+                
+                {/* 🎯 ফিক্স: কলিং সিস্টেম ও ডিরেক্ট কানেকশনের জন্য পিওর ChatInterface রাউট */}
+                <Route path="/chat-link/:roomId" element={<Protected><DedicatedChatRoute /></Protected>} />
                 
                 <Route path="/settings" element={<Protected><Settings /></Protected>} />
                 <Route path="/onyx-ai" element={<Protected><div className="pt-10 max-w-2xl mx-auto px-4"><OnyxAI /></div></Protected>} />
