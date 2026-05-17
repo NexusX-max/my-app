@@ -93,60 +93,59 @@ const OnyxMessengerHome = () => {
       socket.off("callEnded", handleCallEnded);
     };
   }, [socket, selectedChat]);
-
-  /* ==========================================================
-      📞 CALL ACTIONS (Fixed Routing to ChatInterface via chat-link)
+/* ==========================================================
+      📞 CALL ACTIONS (Fixed: Emitting Socket Signal Like Chat)
   ========================================================== */
   const initiateCall = useCallback((targetUser, type) => {
-    if (!targetUser?._id || !user?._id) return;
+    // ১. ভ্যালিডেশন চেক (আইডি ঠিক আছে কি না)
+    const targetId = targetUser?._id || targetUser?.id;
+    if (!targetId || !user?._id || !socket) {
+      console.warn("📡 Onyx Engine: Cannot initiate call. Socket or User ID missing.");
+      return;
+    }
+
+    const roomId = [user._id, targetId].sort().join("-"); 
     
-    const roomId = [user._id, targetUser._id].sort().join("-"); 
-    
-    // 🚀 ফিক্স: '/call' এর বদলে সরাসরি '/chat-link' ডাইরেক্ট রাউটে সেশন অবজেক্ট পাঠানো হলো
-    navigate(`/chat-link/${roomId}`, {
-      state: { 
-        callType: type, 
-        mode: 'outbound', 
-        receiverId: targetUser._id,
-        callerName: targetUser.fullName || "Onyx Member",
-        callerId: targetUser._id
-      }
+    // 🎯 চ্যাটের মতো এখানেও সকেট ইমিট করতে হবে, যাতে ব্যাকএন্ড অন্য আইডিতে সিগন্যাল পাঠাতে পারে
+    socket.emit("callUser", {
+      userToCall: targetId,                 // যার কাছে কল যাবে (Other ID)
+      signalData: null,                     // প্রাথমিক হ্যান্ডশেক পালস
+      from: user._id,                       // আমার আইডি
+      name: user.fullName || "Onyx Node",   // আমার নাম (যাতে রিসিভারের স্ক্রিনে নাম দেখায়)
+      avatar: user.profilePic || null,
+      type: type,                           // 'audio' অথবা 'video'
+      roomId: roomId
     });
-  }, [user, navigate]);
+
+    console.log(`📡 Outbound Pulse Emitted to Node: ${targetId}`);
+
+    // কল স্ক্রিনে নেভিগেট করা
+    navigate(`/call/${roomId}?type=${type}&mode=outbound`);
+  }, [user, socket, navigate]);
 
   const acceptCall = () => {
-    if (!incomingCall || !user) return;
+    if (!incomingCall || !user || !socket) return;
     
     callAudio.current.pause();
     callAudio.current.currentTime = 0;
     
     const roomId = incomingCall.roomId || [user._id, incomingCall.from].sort().join("-");
     const callType = incomingCall.callType || incomingCall.type || 'video';
-    const sdpSignal = incomingCall.signalData || incomingCall.signal;
+    
+    // 🎯 কল অ্যাকসেপ্ট করার পর ওনিক্স নেটওয়ার্কের ওপারে থাকা কলারকে সকেট দিয়ে জানানো
+    socket.emit("answerCall", { 
+      to: incomingCall.from, 
+      signal: incomingCall.signalData,
+      roomId: roomId 
+    });
 
-    // 🚀 ফিক্স: ইনকামিং কল রিসিভ করলে সরাসরি ডেডিকেটেড ChatInterface হ্যান্ডলারে ট্রান্সমিট করবে
-    navigate(`/chat-link/${roomId}`, {
-      state: { 
-        incomingSignal: sdpSignal, 
-        callerId: incomingCall.from,
-        callerName: incomingCall.name || "Onyx Node",
-        callType: callType,
-        mode: 'inbound',
-        autoAccept: true
-      }
+    navigate(`/call/${roomId}?type=${callType}&mode=inbound`, {
+      state: { incomingSignal: incomingCall.signalData, callerId: incomingCall.from }
     });
     
     setIncomingCall(null);
   };
-
-  const declineCall = () => {
-    if (incomingCall) {
-      socket.emit("endCall", { to: incomingCall.from });
-      callAudio.current.pause();
-      callAudio.current.currentTime = 0;
-      setIncomingCall(null);
-    }
-  };
+  
 
   /* ==========================================================
       🎯 USER SELECTION
@@ -250,7 +249,7 @@ const OnyxMessengerHome = () => {
           </main>
         </>
       ) : (
-        /* Settings Tab: SettingsScreen লোড হবে */
+        /* Settings Tab: আপনার নতুন SettingsScreen এখানে লোড হবে */
         <SettingsScreen onBack={() => setActiveTab('chats')} />
       )}
 
