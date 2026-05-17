@@ -73,6 +73,7 @@ const OnyxMessengerHome = () => {
     };
 
     const handleIncomingCall = (data) => {
+      console.log("📞 UI Layer: Incoming call payload captured successfully!", data);
       setIncomingCall(data);
       callAudio.current.loop = true;
       callAudio.current.currentTime = 0;
@@ -108,17 +109,22 @@ const OnyxMessengerHome = () => {
 
     const roomId = [user._id, targetId].sort().join("-"); 
     
-    socket.emit("callUser", {
+    // 🎯🎯🎯 FIX: 'callUser' পরিবর্তন করে '$incomingCall' করা হলো যেন ব্যাকএন্ডের সাথে সরাসরি ম্যাচ হয়
+    socket.emit("$incomingCall", {
       userToCall: targetId,                 
+      receiverId: targetId,                 
       signalData: null,                     
       from: user._id,                       
+      senderId: user._id,                       
       name: user.fullName || "Onyx Node",   
+      senderName: user.fullName || "Onyx Node",   
       avatar: user.profilePic || null,
       type: type,                           
-      roomId: roomId
+      roomId: roomId,
+      isIncomingCall: true
     });
 
-    console.log(`📡 Outbound Pulse Emitted to Node: ${targetId}`);
+    console.log(`📡 Outbound Pulse Emitted over '$incomingCall' to Node: ${targetId}`);
     navigate(`/call/${roomId}?type=${type}&mode=outbound`);
   }, [user, socket, navigate]);
 
@@ -144,14 +150,12 @@ const OnyxMessengerHome = () => {
     setIncomingCall(null);
   };
   
-  // 🎯 FIXED: declineCall ফাংশনটি যুক্ত করা হলো যা আগে মিসিং ছিল
   const declineCall = () => {
     if (!incomingCall || !socket) return;
     
     callAudio.current.pause();
     callAudio.current.currentTime = 0;
     
-    // ব্যাকএন্ডকে জানানো যে কলটি কেটে দেওয়া হয়েছে
     socket.emit("endCall", { to: incomingCall.from });
     setIncomingCall(null);
   };

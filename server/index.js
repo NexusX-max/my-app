@@ -162,36 +162,45 @@ const setupSocket = async () => {
       } else {
         onlineUsers.push({ userId, socketId });
       }
+      console.log(`📡 Onyx Core: Node Connected [User: ${userId} -> Socket: ${socketId}]`);
       io.emit("getOnlineUsers", onlineUsers);
     }
 
     // 📩 MESSAGE HANDLER (চ্যাট মেসেজ)
     socket.on("sendMessage", (message) => {
+      // সেফটি ফিল্টার: কলের সিগন্যাল ভুলে এখানে ঢুকলে যেন চ্যাটরুমে পুশ না হয়
+      if (message.isCallSignal || message.isIncomingCall || message.type === 'audio' || message.type === 'video') return;
       io.emit("getMessage", { ...message });
     });
 
     /* ==========================================================
-        📞 ONYX REAL-TIME CALL SIGNALING ENGINE (Added)
+        📞 ONYX REAL-TIME CALL SIGNALING ENGINE (Fixed)
     ========================================================== */
     
-    // ১. ইনকামিং কল ট্রিগার এবং রাউটিং মেকানিজম
-    socket.on("callUser", (data) => {
-      // onlineUsers অ্যারে থেকে রিসিভারের একটিভ সকেট আইডি খুঁজে বের করা
-      const targetUser = onlineUsers.find(user => user.userId === data.userToCall);
+    // 🎯 ফিক্সড ১: ফ্রন্টএন্ডের handleSend থেকে পাঠানো "$incomingCall" চ্যানেল লিসেন করা
+    socket.on("$incomingCall", (data) => {
+      console.log("📥 Onyx Network: Inbound call pulse caught on '$incomingCall'. Target User:", data.receiverId || data.userToCall);
+      
+      const targetId = data.receiverId || data.userToCall;
+      const targetUser = onlineUsers.find(user => user.userId === targetId);
       
       if (targetUser && targetUser.socketId) {
-        // চ্যাটের মতোই হুবহু টার্গেট সকেটে ইনকামিং সিগন্যাল রিফ্লেক্ট করে দেওয়া হলো
+        // ওদিকের নির্দিষ্ট ইউজারের সকেটে সিগন্যাল রিফ্লেক্ট করা হলো
         io.to(targetUser.socketId).emit("$incomingCall", {
-          from: data.from,
-          name: data.name,
+          id: data.id,
+          from: data.senderId || data.from,
+          name: data.senderName || data.name,
           avatar: data.avatar,
           type: data.type,
           roomId: data.roomId,
-          signalData: data.signalData
+          signalData: data.signalData,
+          isIncomingCall: true
         });
-        console.log(`✅ Onyx Network: Call Signal forwarded from ${data.from} to socket ${targetUser.socketId}`);
+        console.log(`✅ Onyx Network: Call Signal forwarded successfully to target socket ${targetUser.socketId}`);
       } else {
-        console.log(`⚠️ Onyx Network: Target Node ${data.userToCall} is currently offline.`);
+        console.log(`⚠️ Onyx Network: Target Node ${targetId} is offline or session missing.`);
+        // অপশনাল: কলারকে একটা মেসেজ বা ইভেন্ট ব্যাক করা যেতে পারে যে ইউজার অফলাইন
+        socket.emit("callOpponentOffline");
       }
     });
 
@@ -220,7 +229,7 @@ const setupSocket = async () => {
     socket.on("disconnect", () => {
       onlineUsers = onlineUsers.filter(user => user.socketId !== socket.id);
       io.emit("getOnlineUsers", onlineUsers);
-      console.log("🛑 Neural link severed.");
+      console.log(`🛑 Neural link severed for socket: ${socket.id}`);
     });
   });
 };
