@@ -50,22 +50,27 @@ function AppContent() {
   const [reelsData, setReelsData] = useState([]);
   const [reelsLoading, setReelsLoading] = useState(true);
 
-  // Audio Refs
+  // 📡 Audio Refs: ওনিক্স নোটিফিকেশন এবং রিংটোন অডিও পাইপলাইন
   const msgSound = useRef(new Audio("https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3"));
   const ringtone = useRef(new Audio("https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3"));
 
   /* ==========================================================
-      ⚡ NEURAL NOTIFICATION & GLOBAL CALL ENGINE (Fixed Sync)
+      ⚡ NEURAL NOTIFICATION & GLOBAL CALL ENGINE (Perfect Sync)
   ========================================================== */
   useEffect(() => {
-    if (user && socket) {
+    if (user?._id && socket) {
+      
       const onConnect = () => {
         console.log("%c 🚀 Neural link established: " + socket.id, "color: #06b6d4; font-weight: bold;");
         socket.emit("addNewUser", user._id);
       };
 
+      // 📩 ইনকামিং সাধারণ টেক্সট মেসেজ নোটিফিকেশন সাউন্ড হ্যান্ডলার
       const onNotification = (data) => {
-        msgSound.current.play().catch(() => {});
+        // রিলোড জটলা এড়াতে অডিও স্টেট প্রিপেয়ার করা
+        msgSound.current.currentTime = 0;
+        msgSound.current.play().catch((err) => console.log("Message audio blocked temporarily:", err));
+
         const senderName = data?.senderName || "Onyx Member";
         toast(`${senderName}: ${data?.content || "sent a signal"}`, {
           icon: '🔔',
@@ -80,36 +85,44 @@ function AppContent() {
         });
       };
 
-      // 🎯 FIXED: ওনিক্স ব্যাকএন্ডের সাথে ম্যাচ রেখে ইভেন্টের নাম "$incomingCall" করা হলো
+      // 🎯 ইনকামিং রিয়েল-টাইম কল এবং রিংটোন ইঞ্জিন
       const onIncomingCall = (data) => {
-        ringtone.current.loop = true;
-        ringtone.current.play().catch(() => console.log("Audio blocked by browser"));
+        // ইউজার অলরেডি কল স্ক্রিনে থাকলে ডুপ্লিকেট ট্রিগার হবে না
+        if (location.pathname.startsWith("/call/")) return;
 
-        // ডাটা স্ট্রাকচার সেফটি ব্যাকআপ
+        // রিংটোন লুপ মোড একটিভ করে প্লে করা
+        ringtone.current.loop = true;
+        ringtone.current.currentTime = 0;
+        ringtone.current.play().catch((err) => {
+          console.warn("⚠️ Browser blocked autopilot audio. Will play on first user touch.", err);
+        });
+
         const finalRoomId = data?.roomId || [user._id, data?.from].sort().join("-");
         const callType = data?.type || data?.callType || 'video';
+        const callerName = data?.name || "Onyx Node";
 
         toast((t) => (
           <div className="flex flex-col gap-3 p-1 min-w-[220px]">
             <div className="flex items-center gap-3">
               <div className="w-2 h-2 bg-green-500 animate-ping rounded-full" />
-              <span className="text-[11px] font-bold uppercase tracking-tighter">
-                Incoming {callType} call from {data?.name || 'Unknown Node'}
+              <span className="text-[11px] font-bold uppercase tracking-tighter text-cyan-400">
+                Incoming {callType} call from {callerName}
               </span>
             </div>
             <div className="flex gap-2">
               <button 
                 onClick={() => {
+                  // রিংটোন অফ করা
                   ringtone.current.pause();
                   ringtone.current.currentTime = 0;
                   toast.dismiss(t.id);
                   
-                  // 🎯 FIXED: রাউটিং সরাসরি প্রপার roomId এবং স্টেটে ট্রান্সমিট হবে
+                  // সেফ রাউটিং মেকানিজম উইথ সেশন স্টেট ডাটা
                   navigate(`/call/${finalRoomId}?type=${callType}&mode=inbound`, { 
                     state: { 
-                      incomingSignal: data?.signalData || data?.signal, 
+                      incomingSignal: data?.signalData || data?.signal || null, 
                       callerId: data?.from,
-                      callerName: data?.name || "Onyx Node",
+                      callerName: callerName,
                       callType: callType 
                     } 
                   });
@@ -120,6 +133,7 @@ function AppContent() {
               </button>
               <button 
                 onClick={() => {
+                  // রিংটোন অফ ও কল রিজেক্ট করা
                   ringtone.current.pause();
                   ringtone.current.currentTime = 0;
                   toast.dismiss(t.id);
@@ -132,31 +146,35 @@ function AppContent() {
             </div>
           </div>
         ), {
-          duration: 30000,
+          duration: 45000, // ৪৫ সেকেন্ড পর্যন্ত নোটিফিকেশন লাইভ থাকবে
           position: "top-center",
-          style: { background: '#0a0a0a', color: '#fff', border: '1px solid #22c55e' }
+          id: `incoming-call-${finalRoomId}`,
+          style: { background: '#0a0a0a', color: '#fff', border: '1px solid #06b6d4' }
         });
       };
 
+      // ওপার থেকে কল কেটে দিলে লোকাল রিংটোন বন্ধ করার ইভেন্ট
       const onCallEnded = () => {
+        console.log("📡 Remote node cut the stream. Ending local audio loop.");
         ringtone.current.pause();
         ringtone.current.currentTime = 0;
         toast.dismiss();
       };
 
+      // সকেট ইভেন্ট বাইন্ডিং
       socket.on("connect", onConnect);
       socket.on("getNotification", onNotification);
-      socket.on("$incomingCall", onIncomingCall); // 🎯 FIXED
+      socket.on("$incomingCall", onIncomingCall);
       socket.on("callEnded", onCallEnded);
 
       return () => {
         socket.off("connect", onConnect);
         socket.off("getNotification", onNotification);
-        socket.off("$incomingCall", onIncomingCall); // 🎯 FIXED
+        socket.off("$incomingCall", onIncomingCall);
         socket.off("callEnded", onCallEnded);
       };
     }
-  }, [user, socket, navigate]);
+  }, [user?._id, socket, navigate, location.pathname]);
 
   /* ==========================================================
       🎬 REELS SYNC LOGIC

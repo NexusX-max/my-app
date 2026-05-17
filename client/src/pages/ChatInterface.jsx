@@ -53,11 +53,18 @@ const ChatInterface = ({ activeChat, onBack, isGroup = false }) => {
     }
   }, []);
 
+  // 🎯 ফিক্সড ১: চ্যাট ইন্টারফেস ওপেন হওয়া মাত্রই ওদিকের সব মেসেজ 'Seen' হিসেব করার ইনিশিয়াল ইমিট
+  useEffect(() => {
+    if (socket?.connected && chatId && user?._id) {
+      socket.emit("messageSeen", { senderId: chatId, receiverId: user._id });
+    }
+  }, [chatId, socket, user?._id]);
+
   // ২. ইনকামিং মেসেজ লিসেনার
   const handleGetMessage = useCallback((data) => {
     if (data.senderId === chatId) {
-      // কল সিগন্যাল হলে মেসেজ বক্সে দেখানোর দরকার নেই
-      if (data.isCallSignal || data.isIncomingCall) return; 
+      // 🎯 ফিক্সড ২: টাইপ লেভেলে অডিও/ভিডিও কল ট্র্যাকিং হলে বা ইনকামিং ফ্ল্যাগ থাকলে মেসেজ এড়াবো
+      if (data.isCallSignal || data.isIncomingCall || data.type === 'audio' || data.type === 'video') return; 
 
       const decryptedText = data.type === 'media' ? data.text : decryptMessage(data.text);
       const newMsg = { 
@@ -90,9 +97,9 @@ const ChatInterface = ({ activeChat, onBack, isGroup = false }) => {
     if (!textToSend.trim() || !chatId || !user?._id) return;
     
     const messageId = `${Date.now()}-${Math.random()}`;
-    const isCall = additionalData.isCallSignal || additionalData.isIncomingCall;
+    const isCall = additionalData.isCallSignal || additionalData.isIncomingCall || type === 'audio' || type === 'video';
     
-    // কল হলে এনক্রিপশন ছাড়াই পাঠানো হচ্ছে যাতে রিসিভার সহজে প্রসেস করতে পারে
+    // কল মেটাডাটা হলে রিল্যাক্সে র-টেক্সট যাবে, চ্যাট টেক্সট হলে এনক্রিপ্ট হবে
     const finalContent = (type === 'text' && !isCall) ? encryptMessage(textToSend) : textToSend;
 
     const msgPayload = {
@@ -107,7 +114,6 @@ const ChatInterface = ({ activeChat, onBack, isGroup = false }) => {
     };
 
     if (socket?.connected) {
-      // কল ডাটা হলে তোমার কনসোলে থাকা '$incomingCall' ইভেন্টে পাঠানো হচ্ছে
       if (isCall) {
         socket.emit("$incomingCall", msgPayload);
       } else {
@@ -135,7 +141,6 @@ const ChatInterface = ({ activeChat, onBack, isGroup = false }) => {
 
     const roomId = [user._id, chatId].sort().join("-");
     
-    // রিসিভার সাইড এবং তোমার কনসোল লগের ইভেন্ট অনুযায়ী ডাটা স্ট্রাকচার
     const callMetadata = {
       isIncomingCall: true,
       userToCall: chatId,
@@ -146,10 +151,10 @@ const ChatInterface = ({ activeChat, onBack, isGroup = false }) => {
       roomId: roomId
     };
 
-    // সিগন্যাল ট্রান্সমিট করা
+    // সিগন্যাল নেটওয়ার্কে পুশ করা
     handleSend(`Incoming ${type} call...`, type, callMetadata);
 
-    // আউটগোয়িং স্ক্রিনে নেভিগেট করা
+    // আউটগোয়িং কল স্ক্রিনে পুশ করা
     navigate(`/call/${roomId}?type=${type}&mode=outbound`);
   };
 

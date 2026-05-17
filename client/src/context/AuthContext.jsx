@@ -1,5 +1,4 @@
 import React, { createContext, useState, useEffect, useContext, useMemo, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 
@@ -54,6 +53,7 @@ export const AuthProvider = ({ children }) => {
   const clearAuthData = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     if (socket) {
+      // ডাটাবেস অবজেক্টের পারফেক্ট '_id' ফরম্যাট ব্যবহার করা হয়েছে
       socket.emit("logout_user", user?._id);
       socket.disconnect();
     }
@@ -67,6 +67,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     let socketInstance = null;
 
+    // ডাটাবেস অবজেক্টের স্ট্রাকচার অনুযায়ী '_id' দিয়ে কড়া সিকিউরিটি চেক
     if (user?._id && !socketConnecting.current) {
       socketConnecting.current = true;
       const currentUserId = user._id;
@@ -85,7 +86,7 @@ export const AuthProvider = ({ children }) => {
         console.log(`%c 🚀 Onyx Synapse Connected: ${BASE_URL}`, "color: #06b6d4; font-weight: bold;");
         window.socket = socketInstance;
         
-        // ব্যাকএন্ডকে জানানো যে ইউজার অনলাইনে একটিভ এবং ইউনিক আইডিতে ম্যাপড
+        // ব্যাকএন্ডের অনলাইন টেবিলে আন্ডারস্কোর আইডি ম্যাপ করা
         socketInstance.emit("addNewUser", currentUserId);
         socketInstance.emit("registerUser", currentUserId); 
         
@@ -93,40 +94,43 @@ export const AuthProvider = ({ children }) => {
       });
 
       /* ==========================================================
-          📞 GLOBAL CALL SYNAPSE LISTENERS (Fixed Event Name to Match Backend)
+          📞 GLOBAL CALL SYNAPSE LISTENERS (রিসিভার ট্র্যাকিং ফিক্স)
          ========================================================== */
       
-      // ব্যাকএন্ড ফরোয়ার্ড করা "$incomingCall" ইভেন্ট এখানে গ্লোবালি ক্যাচ করা হলো
+      // ব্যাকএন্ড ফরোয়ার্ড করা "$incomingCall" ইভেন্ট এখানে গ্লোবালি হ্যান্ডেল করা হলো
       socketInstance.on("$incomingCall", (data) => {
         console.log("📡 Incoming Onyx Pulse Detected:", data);
         
-        // রিসিভার যদি অন্য কোনো পেজেও থাকে, তাকে সরাসরি রিয়েল-টাইম কলিং রুমে পুশ করবে
+        // রিসিভার যদি অলরেডি সেই কল রুমে না থাকে, তবে সেশন ডাটা লক করুন
         if (window.location.pathname !== `/call/${data.roomId}`) {
           
-          // কাস্টম নোটিফিকেশন ট্রিগার (অপショナル ব্রাউজার অ্যালার্ট ব্যাকআপ)
+          // ব্রাউজার নোটিফিকেশন ব্যাকআপ
           if (Notification.permission === "granted") {
             new Notification(`Onyx Call from ${data.name}`, { body: `Tap to accept ${data.type} link.` });
           }
           
-          // সিগন্যাল ও কলার ডাটা সেফলি সেভ করে রাখা হচ্ছে যাতে কল স্ক্রিন লোড হয়েই রিড করতে পারে
+          // ডাটাবেস স্কিমা অনুযায়ী ডাটা সেফলি সেভ করা হচ্ছে
           sessionStorage.setItem("onyx_incoming_signal", JSON.stringify(data.signalData || data.signal));
           sessionStorage.setItem("onyx_caller_id", data.from);
           sessionStorage.setItem("onyx_caller_name", data.name || "Unknown Link");
           sessionStorage.setItem("onyx_caller_avatar", data.avatar || "");
           sessionStorage.setItem("onyx_call_type", data.type);
 
-          // গ্লোবাল উইন্ডো রিমোট রাউটিং মেকানিজম
-          window.location.href = `/call/${data.roomId}?type=${data.type}&mode=inbound`;
+          // 🎯 CRITICAL FIX: উইন্ডো হার্ড-রিফ্রেশ বন্ধ করা হলো। 
+          // সিগন্যাল রিসিভ করার দায়িত্ব এখন 'AppContent.jsx'-এর গ্লোবাল টোস্ট বা পপআপের ওপর ছেড়ে দেওয়া হলো।
+          // এর ফলে লাইভ কানেকশন ব্রেক না হয়ে ওনিক্স টোস্ট নোটিফিকেশন ইনস্ট্যান্টলি স্ক্রিনে ফায়ার হবে।
+          console.log("⚡ Signal captured inside Synapse Core. Dispatching to global UI layer...");
         }
       });
 
-      // কল ক্যান্সেল হয়ে গেলে কল পেজ থেকে বের করে দেওয়ার গ্লোবাল ইভেন্ট
+      // কল ক্যান্সেল হয়ে গেলে সেশন স্টোরেজ ক্লিনআপ ইভেন্ট
       socketInstance.on("callEnded", () => {
         console.log("🛑 Remote node ended the call session.");
         sessionStorage.removeItem("onyx_incoming_signal");
-        if (window.location.pathname.startsWith("/call/")) {
-          window.location.href = "/"; // অথবা আপনার মেসেঞ্জার হোম পেইজের রুট দিন
-        }
+        sessionStorage.removeItem("onyx_caller_id");
+        sessionStorage.removeItem("onyx_caller_name");
+        sessionStorage.removeItem("onyx_caller_avatar");
+        sessionStorage.removeItem("onyx_call_type");
       });
 
       socketInstance.on("connect_error", (err) => {
@@ -158,6 +162,7 @@ export const AuthProvider = ({ children }) => {
       try {
         const res = await api.get('/auth/me'); 
         if (isMounted) {
+          // ডাটাবেসের অবজেক্ট অনুযায়ী ইউজার সেশন রিকভারি লজিক স্টেবল করা হলো
           const userData = res.data.user || res.data.data || res.data;
           setUser(userData);
         }
