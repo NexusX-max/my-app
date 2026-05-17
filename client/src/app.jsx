@@ -1,4 +1,4 @@
-import React, { Suspense, useContext, useState, useEffect, useRef, useCallback } from "react";
+import React, { Suspense, useContext, useState, useEffect, useRef } from "react";
 import { Routes, Route, useLocation, Navigate, useParams, useNavigate } from "react-router-dom";
 import { Toaster, toast } from 'react-hot-toast';
 import { AuthContext } from './context/AuthContext';
@@ -55,7 +55,7 @@ function AppContent() {
   const ringtone = useRef(new Audio("https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3"));
 
   /* ==========================================================
-      ⚡ NEURAL NOTIFICATION & CALL ENGINE
+      ⚡ NEURAL NOTIFICATION & GLOBAL CALL ENGINE (Fixed Sync)
   ========================================================== */
   useEffect(() => {
     if (user && socket) {
@@ -80,16 +80,21 @@ function AppContent() {
         });
       };
 
+      // 🎯 FIXED: ওনিক্স ব্যাকএন্ডের সাথে ম্যাচ রেখে ইভেন্টের নাম "$incomingCall" করা হলো
       const onIncomingCall = (data) => {
         ringtone.current.loop = true;
         ringtone.current.play().catch(() => console.log("Audio blocked by browser"));
+
+        // ডাটা স্ট্রাকচার সেফটি ব্যাকআপ
+        const finalRoomId = data?.roomId || [user._id, data?.from].sort().join("-");
+        const callType = data?.type || data?.callType || 'video';
 
         toast((t) => (
           <div className="flex flex-col gap-3 p-1 min-w-[220px]">
             <div className="flex items-center gap-3">
               <div className="w-2 h-2 bg-green-500 animate-ping rounded-full" />
               <span className="text-[11px] font-bold uppercase tracking-tighter">
-                Incoming {data?.type} call from {data?.name || 'Node'}
+                Incoming {callType} call from {data?.name || 'Unknown Node'}
               </span>
             </div>
             <div className="flex gap-2">
@@ -98,12 +103,14 @@ function AppContent() {
                   ringtone.current.pause();
                   ringtone.current.currentTime = 0;
                   toast.dismiss(t.id);
-                  navigate(`/call/${data.from}`, { 
+                  
+                  // 🎯 FIXED: রাউটিং সরাসরি প্রপার roomId এবং স্টেটে ট্রান্সমিট হবে
+                  navigate(`/call/${finalRoomId}?type=${callType}&mode=inbound`, { 
                     state: { 
-                      incomingSignal: data.signal, 
-                      callerId: data.from,
-                      callerName: data.name,
-                      callType: data.type 
+                      incomingSignal: data?.signalData || data?.signal, 
+                      callerId: data?.from,
+                      callerName: data?.name || "Onyx Node",
+                      callType: callType 
                     } 
                   });
                 }}
@@ -116,7 +123,7 @@ function AppContent() {
                   ringtone.current.pause();
                   ringtone.current.currentTime = 0;
                   toast.dismiss(t.id);
-                  socket.emit("endCall", { to: data.from });
+                  socket.emit("endCall", { to: data?.from });
                 }}
                 className="flex-1 bg-red-600/20 hover:bg-red-600/40 text-red-500 py-2 rounded-lg text-[10px] font-black uppercase transition-all"
               >
@@ -139,13 +146,13 @@ function AppContent() {
 
       socket.on("connect", onConnect);
       socket.on("getNotification", onNotification);
-      socket.on("incomingCall", onIncomingCall);
+      socket.on("$incomingCall", onIncomingCall); // 🎯 FIXED
       socket.on("callEnded", onCallEnded);
 
       return () => {
         socket.off("connect", onConnect);
         socket.off("getNotification", onNotification);
-        socket.off("incomingCall", onIncomingCall);
+        socket.off("$incomingCall", onIncomingCall); // 🎯 FIXED
         socket.off("callEnded", onCallEnded);
       };
     }
@@ -183,7 +190,6 @@ function AppContent() {
   const isAuthPage = authRoutes.includes(location.pathname) || location.pathname.startsWith("/reset-password/");
   const isMessenger = location.pathname.startsWith("/messages");
   const isReels = location.pathname === "/reels";
-  const isSearch = location.pathname === "/search"; 
   const showNav = user && !isAuthPage && !isMessenger && !isReels;
 
   return (
@@ -239,8 +245,6 @@ function AppContent() {
               </Routes>
             </div>
           </Suspense>
-
-          {/* NeuralAssistant (Voice Button) সরানো হয়েছে */}
 
           {showNav && (
             <div className="md:hidden fixed bottom-0 left-0 w-full z-[1000] border-t border-white/5 bg-black/80 backdrop-blur-3xl">
