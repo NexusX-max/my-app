@@ -93,26 +93,39 @@ export const AuthProvider = ({ children }) => {
       });
 
       /* ==========================================================
-          📞 GLOBAL CALL SYNAPSE LISTENERS (রিসিভার ট্র্যাকিং ফিক্স)
+          📞 GLOBAL CALL SYNAPSE LISTENERS (Fixed Event Name to Match Backend)
          ========================================================== */
       
-      // চ্যাট ইন্টারফেসের পাঠানো $incomingCall ইভেন্ট গ্লোবালি ক্যাচ করা
-      socketInstance.on("incomingCall", (data) => {
+      // ব্যাকএন্ড ফরোয়ার্ড করা "$incomingCall" ইভেন্ট এখানে গ্লোবালি ক্যাচ করা হলো
+      socketInstance.on("$incomingCall", (data) => {
         console.log("📡 Incoming Onyx Pulse Detected:", data);
         
         // রিসিভার যদি অন্য কোনো পেজেও থাকে, তাকে সরাসরি রিয়েল-টাইম কলিং রুমে পুশ করবে
         if (window.location.pathname !== `/call/${data.roomId}`) {
-          // কাস্টম নোটিফিকেশন ট্রিগার (অপশনাল ব্রাউজার অ্যালার্ট ব্যাকআপ)
+          
+          // কাস্টম নোটিফিকেশন ট্রিগার (অপショナル ব্রাউজার অ্যালার্ট ব্যাকআপ)
           if (Notification.permission === "granted") {
             new Notification(`Onyx Call from ${data.name}`, { body: `Tap to accept ${data.type} link.` });
           }
           
-          // গ্লোবাল উইন্ডো রিমোট রাউটিং মেকানিজম (Vite/React Router সাপোর্টেড সেফ নেভিগেশন স্টেট)
-          window.location.href = `/call/${data.roomId}?type=${data.type}&mode=inbound`;
-          
-          // দ্রষ্টব্য: এটি রিসিভারের ব্রাউজারে 'incomingSignal' হিসেবে ডাটার SDP অফারটি পাস করে দেবে
-          sessionStorage.setItem("onyx_incoming_signal", JSON.stringify(data.signal));
+          // সিগন্যাল ও কলার ডাটা সেফলি সেভ করে রাখা হচ্ছে যাতে কল স্ক্রিন লোড হয়েই রিড করতে পারে
+          sessionStorage.setItem("onyx_incoming_signal", JSON.stringify(data.signalData || data.signal));
           sessionStorage.setItem("onyx_caller_id", data.from);
+          sessionStorage.setItem("onyx_caller_name", data.name || "Unknown Link");
+          sessionStorage.setItem("onyx_caller_avatar", data.avatar || "");
+          sessionStorage.setItem("onyx_call_type", data.type);
+
+          // গ্লোবাল উইন্ডো রিমোট রাউটিং মেকানিজম
+          window.location.href = `/call/${data.roomId}?type=${data.type}&mode=inbound`;
+        }
+      });
+
+      // কল ক্যান্সেল হয়ে গেলে কল পেজ থেকে বের করে দেওয়ার গ্লোবাল ইভেন্ট
+      socketInstance.on("callEnded", () => {
+        console.log("🛑 Remote node ended the call session.");
+        sessionStorage.removeItem("onyx_incoming_signal");
+        if (window.location.pathname.startsWith("/call/")) {
+          window.location.href = "/"; // অথবা আপনার মেসেঞ্জার হোম পেইজের রুট দিন
         }
       });
 

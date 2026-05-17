@@ -49,7 +49,6 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: function (origin, callback) {
-    // origin ছাড়া রিকোয়েস্ট (যেমন মোবাইল অ্যাপ) বা লিস্টেড ডোমেইন হলে অনুমতি দিন
     if (!origin || allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
@@ -101,7 +100,7 @@ const protect = async (req, res, next) => {
 app.get("/", (req, res) => res.json({ 
     status: "Active", 
     system: "OnyxDrift Core", 
-    node: process.env.NODE_ID || "Main", // কোন সার্ভার থেকে আসছে তা বোঝার জন্য
+    node: process.env.NODE_ID || "Main", 
     version: "3.1.0" 
 }));
 
@@ -130,7 +129,7 @@ const io = new Server(server, {
 
 // --- Redis Cloud Connection ---
 const pubClient = createClient({ 
-    url: process.env.REDIS_URL, // Render-এ বসানো ওই লম্বা লিঙ্কটি এখানে কাজ করবে
+    url: process.env.REDIS_URL, 
     socket: {
         reconnectStrategy: retries => Math.min(retries * 50, 2000)
     }
@@ -144,12 +143,10 @@ const setupSocket = async () => {
     await pubClient.connect();
     await subClient.connect();
     
-    // ৪টি সার্ভারকে এক সুতায় বাঁধার মূল জায়গা
     io.adapter(createAdapter(pubClient, subClient));
     console.log("💎 Neural Sync: Global Redis Adapter Linked");
   } catch (err) {
     console.error("⚠️ Redis Connection Failed:", err);
-    // যদি রেডিস ফেইল করে তবে সার্ভার মেমোরিতে চলবে (তবে সিনক্রোনাইজেশন হবে না)
   }
 
   io.on("connection", (socket) => {
@@ -168,11 +165,58 @@ const setupSocket = async () => {
       io.emit("getOnlineUsers", onlineUsers);
     }
 
+    // 📩 MESSAGE HANDLER (চ্যাট মেসেজ)
     socket.on("sendMessage", (message) => {
-      // মেসেজ পাঠানো হচ্ছে সবার কাছে (Redis Adapter সব সার্ভারে এটি পৌঁছে দেবে)
       io.emit("getMessage", { ...message });
     });
 
+    /* ==========================================================
+        📞 ONYX REAL-TIME CALL SIGNALING ENGINE (Added)
+    ========================================================== */
+    
+    // ১. ইনকামিং কল ট্রিগার এবং রাউটিং মেকানিজম
+    socket.on("callUser", (data) => {
+      // onlineUsers অ্যারে থেকে রিসিভারের একটিভ সকেট আইডি খুঁজে বের করা
+      const targetUser = onlineUsers.find(user => user.userId === data.userToCall);
+      
+      if (targetUser && targetUser.socketId) {
+        // চ্যাটের মতোই হুবহু টার্গেট সকেটে ইনকামিং সিগন্যাল রিফ্লেক্ট করে দেওয়া হলো
+        io.to(targetUser.socketId).emit("$incomingCall", {
+          from: data.from,
+          name: data.name,
+          avatar: data.avatar,
+          type: data.type,
+          roomId: data.roomId,
+          signalData: data.signalData
+        });
+        console.log(`✅ Onyx Network: Call Signal forwarded from ${data.from} to socket ${targetUser.socketId}`);
+      } else {
+        console.log(`⚠️ Onyx Network: Target Node ${data.userToCall} is currently offline.`);
+      }
+    });
+
+    // ২. কল অ্যাকসেপ্ট বা হ্যান্ডশেক রেসপন্স পাঠানো
+    socket.on("answerCall", (data) => {
+      const callerUser = onlineUsers.find(user => user.userId === data.to);
+      if (callerUser && callerUser.socketId) {
+        io.to(callerUser.socketId).emit("callAccepted", {
+          signal: data.signal,
+          roomId: data.roomId
+        });
+        console.log(`✅ Handshake Complete: Call accepted for roomId ${data.roomId}`);
+      }
+    });
+
+    // ৩. কল রিজেক্ট বা এন্ড করার ইভেন্ট ট্রান্সমিশন
+    socket.on("endCall", (data) => {
+      const opponentUser = onlineUsers.find(user => user.userId === data.to);
+      if (opponentUser && opponentUser.socketId) {
+        io.to(opponentUser.socketId).emit("callEnded");
+        console.log(`🛑 Call terminated between peers.`);
+      }
+    });
+
+    // 🛑 DISCONNECT HANDLER
     socket.on("disconnect", () => {
       onlineUsers = onlineUsers.filter(user => user.socketId !== socket.id);
       io.emit("getOnlineUsers", onlineUsers);
@@ -195,7 +239,7 @@ const startApp = async () => {
     });
   } catch (error) {
     console.error("❌ FAILURE:", error.message);
-    setTimeout(startApp, 5000); // ফেইল করলে ৫ সেকেন্ড পর আবার ট্রাই করবে
+    setTimeout(startApp, 5000); 
   }
 };
 
