@@ -11,6 +11,7 @@ import OnyxAI from "./components/OnyxAI";
 import Notification from "./components/NotificationSystem";
 
 // Pages
+import ChatInterface from "./pages/ChatInterface.jsx";
 import PremiumHomeFeed from "./pages/PremiumHomeFeed";
 import Messenger from "./pages/Messenger";
 import ProfilePage from "./pages/Profile.jsx";
@@ -239,8 +240,7 @@ function AppContent() {
                 <Route path="/my-profile" element={<Protected><ProfilePage /></Protected>} />
                 <Route path="/notifications" element={<Protected><div className="max-w-2xl mx-auto p-10"><Notification /></div></Protected>} />
                 
-                {/* 📌 CallPage সরিয়ে সরাসরি চ্যাট ইন্টারফেস হ্যান্ডেল করার জন্য মেসেঞ্জার রাউট ব্যবহার করা হলো */}
-                <Route path="/messages" element={<Protected><Messenger /></Protected>} />
+                <Route path="/chatInterface" element={<Protected><ChatInterface /></Protected>} />
                 <Route path="/messages/:roomId" element={<Protected><Messenger /></Protected>} />
                 
                 <Route path="/settings" element={<Protected><Settings /></Protected>} />
