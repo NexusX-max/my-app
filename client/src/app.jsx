@@ -13,12 +13,12 @@ import Notification from "./components/NotificationSystem";
 // Pages
 import PremiumHomeFeed from "./pages/PremiumHomeFeed";
 import Messenger from "./pages/Messenger";
-import ChatInterface from "./pages/ChatInterface";
 import ProfilePage from "./pages/Profile.jsx";
 import Settings from "./pages/Settings";
 import ReelsFeed from "./pages/ReelsFeed";
 import LoginPage from "./pages/LoginPage"; 
 import JoinPage from "./pages/JoinPage";
+import CallPage from "./pages/CallPage";
 import FollowingPage from "./pages/FollowingPage"; 
 import ReelsEditor from "./pages/ReelsEditor";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -42,28 +42,6 @@ const ProfileSwitch = () => {
   return user && (cleanId === user._id || cleanId === user.id) ? <ProfilePage /> : <PublicProfile />;
 };
 
-// --- Chat Interface Route Handler ---
-// এটি রাউটার প্যারামস থেকে roomId রিড করে সরাসরি চ্যাট ও কল স্ক্রিন রেন্ডার করবে
-const DedicatedChatRoute = () => {
-  const { roomId } = useParams();
-  const location = useLocation();
-  const navigate = useNavigate();
-
-  // ওনিক্স চ্যাট ইন্টারফেস তার অ্যাক্টিভ চ্যাট সেশন অবজেক্ট আশা করে
-  const activeChatSession = {
-    _id: location.state?.callerId || roomId?.split("-").find(id => id !== JSON.parse(localStorage.getItem("onyx_user_session"))?._id),
-    fullName: location.state?.callerName || "Onyx Node",
-    isRoomIdDirect: true
-  };
-
-  return (
-    <ChatInterface 
-      activeChat={activeChatSession} 
-      onBack={() => navigate(-1)} 
-    />
-  );
-};
-
 function AppContent() {
   const location = useLocation();
   const navigate = useNavigate(); 
@@ -77,7 +55,7 @@ function AppContent() {
   const ringtone = useRef(new Audio("https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3"));
 
   /* ==========================================================
-      ⚡ NEURAL NOTIFICATION & IN-APP CALL ENGINE
+      ⚡ NEURAL NOTIFICATION & CALL ENGINE
   ========================================================== */
   useEffect(() => {
     if (user && socket) {
@@ -102,43 +80,34 @@ function AppContent() {
         });
       };
 
-      // 📞 ইনকামিং কল সিগন্যাল হ্যান্ডেলার (সরাসরি চ্যাট ইন্টারফেসে রিডাইরেক্ট লজিক)
       const onIncomingCall = (data) => {
         ringtone.current.loop = true;
-        ringtone.current.play().catch(() => console.log("Audio blocked by browser safety protocol"));
+        ringtone.current.play().catch(() => console.log("Audio blocked by browser"));
 
-        // গ্লোবাল ওনিক্স কলিং পপ-আপ টোস্ট নোটিফিকেশন
         toast((t) => (
           <div className="flex flex-col gap-3 p-1 min-w-[220px]">
             <div className="flex items-center gap-3">
-              <div className="w-2 h-2 bg-cyan-500 animate-ping rounded-full" />
-              <span className="text-[11px] font-bold uppercase tracking-tighter text-cyan-400">
-                Incoming {data?.type || 'video'} Core Call
+              <div className="w-2 h-2 bg-green-500 animate-ping rounded-full" />
+              <span className="text-[11px] font-bold uppercase tracking-tighter">
+                Incoming {data?.type} call from {data?.name || 'Node'}
               </span>
             </div>
-            <p className="text-[10px] text-zinc-400 font-mono truncate">Origin Node: {data?.name || 'Unknown Drifter'}</p>
-            <div className="flex gap-2 mt-1">
+            <div className="flex gap-2">
               <button 
                 onClick={() => {
                   ringtone.current.pause();
                   ringtone.current.currentTime = 0;
                   toast.dismiss(t.id);
-                  
-                  const callRoomId = data.roomId || data.from;
-                  
-                  // 🚀 ফিক্স: মেসেঞ্জারের বদলে সরাসরি ডেডিকেটেড ChatInterface রাউটে ট্রান্সমিশন পাঠানো হলো
-                  navigate(`/chat-link/${callRoomId}`, { 
+                  navigate(`/call/${data.from}`, { 
                     state: { 
-                      incomingSignal: data.signal || data.signalData, 
+                      incomingSignal: data.signal, 
                       callerId: data.from,
                       callerName: data.name,
-                      callType: data.type || 'video',
-                      mode: 'inbound',
-                      autoAccept: true
+                      callType: data.type 
                     } 
                   });
                 }}
-                className="flex-1 bg-cyan-600 hover:bg-cyan-500 py-2 rounded-lg text-[10px] font-black uppercase text-white transition-all shadow-[0_0_15px_rgba(6,182,212,0.4)]"
+                className="flex-1 bg-green-600 hover:bg-green-500 py-2 rounded-lg text-[10px] font-black uppercase text-white transition-all shadow-[0_0_15px_rgba(22,163,74,0.4)]"
               >
                 Accept
               </button>
@@ -149,16 +118,16 @@ function AppContent() {
                   toast.dismiss(t.id);
                   socket.emit("endCall", { to: data.from });
                 }}
-                className="flex-1 bg-zinc-800 hover:bg-red-600 text-zinc-300 hover:text-white py-2 rounded-lg text-[10px] font-black uppercase transition-all"
+                className="flex-1 bg-red-600/20 hover:bg-red-600/40 text-red-500 py-2 rounded-lg text-[10px] font-black uppercase transition-all"
               >
                 Decline
               </button>
             </div>
           </div>
         ), {
-          duration: 45000,
+          duration: 30000,
           position: "top-center",
-          style: { background: '#0a0a0a', color: '#fff', border: '1px solid rgba(6,182,212,0.3)', p: '12px' }
+          style: { background: '#0a0a0a', color: '#fff', border: '1px solid #22c55e' }
         });
       };
 
@@ -171,14 +140,12 @@ function AppContent() {
       socket.on("connect", onConnect);
       socket.on("getNotification", onNotification);
       socket.on("incomingCall", onIncomingCall);
-      socket.on("$incomingCall", onIncomingCall); 
       socket.on("callEnded", onCallEnded);
 
       return () => {
         socket.off("connect", onConnect);
         socket.off("getNotification", onNotification);
         socket.off("incomingCall", onIncomingCall);
-        socket.off("$incomingCall", onIncomingCall);
         socket.off("callEnded", onCallEnded);
       };
     }
@@ -215,17 +182,16 @@ function AppContent() {
   const authRoutes = ["/", "/join", "/forgot-password"];
   const isAuthPage = authRoutes.includes(location.pathname) || location.pathname.startsWith("/reset-password/");
   const isMessenger = location.pathname.startsWith("/messages");
-  const isChatDirect = location.pathname.startsWith("/chat-link"); // চ্যাট ইন্টারফেসের জন্য লেআউট অপটিমাইজেশন ট্র্যাকিং
   const isReels = location.pathname === "/reels";
   const isSearch = location.pathname === "/search"; 
-  const showNav = user && !isAuthPage && !isMessenger && !isChatDirect && !isReels;
+  const showNav = user && !isAuthPage && !isMessenger && !isReels;
 
   return (
     <div className="min-h-screen bg-[#020617] text-gray-200 selection:bg-cyan-500/30 overflow-x-hidden relative">
       <Toaster position="top-right" />
       <CustomCursor />
 
-      {!isMessenger && !isChatDirect && !isReels && (
+      {!isMessenger && !isReels && (
         <div className="fixed inset-0 pointer-events-none opacity-20 bg-[radial-gradient(circle_at_50%_-10%,_#06b6d4_0%,_transparent_70%)] z-0" />
       )}
 
@@ -254,21 +220,17 @@ function AppContent() {
                   <Protected>
                     <SearchScreen 
                       onBack={() => navigate(-1)} 
-                      onSelectUser={(u) => navigate(`/chat-link/${[user?._id || user?.id, u._id || u.id].sort().join("-")}`)} 
+                      onSelectUser={(u) => navigate(`/messages/${u._id || u.id}`)} 
                     />
                   </Protected>
                 } />
                 
                 <Route path="/my-profile" element={<Protected><ProfilePage /></Protected>} />
                 <Route path="/notifications" element={<Protected><div className="max-w-2xl mx-auto p-10"><Notification /></div></Protected>} />
-                
-                {/* 📌 মেসেঞ্জারের রেগুলার চ্যাট লিস্ট লোড করার সাধারণ রাউট */}
                 <Route path="/messages" element={<Protected><Messenger /></Protected>} />
-                
-                {/* 🎯 ফিক্স: কলিং সিস্টেম ও ডিরেক্ট কানেকশনের জন্য পিওর ChatInterface রাউট */}
-                <Route path="/chat-link/:roomId" element={<Protected><DedicatedChatRoute /></Protected>} />
-                
+                <Route path="/messages/:id" element={<Protected><Messenger /></Protected>} />
                 <Route path="/settings" element={<Protected><Settings /></Protected>} />
+                <Route path="/call/:roomId" element={<Protected><CallPage /></Protected>} />
                 <Route path="/onyx-ai" element={<Protected><div className="pt-10 max-w-2xl mx-auto px-4"><OnyxAI /></div></Protected>} />
                 <Route path="/reels-editor" element={<Protected><ReelsEditor /></Protected>} />
                 <Route path="/reels-editor/:id" element={<Protected><ReelsEditor /></Protected>} />
@@ -277,6 +239,8 @@ function AppContent() {
               </Routes>
             </div>
           </Suspense>
+
+          {/* NeuralAssistant (Voice Button) সরানো হয়েছে */}
 
           {showNav && (
             <div className="md:hidden fixed bottom-0 left-0 w-full z-[1000] border-t border-white/5 bg-black/80 backdrop-blur-3xl">
