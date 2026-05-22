@@ -1,26 +1,35 @@
 import React, { useState, useContext, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { 
-  FaCommentDots, FaCog, FaPhoneAlt, FaVideo, FaTimes, FaCheck 
-} from 'react-icons/fa';
+import { FaCommentDots, FaCog, FaPlus, FaUsers, FaCheck } from 'react-icons/fa';
 
+// --- Global Context & Features ---
 import { AuthContext } from '../context/AuthContext';
 import SearchScreen from './SearchScreen'; 
 import ChatInterface from './ChatInterface';
 import SettingsScreen from './SettingsScreen'; 
 
+// --- 🛠️ Components Folder থেকে ক্লিন ইম্পোর্ট ---
+import StoryBar from '../components/StoryBar';
+import StoryViewerModal from '../components/StoryViewerModal';
+import StoryCreatorModal from '../components/StoryCreatorModal';
+import GroupChatInterface from '../components/GroupChatInterface';
+
 // --- Sound Assets ---
 const MSG_SOUND = "https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3"; 
 const CALL_SOUND = "https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3";
 
+// গ্লোবাল অ্যাভাটার হেল্পার
 const getAvatarUrl = (target) => {
-  if (!target) return `https://ui-avatars.com/api/?name=User&background=27272a&color=fff`;
+  if (!target) return `https://ui-avatars.com/api/?name=User&background=18181b&color=fff`;
   const pic = target.profilePic || target.avatar || target.profileImage;
   if (pic && typeof pic === 'string' && pic.startsWith('http')) return pic;
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(target.fullName || target.name || target.username || "Onyx")}&background=06b6d4&color=fff&bold=true`;
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(target.fullName || target.name || target.username || "Onyx")}&background=8b5cf6&color=fff&bold=true`;
 };
 
+/* ==========================================================
+    🚀 MAIN COMPONENT: ONYX MESSENGER HOME
+========================================================== */
 const OnyxMessengerHome = () => {
   const { user, socket } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -28,15 +37,41 @@ const OnyxMessengerHome = () => {
   const [selectedChat, setSelectedChat] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
   const [incomingCall, setIncomingCall] = useState(null);
+  const [selectedStory, setSelectedStory] = useState(null);
+  const [showStoryCreator, setShowStoryCreator] = useState(false);
+  
+  const [activeFilter, setActiveFilter] = useState('All');
+  const [showGroupModal, setShowGroupModal] = useState(false);
+
+  // 🛠️ রিয়েল গ্রুপ ক্রিয়েশনের জন্য প্রয়োজনীয় স্টেটসমূহ
+  const [newGroupName, setNewGroupName] = useState('');
+  const [selectedMembers, setSelectedMembers] = useState([]);
 
   const msgAudio = useRef(new Audio(MSG_SOUND));
   const callAudio = useRef(new Audio(CALL_SOUND));
 
-  // চ্যাট লিস্ট স্টেট (Local Storage sync সহ)
+  // ডামি কন্টাক্ট লিস্ট (গ্রুপে মেম্বার সিলেক্ট করার জন্য)
+  const availableContacts = [
+    { id: 'u1', name: 'Alisha Alam' },
+    { id: 'u3', name: 'Md. Fahad' },
+    { id: 'u4', name: 'Romjan Ali' }
+  ];
+
+  // ডাইনামিক স্টোরি স্টেট ট্র্যাকার
+  const [activeStories, setActiveStories] = useState([
+    { id: 'u1', name: 'Alisha Alam', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150', mediaUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=600', caption: 'Fluid designs 🔥', hasUnseen: true },
+    { id: 'u2', name: 'Md. Fahad', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150', mediaUrl: 'https://images.unsplash.com/photo-1519046904884-53103b34b206?w=600', caption: 'Late night coding sessions.', hasUnseen: true },
+    { id: 'u3', name: 'Romjan Ali', avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150', mediaUrl: 'https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=600', caption: 'Onyx Drifting ahead!', hasUnseen: false }
+  ]);
+
   const [chatList, setChatList] = useState(() => {
     const savedChats = localStorage.getItem('onyx_recent_connections');
     return savedChats ? JSON.parse(savedChats) : [
-      { _id: "u1", fullName: "Onyx Support", lastMsg: "System status: Optimal.", time: "Online", online: true },
+      { _id: "u1", fullName: "Alisha Alam", lastMsg: "Let's catch up tomorrow? 9:41 PM", time: "9:41 PM", online: true, typing: true, unreadCount: 2, isGroup: false, isChannel: false },
+      { _id: "u2", fullName: "Dream Team", lastMsg: "Evan: That's awesome!", time: "9:30 PM", online: true, unreadCount: 5, isGroup: true, isChannel: false },
+      { _id: "u3", fullName: "Md. Fahad", lastMsg: "🎙️ Voice message", time: "9:20 PM", online: false, unreadCount: 1, isGroup: false, isChannel: false },
+      { _id: "u4", fullName: "Romjan Ali", lastMsg: "Reacted ❤️ to your message", time: "8:45 PM", online: false, isGroup: false, isChannel: false },
+      { _id: "u5", fullName: "Onyx Tech Channel", lastMsg: "System deployment successful.", time: "7:12 PM", online: false, isGroup: false, isChannel: true }
     ];
   });
 
@@ -44,9 +79,6 @@ const OnyxMessengerHome = () => {
     localStorage.setItem('onyx_recent_connections', JSON.stringify(chatList));
   }, [chatList]);
 
-  /* ==========================================================
-      ⚡ NEURAL SIGNAL HANDLING (Socket Logic)
-  ========================================================== */
   useEffect(() => {
     if (!socket) return;
 
@@ -55,12 +87,15 @@ const OnyxMessengerHome = () => {
 
       setChatList(prev => {
         const filtered = prev.filter(c => c._id !== data.senderId);
+        const existing = prev.find(c => c._id === data.senderId);
         const updatedChat = {
+          ...existing,
           _id: data.senderId,
           fullName: data.senderName || "Unknown Node",
           lastMsg: data.text || "Encrypted transmission...",
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           online: true,
+          unreadCount: (!selectedChat || selectedChat._id !== data.senderId) ? ((existing?.unreadCount || 0) + 1) : 0,
           profilePic: data.senderAvatar || null
         };
         return [updatedChat, ...filtered];
@@ -73,11 +108,10 @@ const OnyxMessengerHome = () => {
     };
 
     const handleIncomingCall = (data) => {
-      console.log("📞 UI Layer: Incoming call payload captured successfully!", data);
       setIncomingCall(data);
       callAudio.current.loop = true;
       callAudio.current.currentTime = 0;
-      callAudio.current.play().catch(e => console.warn("Audio blocked by browser policy"));
+      callAudio.current.play().catch(e => console.warn("Audio blocked"));
     };
 
     const handleCallEnded = () => {
@@ -97,208 +131,329 @@ const OnyxMessengerHome = () => {
     };
   }, [socket, selectedChat]);
 
-  /* ==========================================================
-      📞 CALL ACTIONS (Fixed & Fully Implemented)
-  ========================================================== */
-  const initiateCall = useCallback((targetUser, type) => {
-    const targetId = targetUser?._id || targetUser?.id;
-    if (!targetId || !user?._id || !socket) {
-      console.warn("📡 Onyx Engine: Cannot initiate call. Socket or User ID missing.");
-      return;
-    }
-
-    const roomId = [user._id, targetId].sort().join("-"); 
-    
-    // 🎯🎯🎯 FIX: 'callUser' পরিবর্তন করে '$incomingCall' করা হলো যেন ব্যাকএন্ডের সাথে সরাসরি ম্যাচ হয়
-    socket.emit("$incomingCall", {
-      userToCall: targetId,                 
-      receiverId: targetId,                 
-      signalData: null,                     
-      from: user._id,                       
-      senderId: user._id,                       
-      name: user.fullName || "Onyx Node",   
-      senderName: user.fullName || "Onyx Node",   
-      avatar: user.profilePic || null,
-      type: type,                           
-      roomId: roomId,
-      isIncomingCall: true
-    });
-
-    console.log(`📡 Outbound Pulse Emitted over '$incomingCall' to Node: ${targetId}`);
-    navigate(`/call/${roomId}?type=${type}&mode=outbound`);
-  }, [user, socket, navigate]);
-
   const acceptCall = () => {
     if (!incomingCall || !user || !socket) return;
-    
     callAudio.current.pause();
-    callAudio.current.currentTime = 0;
-    
     const roomId = incomingCall.roomId || [user._id, incomingCall.from].sort().join("-");
     const callType = incomingCall.callType || incomingCall.type || 'video';
     
-    socket.emit("answerCall", { 
-      to: incomingCall.from, 
-      signal: incomingCall.signalData,
-      roomId: roomId 
-    });
-
+    socket.emit("answerCall", { to: incomingCall.from, signal: incomingCall.signalData, roomId });
     navigate(`/call/${roomId}?type=${callType}&mode=inbound`, {
       state: { incomingSignal: incomingCall.signalData, callerId: incomingCall.from }
     });
-    
     setIncomingCall(null);
   };
   
   const declineCall = () => {
     if (!incomingCall || !socket) return;
-    
     callAudio.current.pause();
-    callAudio.current.currentTime = 0;
-    
     socket.emit("endCall", { to: incomingCall.from });
     setIncomingCall(null);
   };
 
-  /* ==========================================================
-      🎯 USER SELECTION
-  ========================================================== */
   const handleUserSelect = useCallback((u) => {
     if (!u) return;
-    
     const userId = u._id || u.id;
-    if (!userId) return;
-
     const normalizedUser = {
-      _id: userId,
-      fullName: u.fullName || u.name || u.username || "Drifter",
-      profilePic: u.profilePic || u.avatar || u.profileImage,
-      lastMsg: "Neural link established",
-      time: "Just now",
-      online: true
+      ...u, _id: userId, fullName: u.fullName || u.name || "Drifter", online: true, lastMsg: "Neural link established"
     };
-
-    setChatList(prev => {
-      const filtered = prev.filter(c => c._id !== userId);
-      return [normalizedUser, ...filtered];
-    });
-
+    setChatList(prev => [normalizedUser, ...prev.filter(c => c._id !== userId)]);
     setSelectedChat(normalizedUser);
     setShowSearch(false);
   }, []);
 
+  const handlePublishStory = (newStoryData) => {
+    const newlyCreatedStream = {
+      id: "story_" + Date.now(),
+      name: user?.fullName || "My Drift",
+      avatar: getAvatarUrl(user),
+      mediaUrl: newStoryData.mediaUrl,
+      caption: newStoryData.caption,
+      hasUnseen: false
+    };
+    setActiveStories(prev => [newlyCreatedStream, ...prev]);
+  };
+
+  // 🛠️ রিয়েল গ্রুপ সাবমিট হ্যান্ডেলার লজিক
+  const handleCreateGroupSubmit = (e) => {
+    e.preventDefault();
+    if (!newGroupName.trim()) return alert('Please enter a group name!');
+    
+    const newGroupNode = {
+      _id: "group_" + Date.now(),
+      fullName: newGroupName,
+      lastMsg: `${user?.fullName || "You"} spawned this pipeline Node`,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      online: true,
+      unreadCount: 0,
+      isGroup: true,
+      isChannel: false,
+      members: selectedMembers
+    };
+
+    setChatList(prev => [newGroupNode, ...prev]);
+    setNewGroupName('');
+    setSelectedMembers([]);
+    setShowGroupModal(false);
+    setSelectedChat(newGroupNode); // গ্রুপ তৈরির সাথে সাথে চ্যাট উইন্ডো ওপেন হবে
+  };
+
+  const toggleMemberSelection = (id) => {
+    setSelectedMembers(prev => 
+      prev.includes(id) ? prev.filter(mId => mId !== id) : [...prev, id]
+    );
+  };
+
+  const filteredChats = chatList.filter(chat => {
+    if (activeFilter === 'Unread') return chat.unreadCount && chat.unreadCount > 0;
+    if (activeFilter === 'Groups') return chat.isGroup;
+    if (activeFilter === 'Channels') return chat.isChannel;
+    return true;
+  });
+
   return (
-    <div className="bg-black h-[100dvh] text-white flex flex-col overflow-hidden font-sans select-none">
+    <div className="bg-[#0b0c10] h-[100dvh] text-[#f1f1f1] flex flex-col overflow-hidden font-sans select-none relative">
       
       {activeTab === 'chats' ? (
         <>
           {/* Header */}
-          <header className="p-6 pb-2 sticky top-0 bg-black z-40 border-b border-white/5">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-black italic uppercase tracking-tighter">
-                ONYX<span className="text-cyan-500">CHAT</span>
+          <header className="px-5 pt-8 pb-3 bg-[#0b0c10] z-40">
+            <div className="flex justify-between items-center mb-5">
+              <h2 className="text-xl font-extrabold tracking-tight text-zinc-100">
+                Onyx<span className="text-[#a855f7]">Drift</span>
               </h2>
-              <div 
-                onClick={() => navigate('/my-profile')} 
-                className="flex items-center gap-3 bg-zinc-900/50 p-1.5 pr-4 rounded-2xl border border-white/5 cursor-pointer active:scale-95 transition-transform"
+              <button 
+                onClick={() => setShowGroupModal(true)} 
+                className="w-8 h-8 rounded-full bg-[#16171d] border border-zinc-800 flex items-center justify-center text-zinc-300 active:scale-90 transition-transform hover:border-purple-500/50"
               >
-                <img src={getAvatarUrl(user)} className="w-8 h-8 rounded-xl object-cover border border-white/10" alt="me" />
-                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-                  {user?.fullName?.split(' ')[0] || "Drifter"}
-                </span>
-              </div>
+                <FaPlus size={12} />
+              </button>
             </div>
             
-            {/* Search Bar Trigger */}
+            {/* Search Trigger */}
             <div 
               onClick={() => setShowSearch(true)} 
-              className="relative mb-4 bg-zinc-900/40 border border-white/5 rounded-2xl py-4 pl-5 cursor-text text-zinc-500 text-[11px] uppercase tracking-widest hover:bg-zinc-900/60 transition-all flex items-center gap-3"
+              className="relative mb-5 bg-[#16171d] border border-zinc-800/40 rounded-2xl py-3.5 pl-4 cursor-text text-zinc-500 text-xs tracking-wide flex items-center gap-2"
             >
-              <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
-              Search neural nodes...
+              <span className="text-zinc-500 text-sm">🔍</span>
+              Search anything...
+            </div>
+
+            {/* Filter Tags Strip */}
+            <div className="flex gap-2 text-xs font-semibold overflow-x-auto no-scrollbar pb-1">
+              {["All", "Unread", "Groups", "Channels"].map((tab) => (
+                <span 
+                  key={tab} 
+                  onClick={() => setActiveFilter(tab)}
+                  className={`px-4 py-2 rounded-full cursor-pointer transition-all ${activeFilter === tab ? 'bg-[#7c3aed] text-white' : 'bg-[#16171d] text-zinc-400 border border-zinc-800/20'}`}
+                >
+                  {tab}
+                </span>
+              ))}
             </div>
           </header>
 
-          {/* Main Content: Chat List */}
-          <main className="flex-1 overflow-y-auto px-6 pb-32 no-scrollbar pt-4">
-            <div className="space-y-3">
-              {chatList.map((chat) => (
+          {/* Main Conversation Feed */}
+          <main className="flex-1 overflow-y-auto px-5 pb-24 no-scrollbar">
+            <div className="space-y-1">
+              {filteredChats.map((chat) => (
                 <motion.div 
                   layout 
                   key={chat._id} 
-                  className="flex items-center gap-4 p-4 rounded-[1.8rem] bg-zinc-900/20 border border-white/5 hover:border-cyan-500/30 transition-all group"
+                  onClick={() => {
+                    setChatList(prev => prev.map(c => c._id === chat._id ? { ...c, unreadCount: 0 } : c));
+                    setSelectedChat(chat);
+                  }}
+                  className="flex items-center justify-between py-3.5 px-2 rounded-2xl hover:bg-[#16171d]/50 cursor-pointer transition-all group"
                 >
-                  <div 
-                    onClick={() => setSelectedChat(chat)} 
-                    className="flex flex-1 items-center gap-4 cursor-pointer min-w-0"
-                  >
+                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
                     <div className="relative shrink-0">
-                      <img src={getAvatarUrl(chat)} className="w-12 h-12 rounded-2xl object-cover grayscale-[0.5] group-hover:grayscale-0 transition-all" alt="" />
-                      {chat.online && <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 border-[3px] border-black rounded-full" />}
+                      <img src={getAvatarUrl(chat)} className="w-12 h-12 rounded-full object-cover border border-zinc-800" alt="" />
+                      {chat.online && <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#22c55e] border-2 border-[#0b0c10] rounded-full" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-bold text-sm text-zinc-100 truncate">{chat.fullName}</h4>
-                      <p className="text-[11px] text-zinc-500 truncate">{chat.lastMsg}</p>
+                      <h4 className="font-bold text-sm text-zinc-200 truncate">{chat.fullName}</h4>
+                      <p className={`text-xs truncate mt-0.5 ${chat.typing ? 'text-[#a855f7] font-medium' : 'text-zinc-500'}`}>
+                        {chat.typing ? "Typing..." : chat.lastMsg}
+                      </p>
                     </div>
                   </div>
                   
-                  <div className="flex gap-2 shrink-0">
-                     <button 
-                      onClick={(e) => { e.stopPropagation(); initiateCall(chat, 'audio'); }} 
-                      className="p-3.5 rounded-xl bg-zinc-800/50 text-zinc-400 hover:bg-cyan-500 hover:text-black transition-all"
-                     >
-                       <FaPhoneAlt size={12} />
-                     </button>
-                     <button 
-                      onClick={(e) => { e.stopPropagation(); initiateCall(chat, 'video'); }} 
-                      className="p-3.5 rounded-xl bg-zinc-800/50 text-zinc-400 hover:bg-purple-500 hover:text-white transition-all"
-                     >
-                       <FaVideo size={12} />
-                     </button>
+                  <div className="flex flex-col items-end gap-1.5 shrink-0 ml-2">
+                    <span className="text-[10px] text-zinc-500 font-medium">{chat.time}</span>
+                    {chat.unreadCount > 0 && (
+                      <span className="w-4 h-4 rounded-full bg-[#7c3aed] text-white font-black text-[9px] flex items-center justify-center">
+                        {chat.unreadCount}
+                      </span>
+                    )}
                   </div>
                 </motion.div>
               ))}
+
+              {filteredChats.length === 0 && (
+                <div className="text-center py-10 text-xs text-zinc-600">
+                  No transmissions found in this node.
+                </div>
+              )}
             </div>
           </main>
         </>
+      ) : activeTab === 'stories' ? (
+        <main className="flex-1 overflow-y-auto pb-24 no-scrollbar">
+          <StoryBar 
+            user={user} 
+            activeStories={activeStories} 
+            onSelectStory={(story) => setSelectedStory(story)} 
+            onOpenCreator={() => setShowStoryCreator(true)}
+            getAvatarUrl={getAvatarUrl}
+          />
+        </main>
       ) : (
-        /* Settings Tab */
         <SettingsScreen onBack={() => setActiveTab('chats')} />
       )}
 
-      {/* Navigation Bar */}
-      <nav className="fixed bottom-8 left-8 right-8 h-20 bg-black/80 backdrop-blur-3xl border border-white/10 rounded-[35px] flex items-center justify-around z-40 shadow-2xl">
-        <button onClick={() => setActiveTab('chats')} className={`transition-all p-4 ${activeTab === 'chats' ? 'text-cyan-500 scale-125' : 'text-zinc-600'}`}><FaCommentDots size={22} /></button>
-        <button onClick={() => setActiveTab('settings')} className={`transition-all p-4 ${activeTab === 'settings' ? 'text-cyan-500 scale-125' : 'text-zinc-600'}`}><FaCog size={22} /></button>
+      {/* 📱 Bottom Navigation Bar */}
+      <nav className="fixed bottom-0 left-0 right-0 h-20 bg-[#0b0c10] border-t border-zinc-900/60 flex items-center justify-around z-40 px-6">
+        <button 
+          onClick={() => setActiveTab('chats')} 
+          className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'chats' ? 'text-[#a855f7]' : 'text-zinc-500 hover:text-zinc-400'}`}
+        >
+          <FaCommentDots size={20} />
+          <span className="text-[9px] font-bold tracking-wider uppercase">Chats</span>
+        </button>
+        
+        <button 
+          onClick={() => setActiveTab('stories')} 
+          className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'stories' ? 'text-[#a855f7]' : 'text-zinc-500 hover:text-zinc-400'}`}
+        >
+          <span className="text-lg leading-none">🔮</span>
+          <span className="text-[9px] font-bold tracking-wider uppercase">Stories</span>
+        </button>
+        
+        <button 
+          onClick={() => setActiveTab('settings')} 
+          className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'settings' ? 'text-[#a855f7]' : 'text-zinc-500 hover:text-zinc-400'}`}
+        >
+          <FaCog size={20} />
+          <span className="text-[9px] font-bold tracking-wider uppercase">Settings</span>
+        </button>
       </nav>
 
-      {/* Overlays */}
+      {/* Overlays / Popups */}
       <AnimatePresence>
+        {/* ➕ রিয়েল গ্রুপ ক্রিয়েশন ইন্টারফেস প্যানেল (অ্যালার্ট রিমুভড) */}
+        {showGroupModal && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-md flex items-end justify-center sm:items-center p-0 sm:p-4"
+            onClick={() => setShowGroupModal(false)}
+          >
+            <motion.div 
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              className="w-full sm:max-w-md bg-[#16171d] border-t sm:border border-zinc-800 rounded-t-[2.5rem] sm:rounded-[2rem] p-6 text-left shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-sm font-black uppercase tracking-widest text-zinc-200 flex items-center gap-2">
+                  <FaUsers className="text-purple-500" /> Create Group Pipeline
+                </h3>
+                <button onClick={() => setShowGroupModal(false)} className="text-zinc-500 text-xs hover:text-white">✕</button>
+              </div>
+
+              <form onSubmit={handleCreateGroupSubmit} className="space-y-5">
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider font-bold text-zinc-500 block mb-2">Group Name / Identifier</label>
+                  <input 
+                    type="text" 
+                    value={newGroupName}
+                    onChange={(e) => setNewGroupName(e.target.value)}
+                    placeholder="e.g. Dream Team, Core Sync" 
+                    className="w-full bg-[#0b0c10] border border-zinc-800 rounded-xl px-4 py-3 text-sm text-zinc-200 focus:outline-none focus:border-purple-500 transition-colors"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider font-bold text-zinc-500 block mb-2">Select Members</label>
+                  <div className="space-y-2 max-h-40 overflow-y-auto no-scrollbar">
+                    {availableContacts.map(contact => (
+                      <div 
+                        key={contact.id}
+                        onClick={() => toggleMemberSelection(contact.id)}
+                        className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${selectedMembers.includes(contact.id) ? 'bg-purple-950/20 border-purple-500/60' : 'bg-[#0b0c10] border-zinc-900'}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-7 h-7 rounded-full bg-zinc-800 text-xs font-black flex items-center justify-center text-zinc-300">
+                            {contact.name[0]}
+                          </div>
+                          <span className="text-xs font-semibold text-zinc-300">{contact.name}</span>
+                        </div>
+                        {selectedMembers.includes(contact.id) && <FaCheck size={10} className="text-purple-400" />}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <button 
+                  type="submit"
+                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#7c3aed] to-[#db2777] text-white text-xs font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2"
+                >
+                  Create and Establish Link
+                </button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* Call UI Screen */}
         {incomingCall && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95 backdrop-blur-md p-6">
-            <div className="w-full max-w-sm bg-zinc-900 border border-white/10 rounded-[40px] p-8 text-center shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-1 bg-cyan-500 animate-pulse" />
-              <img src={getAvatarUrl({ name: incomingCall.name, profilePic: incomingCall.avatar })} className="w-24 h-24 rounded-[30px] mx-auto mb-6 border-2 border-cyan-500/30 p-1 object-cover" alt="caller" />
-              <h3 className="text-xl font-black uppercase mb-1 tracking-tight">{incomingCall.name || "Unknown Link"}</h3>
-              <p className="text-cyan-500 text-[10px] font-black uppercase tracking-[0.4em] mb-10 animate-pulse">Incoming Pulse</p>
-              <div className="flex justify-center gap-10">
-                <button onClick={declineCall} className="w-16 h-16 flex items-center justify-center bg-zinc-800 hover:bg-red-600 rounded-full text-white transition-all shadow-lg"><FaTimes size={24} /></button>
-                <button onClick={acceptCall} className="w-16 h-16 flex items-center justify-center bg-cyan-600 hover:bg-cyan-500 rounded-full text-white transition-all shadow-[0_0_20px_rgba(6,182,212,0.4)]"><FaCheck size={24} /></button>
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} 
+            className="fixed inset-0 z-[9999] bg-[#0c0d14] p-6 flex flex-col justify-between"
+          >
+            <div className="absolute inset-0 opacity-20 bg-cover bg-center blur-3xl scale-110 pointer-events-none"
+                 style={{ backgroundImage: `url(${getAvatarUrl({ name: incomingCall.name, profilePic: incomingCall.avatar })})` }} />
+            <div className="text-zinc-500 text-xs font-semibold text-center mt-6 z-10">9:41</div>
+            <div className="text-center z-10 my-auto">
+              <img src={getAvatarUrl({ name: incomingCall.name, profilePic: incomingCall.avatar })} className="w-28 h-28 rounded-full mx-auto object-cover border-2 border-zinc-800 p-1 mb-6" alt="" />
+              <h3 className="text-2xl font-bold tracking-tight text-white mb-2">{incomingCall.name || "Alisha Alam"}</h3>
+              <p className="text-zinc-400 text-sm tracking-wide">Incoming Video Call</p>
+            </div>
+            <div className="flex flex-col items-center gap-12 z-10 mb-8">
+              <div className="flex justify-center gap-16 w-full max-xs">
+                <button onClick={declineCall} className="w-16 h-16 flex items-center justify-center bg-[#ea4335] rounded-full text-white">✕</button>
+                <button onClick={acceptCall} className="w-16 h-16 flex items-center justify-center bg-[#34a853] rounded-full text-white">✓</button>
               </div>
             </div>
           </motion.div>
         )}
 
+        {/* Search Engine Layer */}
         {showSearch && (
-          <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: "tween" }} className="fixed inset-0 z-[6000] bg-black">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[6000] bg-[#0b0c10]">
             <SearchScreen onSelect={handleUserSelect} onBack={() => setShowSearch(false)} />
           </motion.div>
         )}
 
+        {/* Chat Drawer Gateway */}
         {selectedChat && (
-          <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: "spring", damping: 30, stiffness: 200 }} className="fixed inset-0 z-[5000] bg-black">
-            <ChatInterface activeChat={selectedChat} onBack={() => setSelectedChat(null)} />
+          <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: "spring", damping: 28, stiffness: 240 }} className="fixed inset-0 z-[5000] bg-[#0b0c10]">
+            {selectedChat.isGroup ? (
+              <GroupChatInterface activeGroup={selectedChat} onBack={() => setSelectedChat(null)} />
+            ) : (
+              <ChatInterface activeChat={selectedChat} onBack={() => setSelectedChat(null)} />
+            )}
           </motion.div>
+        )}
+
+        {/* ইম্পোটেড স্টোরি প্লেয়ার লেয়ার */}
+        {selectedStory && (
+          <StoryViewerModal isOpen={!!selectedStory} storyData={selectedStory} onClose={() => setSelectedStory(null)} />
+        )}
+
+        {/* ইম্পোটেড স্টোরি ক্রিয়েটর লেয়ার */}
+        {showStoryCreator && (
+          <StoryCreatorModal isOpen={showStoryCreator} onClose={() => setShowStoryCreator(false)} onPublish={handlePublishStory} />
         )}
       </AnimatePresence>
     </div>

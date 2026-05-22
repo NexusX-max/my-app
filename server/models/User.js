@@ -170,7 +170,7 @@ userSchema.index({
 
 /**
  * ১. পাসওয়ার্ড এনক্রিপশন এবং fullName জেনারেশন
- * লজিক আপডেট: async ফাংশন থেকে next() সরিয়ে দেওয়া হয়েছে
+ * লজিক আপডেট: async ফাংশন থেকে next() সরিয়ে দেওয়া হয়েছে
  */
 userSchema.pre('save', async function() {
   // fullName তৈরি (যদি firstName বা lastName পরিবর্তিত হয়)
@@ -204,5 +204,6 @@ userSchema.methods.updatePasskeyCounter = async function(credID, newCounter) {
   }
 };
 
-const User = mongoose.model('User', userSchema);
+// ডাটাবেজে ওল্ড মডেল কনফ্লিক্ট এড়ানোর সেফটি চেক
+const User = mongoose.models.User || mongoose.model('User', userSchema);
 export default User;

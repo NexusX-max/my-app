@@ -1,103 +1,238 @@
 import express from 'express';
-import Group from '../models/Group.js';
-import Message from '../models/Message.js';
+import mongoose from 'mongoose';
+import Group from '../models/Group.js'; // আপনার গ্রুপ মঙ্গুস মডেল (নিচে এর স্ট্রাকচারও আইডিয়া দেওয়া হলো)
+// আপনার প্রজেক্টের অথ মিডলওয়্যার (প্রয়োজন অনুযায়ী আপনার মিডলওয়্যার ফাইল দিয়ে রিপ্লেস করবেন)
+// const protect = require('../middleware/authMiddleware'); 
 
 const router = express.Router();
 
-/**
- * ১. নতুন গ্রুপ (Hive) তৈরি করা
- * ফ্রন্টএন্ড থেকে আসে: { name: "Group Name" }
- */
-router.post('/create', async (req, res) => {
+// মক মিডলওয়্যার (আপনার প্রজেক্টের আসল প্রোটেকশন মিডলওয়্যার এখানে ব্যবহার করবেন)
+const protect = async (req, res, next) => {
+  if (req.user) return next();
+  return res.status(401).json({ success: false, message: "Unauthorized Node Access" });
+};
+
+/* ==========================================================
+    🏢 ১. CREATE NEW GROUP (নতুন গ্রুপ তৈরি পাইপলাইন)
+========================================================== */
+router.post('/create', protect, async (req, res) => {
   try {
-    const { name } = req.body;
-    
-    // Auth0 বা কাস্টম মিডলওয়্যার থেকে ইউজার আইডি পাওয়ার ইউনিভার্সাল পদ্ধতি
-    const creatorId = req.auth?.payload?.sub || req.user?.sub;
+    const creatorId = req.user._id;
+    const { name, description, avatar, members, isPrivate } = req.body;
 
-    if (!creatorId) {
-      return res.status(401).json({ message: "Identity signal lost: Unauthorized" });
+    if (!name) {
+      return res.status(400).json({ success: false, message: "Group name is mandatory." });
     }
 
-    if (!name || name.trim() === "") {
-      return res.status(400).json({ message: "Hive name is required" });
+    // মেম্বার লিস্ট রেডি করা (ক্রিয়েটর নিজে ডিফল্টভাবে অ্যাডমিন এবং মেম্বার থাকবে)
+    let finalMembers = [{ userId: creatorId, role: 'creator' }];
+
+    if (members && Array.isArray(members)) {
+      members.forEach(memberId => {
+        if (memberId.toString() !== creatorId.toString()) {
+          finalMembers.push({
+            userId: memberId,
+            role: 'member'
+          });
+        }
+      });
     }
 
-    const newGroup = new Group({
-      name: name.trim(),
+    const newGroup = await Group.create({
+      name,
+      description: description || '',
+      avatar: avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=7c3aed&color=fff`,
       creator: creatorId,
-      members: [creatorId], // মেকার নিজে প্রথম মেম্বার
-      isPublic: true,
-      avatar: `https://ui-avatars.com/api/?background=0D8ABC&color=fff&bold=true&name=${encodeURIComponent(name)}`
+      members: finalMembers,
+      isPrivate: isPrivate !== undefined ? isPrivate : false
     });
 
-    const savedGroup = await newGroup.save();
-    res.status(201).json(savedGroup);
-  } catch (err) {
-    console.error("❌ Hive Creation Error:", err.message);
-    res.status(500).json({ message: "Hive creation failed", error: err.message });
+    res.status(201).json({ success: true, message: "Group Matrix Initialized!", data: newGroup });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-/**
- * ২. সব গ্রুপ লিস্ট দেখা (Discovery)
- */
-router.get('/', async (req, res) => {
+/* ==========================================================
+    📥 ২. GET MY GROUPS (ইউজারের সব একটিভ গ্রুপ লিস্ট)
+========================================================== */
+router.get('/my-groups', protect, async (req, res) => {
   try {
-    // সব গ্রুপ নিয়ে আসবে এবং মেম্বার সংখ্যা কাউন্ট করার জন্য ডাটা দিবে
-    const groups = await Group.find().sort({ createdAt: -1 });
-    res.json(groups);
-  } catch (err) {
-    res.status(500).json({ message: "Discovery signal lost", error: err.message });
+    const userId = req.user._id;
+
+    // ইউজার যে যে গ্রুপের মেম্বার লিস্টে আছে সেগুলো নিয়ে আসা
+    const userGroups = await Group.find({
+      "members.userId": userId
+    })
+    .populate('creator', 'fullName username profilePic')
+    .populate('members.userId', 'fullName username profilePic online')
+    .sort({ updatedAt: -1 });
+
+    res.status(200).json({ success: true, count: userGroups.length, data: userGroups });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-/**
- * ৩. নির্দিষ্ট গ্রুপের চ্যাট হিস্ট্রি আনা
- */
-router.get('/:groupId/messages', async (req, res) => {
+/* ==========================================================
+    🔍 ৩. GET SINGLE GROUP DETAILS (গ্রুপ ইনফো ও মেম্বারস)
+========================================================== */
+router.get('/:groupId', protect, async (req, res) => {
   try {
     const { groupId } = req.params;
-    
-    // নির্দিষ্ট গ্রুপের মেসেজগুলো টাইমলাইন অনুযায়ী সর্ট করে আনা
-    const messages = await Message.find({ 
-      conversationId: groupId,
-      isGroup: true 
-    }).sort({ createdAt: 1 });
-    
-    res.json(messages);
-  } catch (err) {
-    console.error("❌ Message Fetch Error:", err.message);
-    res.status(500).json({ message: "Neural link broken: Messages fetch failed" });
-  }
-});
+    const userId = req.user._id;
 
-/**
- * ৪. গ্রুপে মেম্বার জয়েন করা (Join Call/Chat)
- */
-router.post('/:groupId/join', async (req, res) => {
-  try {
-    const userId = req.auth?.payload?.sub || req.user?.sub;
-    const { groupId } = req.params;
-
-    if (!userId) {
-      return res.status(401).json({ message: "Access denied: Missing credentials" });
-    }
-
-    // $addToSet নিশ্চিত করে যে একই ইউজার বারবার জয়েন করলেও ডুপ্লিকেট হবে না
-    const group = await Group.findByIdAndUpdate(
-      groupId,
-      { $addToSet: { members: userId } },
-      { new: true }
-    );
+    const group = await Group.findById(groupId)
+      .populate('creator', 'fullName username profilePic')
+      .populate('members.userId', 'fullName username profilePic online');
 
     if (!group) {
-      return res.status(404).json({ message: "Hive not found" });
+      return res.status(404).json({ success: false, message: "Group matrix not found." });
     }
 
-    res.json({ message: "Successfully linked to hive", group });
-  } catch (err) {
-    res.status(500).json({ message: "Link failure", error: err.message });
+    // সিকিউরিটি চেক: প্রাইভেট গ্রুপের ক্ষেত্রে ইউজার মেম্বার কিনা তা যাচাই করা
+    const isMember = group.members.some(m => m.userId._id.toString() === userId.toString());
+    if (group.isPrivate && !isMember) {
+      return res.status(403).json({ success: false, message: "Access Denied. Private Infrastructure." });
+    }
+
+    res.status(200).json({ success: true, data: group });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/* ==========================================================
+    ➕ ৪. ADD MEMBERS TO GROUP (গ্রুপে নতুন মেম্বার ইনজেক্ট করা)
+========================================================== */
+router.post('/:groupId/add-members', protect, async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const { userIds } = req.body; // অ্যারে আকারে ইউজার আইডি আসবে [id1, id2]
+    const requesterId = req.user._id;
+
+    const group = await Group.findById(groupId);
+    if (!group) return res.status(404).json({ success: false, message: "Group not found." });
+
+    // চেক করা রিকোয়েস্টকারী মেম্বার বা অ্যাডমিন কিনা (অ্যাডমিন প্রিভিলেজ কাস্টমাইজ করতে পারেন)
+    const requester = group.members.find(m => m.userId.toString() === requesterId.toString());
+    if (!requester || (requester.role !== 'admin' && requester.role !== 'creator')) {
+      return res.status(403).json({ success: false, message: "Only admins/creators can add members." });
+    }
+
+    if (!userIds || !Array.isArray(userIds)) {
+      return res.status(400).json({ success: false, message: "userIds array is required." });
+    }
+
+    let addedCount = 0;
+    userIds.forEach(id => {
+      const alreadyMember = group.members.some(m => m.userId.toString() === id.toString());
+      if (!alreadyMember) {
+        group.members.push({ userId: id, role: 'member' });
+        addedCount++;
+      }
+    });
+
+    if (addedCount > 0) {
+      await group.save();
+    }
+
+    res.status(200).json({ success: true, message: `${addedCount} new nodes synched to the group.`, data: group });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/* ==========================================================
+    ❌ ৫. REMOVE MEMBER / KICK FROM GROUP (মেম্বার রিমুভ)
+========================================================== */
+router.post('/:groupId/kick/:targetUserId', protect, async (req, res) => {
+  try {
+    const { groupId, targetUserId } = req.params;
+    const requesterId = req.user._id;
+
+    const group = await Group.findById(groupId);
+    if (!group) return res.status(404).json({ success: false, message: "Group node invalid." });
+
+    // চেক করি রিকোয়েস্টকারী অ্যাডমিন বা ক্রিয়েটর কিনা
+    const requester = group.members.find(m => m.userId.toString() === requesterId.toString());
+    if (!requester || (requester.role !== 'admin' && requester.role !== 'creator')) {
+      return res.status(403).json({ success: false, message: "Action unauthorized. High level access needed." });
+    }
+
+    // ক্রিয়েটরকে কিক করা যাবে না লজিক
+    const targetMember = group.members.find(m => m.userId.toString() === targetUserId.toString());
+    if (targetMember && targetMember.role === 'creator') {
+      return res.status(400).json({ success: false, message: "Cannot eject the core creator." });
+    }
+
+    // সাব-ডকুমেন্ট থেকে মেম্বার রিমুভ
+    group.members.pull({ userId: targetUserId });
+    await group.save();
+
+    res.status(200).json({ success: true, message: "User node purged from group successfully." });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/* ==========================================================
+    👑 ৬. UPDATE MEMBER ROLE (অ্যাডমিন প্রমোশন / ডিমোশন)
+========================================================== */
+router.put('/:groupId/role', protect, async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const { targetUserId, newRole } = req.body; // newRole can be 'admin' or 'member'
+    const requesterId = req.user._id;
+
+    if (!['admin', 'member'].includes(newRole)) {
+      return res.status(400).json({ success: false, message: "Invalid role specified." });
+    }
+
+    const group = await Group.findById(groupId);
+    if (!group) return res.status(404).json({ success: false, message: "Group not found." });
+
+    // মেম্বার রোল চেঞ্জ করার পারমিশন শুধু 'creator' এর থাকবে
+    if (group.creator.toString() !== requesterId.toString()) {
+      return res.status(403).json({ success: false, message: "Only the group creator can configure roles." });
+    }
+
+    const member = group.members.find(m => m.userId.toString() === targetUserId.toString());
+    if (!member) {
+      return res.status(404).json({ success: false, message: "Target user is not a member of this group." });
+    }
+
+    member.role = newRole;
+    await group.save();
+
+    res.status(200).json({ success: true, message: `User role updated to ${newRole} successfully.`, data: group });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/* ==========================================================
+    🚪 ৭. LEAVE GROUP (গ্রুপ থেকে নিজে লিভ নেওয়া)
+========================================================== */
+router.delete('/:groupId/leave', protect, async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const userId = req.user._id;
+
+    const group = await Group.findById(groupId);
+    if (!group) return res.status(404).json({ success: false, message: "Group not found." });
+
+    // ক্রিয়েটর ডিরেক্ট লিভ নিতে পারবে না, আগে গ্রুপ ডিলিট করতে হবে বা অন্য কাউকে ওনারশিপ ট্রান্সফার করতে হবে
+    if (group.creator.toString() === userId.toString()) {
+      return res.status(400).json({ success: false, message: "Creator cannot leave. Please dissolve the group instead." });
+    }
+
+    group.members.pull({ userId: userId });
+    await group.save();
+
+    res.status(200).json({ success: true, message: "Successfully disconnected from group link pipeline." });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

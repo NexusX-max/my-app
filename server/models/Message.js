@@ -6,7 +6,6 @@ const MessageSchema = new mongoose.Schema(
     conversationId: {
       type: String, 
       required: [true, "Conversation ID is required"]
-      // এখানে index: true সরিয়ে নিচে কম্পাউন্ড ইনডেক্সে দেওয়া হয়েছে
     },
     isGroup: {
       type: Boolean,
@@ -47,7 +46,7 @@ const MessageSchema = new mongoose.Schema(
       default: ""
     },
     media: {
-      type: String, // Cloudinary image URL
+      type: String, // Cloudinary/Cloudflare R2 image URL
       default: ""
     },
     mediaType: {
@@ -104,7 +103,6 @@ const MessageSchema = new mongoose.Schema(
     expireAt: {
       type: Date,
       default: null
-      // এখান থেকে index: true সরানো হয়েছে কারণ নিচে TTL ইনডেক্স দেওয়া আছে
     }
   },
   { 
@@ -119,30 +117,34 @@ const MessageSchema = new mongoose.Schema(
 ========================================================== */
 
 // ১. TTL Index: এই একটি লাইনই যথেষ্ট expireAt এর জন্য। 
-// ডুপ্লিকেট ইনডেক্স এরর এড়াতে ফিল্ডের ভেতর থেকে index: true ডিলিট করা হয়েছে।
 MessageSchema.index({ expireAt: 1 }, { expireAfterSeconds: 0 });
 
-// ২. চ্যাট লোডিং স্পিড বাড়ানোর জন্য কম্পাউন্ড ইনডেক্স
+// ২. চ্যাট লোডিং স্পিড বাড়ানোর জন্য কম্পাউন্ড ইনডেক্স (<100ms টার্গেট অর্জনের জন্য)
 MessageSchema.index({ conversationId: 1, createdAt: -1 });
 
-// ৩. ভার্চুয়াল ফিল্ড: চেক করবে মেসেজটি কি বর্তমানে লক করা
+
+/* ==========================================================
+    🧠 VIRTUALS & MIDDLEWARES (স্মার্ট লজিক)
+========================================================== */
+
+// ৩. ভার্চুয়াল ফিল্ড: চেক করবে মেসেজটি কি বর্তমানে লক করা (Time Capsule Logic)
 MessageSchema.virtual('isLocked').get(function() {
   return this.deliverAt && new Date() < this.deliverAt;
 });
 
-// ৪. প্রি-সেভ হুক
+// ৪. প্রি-সেভ হুক (Pre-Save Middleware)
 MessageSchema.pre('save', function(next) {
-  // যদি self-destruct অন থাকে কিন্তু expireAt দেওয়া না থাকে, তবে ৬০ সেকেন্ড ডিফল্ট
+  // ক) যদি self-destruct অন থাকে কিন্তু expireAt দেওয়া না থাকে, তবে ৬০ সেকেন্ড ডিফল্ট
   if (this.isSelfDestruct && !this.expireAt) {
     this.expireAt = new Date(Date.now() + 60 * 1000); 
   }
 
-  // মিডিয়া টাইপ অটো-ডিটেকশন
+  // খ) মিডিয়া টাইপ অটো-ডিটেকশন
   if (this.media && (this.mediaType === "text" || !this.mediaType)) {
     this.mediaType = "image";
   }
 
-  // টাইম ক্যাপসুল ভ্যালিডেশন
+  // গ) টাইম ক্যাপসুল ভ্যালিডেশন
   if (this.deliverAt && this.deliverAt > new Date()) {
     this.isTimeCapsule = true;
   }

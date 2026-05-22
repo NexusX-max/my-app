@@ -19,7 +19,7 @@ import userRoutes from './routes/user.js';
 import profileRoutes from './routes/profile.js'; 
 import postRoutes from "./routes/posts.js";
 import reelRoutes from "./routes/reels.js";      
-import storyRoute from "./routes/stories.js";    
+import storyRoute from "./routes/story.js";    
 import groupRoutes from "./routes/group.js";      
 import marketRoutes from "./routes/market.js";    
 import adminRoutes from "./routes/admin.js";      
@@ -28,6 +28,7 @@ import aiRoutes from './routes/aiRoutes.js';
 import { getNeuralFeed } from "./controllers/feedController.js";
 import notificationRoutes from './routes/notificationRoutes.js';
 import searchRoutes from './routes/searchRoutes.js'; 
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -112,7 +113,7 @@ app.use("/api/reels", protect, reelRoutes);
 app.use('/api/ai', protect, aiRoutes); 
 app.get("/api/feed", protect, getNeuralFeed);
 app.use("/api/posts", protect, postRoutes); 
-app.use("/api/stories", protect, storyRoute);
+app.use("/api/story", protect, storyRoute);
 app.use("/api/groups", protect, groupRoutes);
 app.use("/api/market", protect, marketRoutes);
 app.use("/api/admin", protect, adminRoutes);
@@ -166,18 +167,59 @@ const setupSocket = async () => {
       io.emit("getOnlineUsers", onlineUsers);
     }
 
-    // 📩 MESSAGE HANDLER (চ্যাট মেসেজ)
+    // 📩 MESSAGE HANDLER (১-টু-১ চ্যাট মেসেজ)
     socket.on("sendMessage", (message) => {
-      // সেফটি ফিল্টার: কলের সিগন্যাল ভুলে এখানে ঢুকলে যেন চ্যাটরুমে পুশ না হয়
       if (message.isCallSignal || message.isIncomingCall || message.type === 'audio' || message.type === 'video') return;
       io.emit("getMessage", { ...message });
     });
 
     /* ==========================================================
-        📞 ONYX REAL-TIME CALL SIGNALING ENGINE (Fixed)
+        👥 ONYX MONSTER GROUP REALTIME ENGINE
+    ========================================================== */
+
+    // ১. গ্রুপ ম্যাট্রিক্স রুমে ক্লায়েন্ট নোড কানেক্ট করা
+    socket.on('join_group_room', ({ groupId, userId }) => {
+      socket.join(groupId);
+      console.log(`👥 Onyx Core: Node ${userId} integrated into Group Room [${groupId}]`);
+    });
+
+    // ২. ইনস্ট্যান্ট গ্রুপ মেসেজ ব্রডকাস্ট (রুমে থাকা সবাইকে পাঠানো)
+    socket.on('send_group_message', (messageData) => {
+      // messageData = { _id, groupId, sender: { _id, fullName }, text, timestamp }
+      if (messageData && messageData.groupId) {
+        io.to(messageData.groupId).emit('receive_group_message', messageData);
+        console.log(`💬 Group Msg: Broadcasted to cluster room ${messageData.groupId}`);
+      }
+    });
+
+    // ৩. গ্রুপ টাইপিং ইন্ডিকেটর রিয়েলটাইম পালস
+    socket.on('group_typing_signal', ({ groupId, username, isTyping }) => {
+      if (groupId) {
+        socket.to(groupId).emit('group_typing_broadcast', { username, isTyping });
+      }
+    });
+
+    // ৪. গ্রুপ চ্যাট রিঅ্যাকশন ইঞ্জিন (❤️, 🔥, 😂 ইত্যাদি)
+    socket.on('send_group_reaction', ({ msgId, groupId, reaction, userId }) => {
+      if (groupId) {
+        io.to(groupId).emit('receive_group_reaction', { msgId, reaction, userId });
+        console.log(`🔥 Reaction Pulsed: Message [${msgId}] in Group [${groupId}]`);
+      }
+    });
+
+    // ৫. গ্রুপ মেসেজ পিনিং সিস্টেম সিগন্যাল
+    socket.on('pin_group_message', ({ groupId, message }) => {
+      if (groupId) {
+        io.to(groupId).emit('group_message_pinned', { message });
+        console.log(`📌 Message Pinned: Imposed on cluster node ${groupId}`);
+      }
+    });
+
+    /* ==========================================================
+        📞 ONYX REAL-TIME CALL SIGNALING ENGINE
     ========================================================== */
     
-    // 🎯 ফিক্সড ১: ফ্রন্টএন্ডের handleSend থেকে পাঠানো "$incomingCall" চ্যানেল লিসেন করা
+    // ১. কলার থেকে ইনবাউন্ড কলের সিগন্যাল রিসিভ ও ফরওয়ার্ড করা
     socket.on("$incomingCall", (data) => {
       console.log("📥 Onyx Network: Inbound call pulse caught on '$incomingCall'. Target User:", data.receiverId || data.userToCall);
       
@@ -185,7 +227,6 @@ const setupSocket = async () => {
       const targetUser = onlineUsers.find(user => user.userId === targetId);
       
       if (targetUser && targetUser.socketId) {
-        // ওদিকের নির্দিষ্ট ইউজারের সকেটে সিগন্যাল রিফ্লেক্ট করা হলো
         io.to(targetUser.socketId).emit("$incomingCall", {
           id: data.id,
           from: data.senderId || data.from,
@@ -199,7 +240,6 @@ const setupSocket = async () => {
         console.log(`✅ Onyx Network: Call Signal forwarded successfully to target socket ${targetUser.socketId}`);
       } else {
         console.log(`⚠️ Onyx Network: Target Node ${targetId} is offline or session missing.`);
-        // অপশনাল: কলারকে একটা মেসেজ বা ইভেন্ট ব্যাক করা যেতে পারে যে ইউজার অফলাইন
         socket.emit("callOpponentOffline");
       }
     });
