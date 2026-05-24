@@ -27,6 +27,13 @@ const groupSchema = new mongoose.Schema({
     type: Boolean, 
     default: false 
   },
+  permissions: {
+    canMessage: {
+      type: String,
+      enum: ['All', 'Admin'],
+      default: 'All'
+    }
+  },
   members: [{
     userId: { 
       type: mongoose.Schema.Types.ObjectId, 
@@ -43,12 +50,21 @@ const groupSchema = new mongoose.Schema({
       default: Date.now 
     }
   }]
-}, { timestamps: true });
+}, { 
+  timestamps: true,
+  toJSON: { virtuals: true }, // ফ্রন্টএন্ডের fullName সাপোর্ট করার জন্য ভার্চুয়াল এনাবল্ড
+  toObject: { virtuals: true }
+});
 
-// ফাস্ট কুয়েরির জন্য ইনডেক্সিং
+// ⚡ ফ্রন্টএন্ডে ও ডিরেক্ট মেসেঞ্জারে 'fullName' খোঁজে, তাই ব্যাকএন্ডে ভার্চুয়াল ফিল্ড ম্যাপ করা হলো
+groupSchema.virtual('fullName').get(function() {
+  return this.name;
+});
+
+// ফাস্ট কুয়েরির জন্য ইনডেক্সিং
 groupSchema.index({ "members.userId": 1 });
 
-const Group = mongoose.model('Group', groupSchema);
+// অলরেডি মডেল রেজিস্টার্ড থাকলে সেটা ব্যবহার করবে, নয়তো নতুন তৈরি করবে (রিলোড এরর প্রিভেনশন)
+const Group = mongoose.models.Group || mongoose.model('Group', groupSchema);
 
-// এই ডিফল্ট এক্সপোর্টটি না থাকার কারণেই আপনার এরর আসছিল 🔥
 export default Group;

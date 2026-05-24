@@ -9,10 +9,7 @@ import SearchScreen from './SearchScreen';
 import ChatInterface from './ChatInterface';
 import SettingsScreen from './SettingsScreen'; 
 
-// --- 🛠️ Components Folder থেকে ক্লিন ইম্পোর্ট ---
-import StoryBar from '../components/StoryBar';
-import StoryViewerModal from '../components/StoryViewerModal';
-import StoryCreatorModal from '../components/StoryCreatorModal';
+// --- 🛠️ Components ---
 import GroupChatInterface from '../components/GroupChatInterface';
 
 // --- Sound Assets ---
@@ -28,7 +25,7 @@ const getAvatarUrl = (target) => {
 };
 
 /* ==========================================================
-    🚀 MAIN COMPONENT: ONYX MESSENGER HOME
+    🚀 MAIN COMPONENT: ONYX MESSENGER HOME (Story Bar Removed)
 ========================================================== */
 const OnyxMessengerHome = () => {
   const { user, socket } = useContext(AuthContext);
@@ -37,32 +34,21 @@ const OnyxMessengerHome = () => {
   const [selectedChat, setSelectedChat] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
   const [incomingCall, setIncomingCall] = useState(null);
-  const [selectedStory, setSelectedStory] = useState(null);
-  const [showStoryCreator, setShowStoryCreator] = useState(false);
   
   const [activeFilter, setActiveFilter] = useState('All');
   const [showGroupModal, setShowGroupModal] = useState(false);
 
-  // 🛠️ রিয়েল গ্রুপ ক্রিয়েশনের জন্য প্রয়োজনীয় স্টেটসমূহ
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedMembers, setSelectedMembers] = useState([]);
 
   const msgAudio = useRef(new Audio(MSG_SOUND));
   const callAudio = useRef(new Audio(CALL_SOUND));
 
-  // ডামি কন্টাক্ট লিস্ট (গ্রুপে মেম্বার সিলেক্ট করার জন্য)
   const availableContacts = [
     { id: 'u1', name: 'Alisha Alam' },
     { id: 'u3', name: 'Md. Fahad' },
     { id: 'u4', name: 'Romjan Ali' }
   ];
-
-  // ডাইনামিক স্টোরি স্টেট ট্র্যাকার
-  const [activeStories, setActiveStories] = useState([
-    { id: 'u1', name: 'Alisha Alam', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150', mediaUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=600', caption: 'Fluid designs 🔥', hasUnseen: true },
-    { id: 'u2', name: 'Md. Fahad', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150', mediaUrl: 'https://images.unsplash.com/photo-1519046904884-53103b34b206?w=600', caption: 'Late night coding sessions.', hasUnseen: true },
-    { id: 'u3', name: 'Romjan Ali', avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150', mediaUrl: 'https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=600', caption: 'Onyx Drifting ahead!', hasUnseen: false }
-  ]);
 
   const [chatList, setChatList] = useState(() => {
     const savedChats = localStorage.getItem('onyx_recent_connections');
@@ -84,7 +70,6 @@ const OnyxMessengerHome = () => {
 
     const handleIncomingMessage = (data) => {
       if (data.isIncomingCall || data.isCallSignal) return;
-
       setChatList(prev => {
         const filtered = prev.filter(c => c._id !== data.senderId);
         const existing = prev.find(c => c._id === data.senderId);
@@ -92,7 +77,7 @@ const OnyxMessengerHome = () => {
           ...existing,
           _id: data.senderId,
           fullName: data.senderName || "Unknown Node",
-          lastMsg: data.text || "Encrypted transmission...",
+          lastMsg: data.text || (data.mediaUrl ? "🖼️ Image Transmission" : "Encrypted transmission..."),
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           online: true,
           unreadCount: (!selectedChat || selectedChat._id !== data.senderId) ? ((existing?.unreadCount || 0) + 1) : 0,
@@ -102,6 +87,29 @@ const OnyxMessengerHome = () => {
       });
 
       if (!selectedChat || selectedChat._id !== data.senderId) {
+        msgAudio.current.currentTime = 0;
+        msgAudio.current.play().catch(() => {});
+      }
+    };
+
+    const handleIncomingGroupMessage = (data) => {
+      setChatList(prev => {
+        const filtered = prev.filter(c => c._id !== data.groupId);
+        const existing = prev.find(c => c._id === data.groupId);
+        const textPayload = data.text ? `${data.sender.fullName.split(' ')[0]}: ${data.text}` : `${data.sender.fullName.split(' ')[0]}: 🖼️ Sent a photo`;
+        const updatedGroup = {
+          ...existing,
+          _id: data.groupId,
+          fullName: existing?.fullName || "Matrix Pipeline",
+          lastMsg: textPayload,
+          time: data.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isGroup: true,
+          unreadCount: (!selectedChat || selectedChat._id !== data.groupId) ? ((existing?.unreadCount || 0) + 1) : 0,
+        };
+        return [updatedGroup, ...filtered];
+      });
+
+      if (!selectedChat || selectedChat._id !== data.groupId) {
         msgAudio.current.currentTime = 0;
         msgAudio.current.play().catch(() => {});
       }
@@ -121,22 +129,29 @@ const OnyxMessengerHome = () => {
     };
 
     socket.on("getMessage", handleIncomingMessage);
+    socket.on("receive_group_message", handleIncomingGroupMessage);
     socket.on("$incomingCall", handleIncomingCall);
     socket.on("callEnded", handleCallEnded);
 
     return () => {
       socket.off("getMessage", handleIncomingMessage);
+      socket.off("receive_group_message", handleIncomingGroupMessage);
       socket.off("$incomingCall", handleIncomingCall);
       socket.off("callEnded", handleCallEnded);
     };
   }, [socket, selectedChat]);
+
+  useEffect(() => {
+    if (selectedChat && selectedChat.isGroup && socket && user) {
+      socket.emit('join_group_room', { groupId: selectedChat._id, userId: user._id });
+    }
+  }, [selectedChat, socket, user]);
 
   const acceptCall = () => {
     if (!incomingCall || !user || !socket) return;
     callAudio.current.pause();
     const roomId = incomingCall.roomId || [user._id, incomingCall.from].sort().join("-");
     const callType = incomingCall.callType || incomingCall.type || 'video';
-    
     socket.emit("answerCall", { to: incomingCall.from, signal: incomingCall.signalData, roomId });
     navigate(`/call/${roomId}?type=${callType}&mode=inbound`, {
       state: { incomingSignal: incomingCall.signalData, callerId: incomingCall.from }
@@ -162,19 +177,6 @@ const OnyxMessengerHome = () => {
     setShowSearch(false);
   }, []);
 
-  const handlePublishStory = (newStoryData) => {
-    const newlyCreatedStream = {
-      id: "story_" + Date.now(),
-      name: user?.fullName || "My Drift",
-      avatar: getAvatarUrl(user),
-      mediaUrl: newStoryData.mediaUrl,
-      caption: newStoryData.caption,
-      hasUnseen: false
-    };
-    setActiveStories(prev => [newlyCreatedStream, ...prev]);
-  };
-
-  // 🛠️ রিয়েল গ্রুপ সাবমিট হ্যান্ডেলার লজিক
   const handleCreateGroupSubmit = (e) => {
     e.preventDefault();
     if (!newGroupName.trim()) return alert('Please enter a group name!');
@@ -195,7 +197,7 @@ const OnyxMessengerHome = () => {
     setNewGroupName('');
     setSelectedMembers([]);
     setShowGroupModal(false);
-    setSelectedChat(newGroupNode); // গ্রুপ তৈরির সাথে সাথে চ্যাট উইন্ডো ওপেন হবে
+    setSelectedChat(newGroupNode);
   };
 
   const toggleMemberSelection = (id) => {
@@ -216,7 +218,6 @@ const OnyxMessengerHome = () => {
       
       {activeTab === 'chats' ? (
         <>
-          {/* Header */}
           <header className="px-5 pt-8 pb-3 bg-[#0b0c10] z-40">
             <div className="flex justify-between items-center mb-5">
               <h2 className="text-xl font-extrabold tracking-tight text-zinc-100">
@@ -230,7 +231,6 @@ const OnyxMessengerHome = () => {
               </button>
             </div>
             
-            {/* Search Trigger */}
             <div 
               onClick={() => setShowSearch(true)} 
               className="relative mb-5 bg-[#16171d] border border-zinc-800/40 rounded-2xl py-3.5 pl-4 cursor-text text-zinc-500 text-xs tracking-wide flex items-center gap-2"
@@ -239,7 +239,6 @@ const OnyxMessengerHome = () => {
               Search anything...
             </div>
 
-            {/* Filter Tags Strip */}
             <div className="flex gap-2 text-xs font-semibold overflow-x-auto no-scrollbar pb-1">
               {["All", "Unread", "Groups", "Channels"].map((tab) => (
                 <span 
@@ -253,7 +252,6 @@ const OnyxMessengerHome = () => {
             </div>
           </header>
 
-          {/* Main Conversation Feed */}
           <main className="flex-1 overflow-y-auto px-5 pb-24 no-scrollbar">
             <div className="space-y-1">
               {filteredChats.map((chat) => (
@@ -269,7 +267,7 @@ const OnyxMessengerHome = () => {
                   <div className="flex items-center gap-3.5 min-w-0 flex-1">
                     <div className="relative shrink-0">
                       <img src={getAvatarUrl(chat)} className="w-12 h-12 rounded-full object-cover border border-zinc-800" alt="" />
-                      {chat.online && <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#22c55e] border-2 border-[#0b0c10] rounded-full" />}
+                      {chat.online && !chat.isGroup && <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#22c55e] border-2 border-[#0b0c10] rounded-full" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="font-bold text-sm text-zinc-200 truncate">{chat.fullName}</h4>
@@ -298,21 +296,10 @@ const OnyxMessengerHome = () => {
             </div>
           </main>
         </>
-      ) : activeTab === 'stories' ? (
-        <main className="flex-1 overflow-y-auto pb-24 no-scrollbar">
-          <StoryBar 
-            user={user} 
-            activeStories={activeStories} 
-            onSelectStory={(story) => setSelectedStory(story)} 
-            onOpenCreator={() => setShowStoryCreator(true)}
-            getAvatarUrl={getAvatarUrl}
-          />
-        </main>
-      ) : (
+      ) : activeTab === 'settings' ? (
         <SettingsScreen onBack={() => setActiveTab('chats')} />
-      )}
+      ) : null}
 
-      {/* 📱 Bottom Navigation Bar */}
       <nav className="fixed bottom-0 left-0 right-0 h-20 bg-[#0b0c10] border-t border-zinc-900/60 flex items-center justify-around z-40 px-6">
         <button 
           onClick={() => setActiveTab('chats')} 
@@ -320,14 +307,6 @@ const OnyxMessengerHome = () => {
         >
           <FaCommentDots size={20} />
           <span className="text-[9px] font-bold tracking-wider uppercase">Chats</span>
-        </button>
-        
-        <button 
-          onClick={() => setActiveTab('stories')} 
-          className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'stories' ? 'text-[#a855f7]' : 'text-zinc-500 hover:text-zinc-400'}`}
-        >
-          <span className="text-lg leading-none">🔮</span>
-          <span className="text-[9px] font-bold tracking-wider uppercase">Stories</span>
         </button>
         
         <button 
@@ -341,7 +320,6 @@ const OnyxMessengerHome = () => {
 
       {/* Overlays / Popups */}
       <AnimatePresence>
-        {/* ➕ রিয়েল গ্রুপ ক্রিয়েশন ইন্টারফেস প্যানেল (অ্যালার্ট রিমুভড) */}
         {showGroupModal && (
           <motion.div 
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -405,7 +383,6 @@ const OnyxMessengerHome = () => {
           </motion.div>
         )}
 
-        {/* Call UI Screen */}
         {incomingCall && (
           <motion.div 
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} 
@@ -428,14 +405,12 @@ const OnyxMessengerHome = () => {
           </motion.div>
         )}
 
-        {/* Search Engine Layer */}
         {showSearch && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[6000] bg-[#0b0c10]">
             <SearchScreen onSelect={handleUserSelect} onBack={() => setShowSearch(false)} />
           </motion.div>
         )}
 
-        {/* Chat Drawer Gateway */}
         {selectedChat && (
           <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: "spring", damping: 28, stiffness: 240 }} className="fixed inset-0 z-[5000] bg-[#0b0c10]">
             {selectedChat.isGroup ? (
@@ -444,16 +419,6 @@ const OnyxMessengerHome = () => {
               <ChatInterface activeChat={selectedChat} onBack={() => setSelectedChat(null)} />
             )}
           </motion.div>
-        )}
-
-        {/* ইম্পোটেড স্টোরি প্লেয়ার লেয়ার */}
-        {selectedStory && (
-          <StoryViewerModal isOpen={!!selectedStory} storyData={selectedStory} onClose={() => setSelectedStory(null)} />
-        )}
-
-        {/* ইম্পোটেড স্টোরি ক্রিয়েটর লেয়ার */}
-        {showStoryCreator && (
-          <StoryCreatorModal isOpen={showStoryCreator} onClose={() => setShowStoryCreator(false)} onPublish={handlePublishStory} />
         )}
       </AnimatePresence>
     </div>

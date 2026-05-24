@@ -4,7 +4,7 @@ import { io } from 'socket.io-client';
 
 // ✅ ১. গ্লোবাল ওনিক্স নেটওয়ার্ক নোডস
 const API_NODES = [
-  'https://my-app-v6xz.onrender.com', // 🚀マスターノード: সকেট এবং গ্লোবাল সিগন্যালিং ট্রাফিক মেইনটেইন করবে
+  'https://my-app-v6xz.onrender.com', 
   'https://my-app-2-uzoi.onrender.com',
   'https://my-app-3-kn3k.onrender.com',
   'https://my-app-4-btda.onrender.com'
@@ -40,9 +40,7 @@ export const AuthProvider = ({ children }) => {
 
     instance.interceptors.request.use((config) => {
       const token = localStorage.getItem(TOKEN_KEY);
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
+      if (token) config.headers.Authorization = `Bearer ${token}`;
       return config;
     }, (error) => Promise.reject(error));
 
@@ -58,11 +56,10 @@ export const AuthProvider = ({ children }) => {
     }
     setUser(null);
     setSocket(null);
-    if (window.socket) window.socket = null;
     socketConnecting.current = false;
   }, [socket, user?._id]);
 
-  // 🛠️ ৪. সকেট কানেকশন ও গ্লোবাল কলিং পাইপলাইন সিঙ্কিং
+  // 🛠️ ৪. সকেট কানেকশন ও গ্লোবাল কলিং পাইপলাইন
   useEffect(() => {
     let socketInstance = null;
 
@@ -82,61 +79,38 @@ export const AuthProvider = ({ children }) => {
 
       socketInstance.on("connect", () => {
         console.log(`%c 🚀 Onyx Synapse Connected: ${BASE_URL}`, "color: #06b6d4; font-weight: bold;");
-        window.socket = socketInstance;
-        
-        // ব্যাকএন্ডের অনলাইন টেবিলে আন্ডারস্কোর আইডি ম্যাপ করা
         socketInstance.emit("addNewUser", currentUserId);
         socketInstance.emit("registerUser", currentUserId); 
-        
         setSocket(socketInstance);
       });
 
-      /* ==========================================================
-          📞 GLOBAL CALL SYNAPSE LISTENERS (রিসিভার ট্র্যাকিং ফিক্স)
-         ========================================================== */
-      
+      /* 📞 GLOBAL CALL SYNAPSE LISTENERS */
       socketInstance.on("$incomingCall", (data) => {
         console.log("📡 Incoming Onyx Pulse Detected:", data);
         
-        if (window.location.pathname !== `/call/${data.roomId}`) {
-          
-          // ব্রাউজার নোটিফিকেশন ব্যাকআপ
-          if (Notification.permission === "granted") {
-            new Notification(`Onyx Call from ${data.name}`, { body: `Tap to accept ${data.type} link.` });
-          }
-          
-          // ডাটাবেস স্কিমা অনুযায়ী ডাটা সেফলি সেভ করা হচ্ছে
-          sessionStorage.setItem("onyx_incoming_signal", JSON.stringify(data.signalData || data.signal));
-          sessionStorage.setItem("onyx_caller_id", data.from);
-          sessionStorage.setItem("onyx_caller_name", data.name || "Unknown Link");
-          sessionStorage.setItem("onyx_caller_avatar", data.avatar || "");
-          sessionStorage.setItem("onyx_call_type", data.type);
-
-          console.log("⚡ Signal captured inside Synapse Core. Dispatching to global UI layer...");
+        // Browser Notification
+        if (Notification.permission === "granted") {
+          new Notification(`Onyx Call from ${data.name}`, { body: `Tap to accept ${data.type} link.` });
         }
+        
+        sessionStorage.setItem("onyx_incoming_signal", JSON.stringify(data.signalData || data.signal));
+        sessionStorage.setItem("onyx_caller_id", data.from);
+        sessionStorage.setItem("onyx_caller_name", data.name || "Unknown Link");
+        sessionStorage.setItem("onyx_caller_avatar", data.avatar || "");
+        sessionStorage.setItem("onyx_call_type", data.type);
+        sessionStorage.setItem("onyx_call_room", data.roomId); // Call UI রেন্ডার করার জন্য রুম আইডি
       });
 
-      // কল ক্যান্সেল হয়ে গেলে সেশন স্টোরেজ ক্লিনআপ ইভেন্ট
       socketInstance.on("callEnded", () => {
         console.log("🛑 Remote node ended the call session.");
         sessionStorage.removeItem("onyx_incoming_signal");
         sessionStorage.removeItem("onyx_caller_id");
-        sessionStorage.removeItem("onyx_caller_name");
-        sessionStorage.removeItem("onyx_caller_avatar");
-        sessionStorage.removeItem("onyx_call_type");
+        sessionStorage.removeItem("onyx_call_room");
       });
 
-      socketInstance.on("connect_error", (err) => {
-        console.warn("📡 Neural Signal Weak. Re-establishing link...");
-        socketConnecting.current = false; 
-      });
-
-      // 🎯 CRITICAL FIX: রাউট চেঞ্জের সময় যেন গ্লোবাল সকেট কানেকশন ডিসকানেক্ট না হয়, 
-      // সেজন্য ক্লিনআপ ফাংশন থেকে জোরপূর্বক .disconnect() করা বন্ধ করা হলো।
       return () => {
         if (socketInstance) {
           console.log("📡 Retaining neural link for active session routing...");
-          // এখানে socketInstance.disconnect() রিমুভ করা হয়েছে যাতে SPA নেভিগেশনে সকেট লাইভ থাকে।
         }
       };
     }
@@ -147,29 +121,22 @@ export const AuthProvider = ({ children }) => {
     let isMounted = true;
     const initAuth = async () => {
       const token = localStorage.getItem(TOKEN_KEY);
-      if (!token) {
-        if (isMounted) setLoading(false);
-        return;
-      }
+      if (!token) { setLoading(false); return; }
 
       try {
         const res = await api.get('/auth/me'); 
-        if (isMounted) {
-          const userData = res.data.user || res.data.data || res.data;
-          setUser(userData);
-        }
+        if (isMounted) setUser(res.data.user || res.data);
       } catch (err) {
         if (isMounted) clearAuthData();
       } finally {
         if (isMounted) setLoading(false);
       }
     };
-
     initAuth();
     return () => { isMounted = false; };
   }, [api, clearAuthData]);
 
-  // 🛠️ ৬. লগইন এবং সাইনআপ মেথড
+  // 🛠️ ৬. Auth Actions
   const login = useCallback(async (email, password) => {
     const res = await api.post('/auth/login', { email, password });
     const { token, user: userData } = res.data;
@@ -196,15 +163,8 @@ export const AuthProvider = ({ children }) => {
   }, [clearAuthData]);
 
   const contextValue = useMemo(() => ({
-    user, 
-    socket, 
-    loading, 
-    login, 
-    signup, 
-    logout,
-    isAuthenticated: !!user,
-    api,
-    currentNode: BASE_URL 
+    user, socket, loading, login, signup, logout,
+    isAuthenticated: !!user, api, currentNode: BASE_URL 
   }), [user, socket, loading, login, signup, logout, api]);
 
   return (
@@ -212,10 +172,7 @@ export const AuthProvider = ({ children }) => {
       {!loading ? children : (
         <div className="min-h-screen bg-[#020617] flex items-center justify-center">
             <div className="flex flex-col items-center gap-4">
-                <div className="relative w-16 h-16">
-                  <div className="absolute inset-0 border-4 border-cyan-500/10 rounded-full"></div>
-                  <div className="absolute inset-0 border-4 border-t-cyan-500 rounded-full animate-spin"></div>
-                </div>
+                <div className="relative w-16 h-16 animate-spin rounded-full border-4 border-cyan-500/10 border-t-cyan-500"></div>
                 <div className="text-cyan-500 font-mono animate-pulse uppercase tracking-[0.4em] text-[10px]">
                   Syncing_Neural_Core...
                 </div>

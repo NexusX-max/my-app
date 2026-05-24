@@ -1,265 +1,515 @@
-import React, { useState, useContext, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import React, {
+  useState,
+  useContext,
+  useEffect,
+  useRef,
+  useCallback
+} from "react";
+
+import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
+
 import CryptoJS from "crypto-js";
-import { 
-  FaArrowLeft, FaPhone, FaVideo, FaPaperPlane, FaMicrophone, 
-  FaLock, FaPlus, FaCheck, FaCheckDouble
-} from 'react-icons/fa';
-import { AuthContext } from '../context/AuthContext';
 
-const ONYX_SECRET_KEY = "onyx_neural_shield_2026"; 
+import {
+  FaArrowLeft,
+  FaPhone,
+  FaVideo,
+  FaPaperPlane,
+  FaMicrophone,
+  FaLock,
+  FaPlus,
+  FaCheck,
+  FaCheckDouble
+} from "react-icons/fa";
 
-// --- Encryption Helpers ---
-const encryptMessage = (text) => CryptoJS.AES.encrypt(text, ONYX_SECRET_KEY).toString();
+import { AuthContext } from "../context/AuthContext";
+
+const ONYX_SECRET_KEY = "onyx_neural_shield_2026";
+
+const encryptMessage = (text) => {
+  return CryptoJS.AES.encrypt(
+    text,
+    ONYX_SECRET_KEY
+  ).toString();
+};
+
 const decryptMessage = (cipherText) => {
-    try {
-        const bytes = CryptoJS.AES.decrypt(cipherText, ONYX_SECRET_KEY);
-        const originalText = bytes.toString(CryptoJS.enc.Utf8);
-        return originalText || "⚠️ Decryption Error";
-    } catch (err) { return "⚠️ Encryption Mismatch"; }
+  try {
+    const bytes = CryptoJS.AES.decrypt(
+      cipherText,
+      ONYX_SECRET_KEY
+    );
+
+    return bytes.toString(CryptoJS.enc.Utf8);
+  } catch {
+    return "⚠️ Decryption Error";
+  }
 };
 
-// --- Avatar Helper ---
 const getAvatarUrl = (target) => {
-  if (!target) return `https://ui-avatars.com/api/?name=User&background=27272a&color=fff`;
-  const pic = target.profilePic || target.avatar || target.profileImage || target.userAvatar;
-  if (pic && typeof pic === 'string' && pic.startsWith('http')) return pic;
-  const name = target.fullName || target.name || "Onyx";
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=06b6d4&color=fff&bold=true`;
+  if (!target)
+    return `https://ui-avatars.com/api/?name=User`;
+
+  const pic =
+    target.profilePic ||
+    target.avatar ||
+    target.profileImage;
+
+  if (pic?.startsWith("http")) return pic;
+
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(
+    target.fullName || target.name || "User"
+  )}&background=06b6d4&color=fff`;
 };
 
-const ChatInterface = ({ activeChat, onBack, isGroup = false }) => {
+const ChatInterface = ({
+  activeChat,
+  onBack,
+  isGroup = false
+}) => {
   const { user, socket } = useContext(AuthContext);
+
   const navigate = useNavigate();
+
   const scrollRef = useRef(null);
-  
+
   const chatId = activeChat?._id || activeChat?.id;
-  const chatName = activeChat?.fullName || activeChat?.name || "Neural Node";
-  const storageKey = isGroup ? `group_chat_${chatId}` : `chat_${chatId}`;
-  
+
+  const storageKey = isGroup
+    ? `group_chat_${chatId}`
+    : `chat_${chatId}`;
+
+  const [msg, setMsg] = useState("");
+
+  const [isListening, setIsListening] =
+    useState(false);
+
   const [messages, setMessages] = useState(() => {
     const saved = localStorage.getItem(storageKey);
-    return saved ? JSON.parse(saved) : [{ id: 'sys-1', text: "Neural link established. E2EE Active. 🔐", sender: 'system' }];
-  });
-  
-  const [msg, setMsg] = useState("");
-  const [isListening, setIsListening] = useState(false);
 
-  // ১. পুশ নোটিফিকেশন পারমিশন
+    return saved
+      ? JSON.parse(saved)
+      : [
+          {
+            id: "system-1",
+            text: "Neural encryption enabled 🔐",
+            sender: "system"
+          }
+        ];
+  });
+
+  // =========================
+  // Notification Permission
+  // =========================
+
   useEffect(() => {
-    if ("Notification" in window && Notification.permission !== 'granted') {
+    if (
+      "Notification" in window &&
+      Notification.permission !== "granted"
+    ) {
       Notification.requestPermission();
     }
   }, []);
 
-  // 🎯 ফিক্সড ১: চ্যাট ইন্টারফেস ওপেন হওয়া মাত্রই ওদিকের সব মেসেজ 'Seen' হিসেব করার ইনিশিয়াল ইমিট
+  // =========================
+  // Auto Scroll
+  // =========================
+
   useEffect(() => {
-    if (socket?.connected && chatId && user?._id) {
-      socket.emit("messageSeen", { senderId: chatId, receiverId: user._id });
-    }
-  }, [chatId, socket, user?._id]);
+    scrollRef.current?.scrollIntoView({
+      behavior: "smooth"
+    });
+  }, [messages]);
 
-  // ২. ইনকামিং মেসেজ লিসেনার
-  const handleGetMessage = useCallback((data) => {
-    if (data.senderId === chatId) {
-      // 🎯 ফিক্সড ২: টাইপ লেভেলে অডিও/ভিডিও কল ট্র্যাকিং হলে বা ইনকামিং ফ্ল্যাগ থাকলে মেসেজ এড়াবো
-      if (data.isCallSignal || data.isIncomingCall || data.type === 'audio' || data.type === 'video') return; 
+  // =========================
+  // Save Messages
+  // =========================
 
-      const decryptedText = data.type === 'media' ? data.text : decryptMessage(data.text);
-      const newMsg = { 
-        ...data, 
-        text: decryptedText, 
-        sender: 'them',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+  useEffect(() => {
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify(messages)
+    );
+  }, [messages, storageKey]);
+
+  // =========================
+  // Seen Event
+  // =========================
+
+  useEffect(() => {
+    if (!socket || !chatId || !user?._id) return;
+
+    socket.emit("messageSeen", {
+      senderId: chatId,
+      receiverId: user._id
+    });
+  }, [chatId, socket, user]);
+
+  // =========================
+  // Incoming Message
+  // =========================
+
+  const handleIncomingMessage = useCallback(
+    (data) => {
+      if (data.senderId !== chatId) return;
+
+      // CALL SIGNAL FILTER
+      if (
+        data.isIncomingCall ||
+        data.isCallSignal ||
+        data.type === "audio" ||
+        data.type === "video"
+      ) {
+        return;
+      }
+
+      const exists = messages.find(
+        (m) => m.id === data.id
+      );
+
+      if (exists) return;
+
+      const decrypted =
+        data.type === "media"
+          ? data.text
+          : decryptMessage(data.text);
+
+      const newMsg = {
+        ...data,
+        text: decrypted,
+        sender: "them"
       };
 
-      setMessages(prev => {
-        if (prev.find(m => m.id === data.id)) return prev;
-        const updated = [...prev, newMsg];
-        localStorage.setItem(storageKey, JSON.stringify(updated));
-        return updated;
+      setMessages((prev) => [...prev, newMsg]);
+
+      socket.emit("messageSeen", {
+        senderId: data.senderId,
+        receiverId: user._id
       });
-      
-      socket.emit("messageSeen", { senderId: data.senderId, receiverId: user?._id });
-    }
-  }, [chatId, socket, user?._id, storageKey]);
+
+      // Push Notification
+      if (
+        document.hidden &&
+        Notification.permission === "granted"
+      ) {
+        new Notification(
+          activeChat?.fullName || "New Message",
+          {
+            body: decrypted,
+            icon: getAvatarUrl(activeChat)
+          }
+        );
+      }
+    },
+    [chatId, messages, socket, user, activeChat]
+  );
+
+  // =========================
+  // Incoming Call
+  // =========================
+
+  const handleIncomingCall = useCallback(
+    (data) => {
+      if (data.userToCall !== user._id) return;
+
+      navigate(
+        `/call/${data.roomId}?type=${data.callType}&mode=incoming`,
+        {
+          state: data
+        }
+      );
+    },
+    [navigate, user]
+  );
+
+  // =========================
+  // Socket Listeners
+  // =========================
 
   useEffect(() => {
-    if (!socket || !chatId) return;
-    socket.on("getMessage", handleGetMessage);
-    return () => socket.off("getMessage", handleGetMessage);
-  }, [socket, chatId, handleGetMessage]);
+    if (!socket) return;
 
-  // ৩. মেসেজ পাঠানোর লজিক
-  const handleSend = (content = msg, type = 'text', additionalData = {}) => {
-    const textToSend = typeof content === 'string' ? content : msg;
-    if (!textToSend.trim() || !chatId || !user?._id) return;
-    
+    socket.on(
+      "getMessage",
+      handleIncomingMessage
+    );
+
+    socket.on(
+      "$incomingCall",
+      handleIncomingCall
+    );
+
+    return () => {
+      socket.off(
+        "getMessage",
+        handleIncomingMessage
+      );
+
+      socket.off(
+        "$incomingCall",
+        handleIncomingCall
+      );
+    };
+  }, [
+    socket,
+    handleIncomingMessage,
+    handleIncomingCall
+  ]);
+
+  // =========================
+  // Send Message
+  // =========================
+
+  const handleSend = (
+    content = msg,
+    type = "text",
+    extra = {}
+  ) => {
+    if (!content.trim()) return;
+
     const messageId = `${Date.now()}-${Math.random()}`;
-    const isCall = additionalData.isCallSignal || additionalData.isIncomingCall || type === 'audio' || type === 'video';
-    
-    // কল মেটাডাটা হলে রিল্যাক্সে র-টেক্সট যাবে, চ্যাট টেক্সট হলে এনক্রিপ্ট হবে
-    const finalContent = (type === 'text' && !isCall) ? encryptMessage(textToSend) : textToSend;
 
-    const msgPayload = {
-      id: messageId, 
-      receiverId: chatId, 
+    const isCall =
+      extra.isIncomingCall ||
+      extra.isCallSignal;
+
+    const encrypted =
+      type === "text" && !isCall
+        ? encryptMessage(content)
+        : content;
+
+    const payload = {
+      id: messageId,
       senderId: user._id,
+      receiverId: chatId,
       senderName: user.fullName,
-      text: finalContent, 
+      text: encrypted,
       type,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      ...additionalData 
+      timestamp: new Date().toISOString(),
+      ...extra
     };
 
     if (socket?.connected) {
       if (isCall) {
-        socket.emit("$incomingCall", msgPayload);
+        socket.emit("$incomingCall", payload);
       } else {
-        socket.emit("sendMessage", msgPayload);
+        socket.emit("sendMessage", payload);
       }
     }
 
     if (!isCall) {
-      const myNewMsg = { ...msgPayload, text: textToSend, sender: 'me', status: 'sent' };
-      setMessages(prev => {
-        const updated = [...prev, myNewMsg];
-        localStorage.setItem(storageKey, JSON.stringify(updated));
-        return updated;
-      });
-      setMsg("");
+      setMessages((prev) => [
+        ...prev,
+        {
+          ...payload,
+          text: content,
+          sender: "me",
+          status: "sent"
+        }
+      ]);
     }
+
+    setMsg("");
   };
 
-  // ৪. কলিং লজিক (Updated for $incomingCall event)
+  // =========================
+  // Call Handler
+  // =========================
+
   const handleCallClick = (type) => {
-    if (!chatId || !user?._id || !socket?.connected) {
-      alert("Neural connection unstable. Please wait...");
+    if (!socket?.connected) {
+      alert("Connection unstable");
       return;
     }
 
-    const roomId = [user._id, chatId].sort().join("-");
-    
-    const callMetadata = {
+    const roomId = [user._id, chatId]
+      .sort()
+      .join("_");
+
+    const callPayload = {
       isIncomingCall: true,
+      isCallSignal: true,
       userToCall: chatId,
       from: user._id,
-      name: user.fullName || "Onyx User",
+      name: user.fullName,
       avatar: getAvatarUrl(user),
       callType: type,
-      roomId: roomId
+      roomId
     };
 
-    // সিগন্যাল নেটওয়ার্কে পুশ করা
-    handleSend(`Incoming ${type} call...`, type, callMetadata);
+    socket.emit("$incomingCall", callPayload);
 
-    // আউটগোয়িং কল স্ক্রিনে পুশ করা
-    navigate(`/call/${roomId}?type=${type}&mode=outbound`);
+    navigate(
+      `/call/${roomId}?type=${type}&mode=outgoing`,
+      {
+        state: callPayload
+      }
+    );
   };
+
+  // =========================
+  // Voice Recognition
+  // =========================
 
   const startVoiceCapture = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitRecognition;
+    const SpeechRecognition =
+      window.SpeechRecognition ||
+      window.webkitSpeechRecognition;
+
     if (!SpeechRecognition) return;
-    const rec = new SpeechRecognition();
-    rec.onstart = () => setIsListening(true);
-    rec.onend = () => setIsListening(false);
-    rec.onresult = (e) => setMsg(e.results[0][0].transcript);
-    rec.start();
+
+    const recognition =
+      new SpeechRecognition();
+
+    recognition.onstart = () =>
+      setIsListening(true);
+
+    recognition.onend = () =>
+      setIsListening(false);
+
+    recognition.onresult = (e) => {
+      setMsg(e.results[0][0].transcript);
+    };
+
+    recognition.start();
   };
 
-  useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
   return (
-    <motion.div 
-      initial={{ x: '100%', opacity: 0 }} 
-      animate={{ x: 0, opacity: 1 }} 
-      exit={{ x: '100%', opacity: 0 }}
-      transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-      className="fixed inset-0 bg-[#020617] z-[9999] flex flex-col h-full w-full overflow-hidden"
+    <motion.div
+      initial={{ opacity: 0, x: 100 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 100 }}
+      className="fixed inset-0 bg-[#020617] flex flex-col z-[9999]"
     >
-      {/* Header */}
-      <header className="p-4 flex items-center justify-between border-b border-white/5 bg-black/60 backdrop-blur-3xl z-50">
-        <div className="flex items-center gap-2">
-          <button onClick={onBack} className="p-3 text-zinc-400 hover:text-white transition-all active:scale-90 rounded-2xl bg-white/5 border border-white/5">
-            <FaArrowLeft size={16} />
+      {/* HEADER */}
+
+      <header className="p-4 flex items-center justify-between border-b border-white/5 bg-black/40 backdrop-blur-xl">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onBack}
+            className="p-3 rounded-2xl bg-white/5"
+          >
+            <FaArrowLeft />
           </button>
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate(`/profile/${chatId}`)}>
-            <div className="relative">
-              <img src={getAvatarUrl(activeChat)} className="w-11 h-11 rounded-2xl border border-white/10 object-cover" alt="" />
-              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-[#020617] rounded-full"></div>
-            </div>
-            <div>
-              <h4 className="font-bold text-[14px] text-white tracking-tight">{chatName}</h4>
-              <p className="text-[8px] text-cyan-400 font-black uppercase flex items-center gap-1 tracking-widest opacity-80">
-                <FaLock size={7} /> Neural E2EE Active
-              </p>
-            </div>
+
+          <img
+            src={getAvatarUrl(activeChat)}
+            className="w-11 h-11 rounded-2xl"
+            alt=""
+          />
+
+          <div>
+            <h2 className="text-white font-bold">
+              {activeChat?.fullName}
+            </h2>
+
+            <p className="text-cyan-400 text-[10px] flex items-center gap-1">
+              <FaLock />
+              End-to-End Encrypted
+            </p>
           </div>
         </div>
-        
+
         <div className="flex gap-2">
-           <button onClick={() => handleCallClick('audio')} className="p-3.5 bg-zinc-900 rounded-2xl text-cyan-500 hover:bg-cyan-500/10 transition-all border border-white/5 shadow-lg active:scale-95">
-             <FaPhone size={13}/>
-           </button>
-           <button onClick={() => handleCallClick('video')} className="p-3.5 bg-zinc-900 rounded-2xl text-cyan-500 hover:bg-cyan-500/10 transition-all border border-white/5 shadow-lg active:scale-95">
-             <FaVideo size={13}/>
-           </button>
+          <button
+            onClick={() =>
+              handleCallClick("audio")
+            }
+            className="p-3 rounded-2xl bg-zinc-900 text-cyan-400"
+          >
+            <FaPhone />
+          </button>
+
+          <button
+            onClick={() =>
+              handleCallClick("video")
+            }
+            className="p-3 rounded-2xl bg-zinc-900 text-cyan-400"
+          >
+            <FaVideo />
+          </button>
         </div>
       </header>
-      
-      {/* Messages Area */}
-      <main className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
-        {messages.map((m, idx) => (
-          <div key={m.id || idx} className={`flex ${m.sender === 'me' ? 'justify-end' : m.sender === 'system' ? 'justify-center' : 'justify-start'}`}>
-            <div className={`relative p-3.5 rounded-[1.8rem] max-w-[85%] text-[13px] border shadow-sm ${
-              m.sender === 'me' ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-50 rounded-tr-none' 
-              : m.sender === 'system' ? 'bg-white/5 border-transparent text-zinc-600 text-[8px] font-black uppercase'
-              : 'bg-zinc-900/50 border-white/5 text-zinc-300 rounded-tl-none'
-            }`}>
-              {m.type === 'media' ? (
-                <img src={m.text} className="rounded-2xl max-w-full" alt="Transmission" />
-              ) : (
-                <span className="leading-relaxed">{m.text}</span>
-              )}
-              
-              {m.sender !== 'system' && (
-                <div className="flex items-center justify-end gap-1 mt-1.5 opacity-30 text-[7px] font-black">
-                   {m.timestamp} 
-                   {m.sender === 'me' && (
-                     m.status === 'seen' ? <FaCheckDouble className="text-cyan-400" /> : <FaCheck />
-                   )}
+
+      {/* CHAT */}
+
+      <main className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.map((m) => (
+          <div
+            key={m.id}
+            className={`flex ${
+              m.sender === "me"
+                ? "justify-end"
+                : m.sender === "system"
+                ? "justify-center"
+                : "justify-start"
+            }`}
+          >
+            <div
+              className={`max-w-[80%] p-4 rounded-3xl ${
+                m.sender === "me"
+                  ? "bg-cyan-500/10 text-white"
+                  : m.sender === "system"
+                  ? "bg-transparent text-zinc-600 text-xs"
+                  : "bg-zinc-900 text-zinc-200"
+              }`}
+            >
+              {m.text}
+
+              {m.sender !== "system" && (
+                <div className="flex justify-end items-center gap-1 text-[10px] mt-2 opacity-50">
+                  {m.status === "seen" ? (
+                    <FaCheckDouble />
+                  ) : (
+                    <FaCheck />
+                  )}
                 </div>
               )}
             </div>
           </div>
         ))}
+
         <div ref={scrollRef} />
       </main>
 
-      {/* Footer & Input */}
-      <footer className="p-4 bg-black/80 backdrop-blur-2xl border-t border-white/5 pb-10">
-        <div className="flex items-center gap-2 bg-zinc-900/40 border border-white/5 rounded-[2rem] p-1.5 shadow-inner">
-          <button className="p-3.5 text-zinc-600 hover:text-cyan-500 transition-colors">
-            <FaPlus size={14} />
+      {/* FOOTER */}
+
+      <footer className="p-4 border-t border-white/5 bg-black/40">
+        <div className="flex items-center gap-2 bg-zinc-900 rounded-full px-3 py-2">
+          <button className="text-zinc-500">
+            <FaPlus />
           </button>
-          <input 
-            type="text" placeholder="Transmit signal..." 
-            className="flex-1 bg-transparent outline-none text-[14px] text-white px-2 py-2 placeholder:text-zinc-700" 
-            value={msg} onChange={(e) => setMsg(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+
+          <input
+            value={msg}
+            onChange={(e) =>
+              setMsg(e.target.value)
+            }
+            placeholder="Type message..."
+            className="flex-1 bg-transparent outline-none text-white"
+            onKeyDown={(e) =>
+              e.key === "Enter" &&
+              handleSend()
+            }
           />
-          <button onClick={startVoiceCapture} className={`p-3.5 rounded-2xl transition-all ${isListening ? 'text-rose-500 animate-pulse' : 'text-zinc-600'}`}>
-            <FaMicrophone size={14} />
-          </button>
-          <button 
-            onClick={() => handleSend()} 
-            disabled={!msg.trim()} 
-            className="p-3.5 bg-cyan-600 disabled:bg-zinc-800 rounded-2xl text-white active:scale-90 transition-all"
+
+          <button
+            onClick={startVoiceCapture}
+            className={
+              isListening
+                ? "text-red-500"
+                : "text-zinc-500"
+            }
           >
-            <FaPaperPlane size={14} />
+            <FaMicrophone />
+          </button>
+
+          <button
+            onClick={() => handleSend()}
+            className="bg-cyan-500 p-3 rounded-full text-white"
+          >
+            <FaPaperPlane />
           </button>
         </div>
       </footer>

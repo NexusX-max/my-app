@@ -21,11 +21,22 @@ const GroupChatInterface = ({ activeGroup, onBack }) => {
   const typingTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
 
+  // 📡 ডাইনামিক এনভায়রনমেন্ট ডিটেক্টর (Localhost vs Production)
+  const getApiBaseUrl = () => {
+    const hostname = window.location.hostname;
+    
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.')) {
+      return 'http://localhost:5005'; 
+    }
+    
+    const envUrl = import.meta.env.VITE_API_URL || 'https://onyx-drift.com';
+    return envUrl.endsWith('/') ? envUrl.slice(0, -1) : envUrl;
+  };
+
   // 👥 ফলোয়ার এবং ফলোয়িং ইউজারদের থেকে ইনভাইট লিস্ট তৈরি করা
   useEffect(() => {
     if (!user) return;
     
-    // ফলোয়ার এবং ফলোয়িং ডাটা কম্বাইন করা
     const followersList = user.followers || [];
     const followingList = user.following || [];
     const combined = [...followersList, ...followingList];
@@ -34,22 +45,25 @@ const GroupChatInterface = ({ activeGroup, onBack }) => {
     const uniqueUsers = combined.filter((v, i, a) => a.findIndex(t => t._id === v._id) === i);
     
     // যারা অলরেডি এই গ্রুপে মেম্বার হিসেবে আছে তাদের লিস্ট থেকে বাদ দেওয়া
-    const existingMemberIds = activeGroup?.members?.map(m => m.userId || m._id || m) || [];
-    const inviteableUsers = uniqueUsers.filter(u => !existingMemberIds.includes(u._id));
+    const existingMemberIds = activeGroup?.members?.map(m => {
+      if (!m) return null;
+      const id = m.userId?._id || m.userId || m._id || m;
+      return id?.toString();
+    }).filter(Boolean) || [];
+
+    const inviteableUsers = uniqueUsers.filter(u => !existingMemberIds.includes(u._id?.toString()));
 
     setNetworkUsers(inviteableUsers);
   }, [user, activeGroup]);
 
-  // 📥 ডাটাবেজ থেকে আগের চ্যাট লোড করা (CORS & Double /api Path Fixed)
+  // 📥 ডাটাবেজ থেকে আগের চ্যাট হিস্ট্রি লোড করা
   useEffect(() => {
     const fetchChatHistory = async () => {
       if (!activeGroup?._id) return;
       try {
-        const token = localStorage.getItem('token'); 
-        const apiUrl = import.meta.env.VITE_API_URL || 'https://onyx-drift.com';
+        const token = localStorage.getItem('onyx_token'); 
+        let base = getApiBaseUrl();
         
-        // 🔄 ডাবল /api/ পথ তৈরি হওয়া রোধ করার জন্য ক্লিনিং লজিক
-        let base = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
         if (base.endsWith('/api')) {
           base = base.slice(0, -4);
         }
@@ -70,10 +84,9 @@ const GroupChatInterface = ({ activeGroup, onBack }) => {
 
         const data = await response.json();
         
-        if (data.success || data.messages) {
-          const fetchedMessages = data.messages || data;
-          setMessages(Array.isArray(fetchedMessages) ? fetchedMessages : []);
-          const pinned = Array.isArray(fetchedMessages) ? fetchedMessages.find(m => m.isPinned) : null;
+        if (data.success && data.messages) {
+          setMessages(data.messages);
+          const pinned = data.messages.find(m => m.isPinned);
           if (pinned) setPinnedMsg(pinned);
         }
       } catch (error) {
@@ -84,19 +97,28 @@ const GroupChatInterface = ({ activeGroup, onBack }) => {
     fetchChatHistory();
   }, [activeGroup]);
 
-  // 🔌 সকেট কানেকশন ও লিসেনার্স
+  // 🔌 সকেট কানেকশন ও লাইভ লিসেনার্স কনফিগারেশন
   useEffect(() => {
-    if (!socket || !activeGroup) return;
+    if (!socket || !activeGroup?._id || !user?._id) return;
 
+    // রুমে জয়েন সিগন্যাল পাঠানো
     socket.emit('join_group_room', { groupId: activeGroup._id, userId: user._id });
 
+    // লাইভ মেসেজ রিসিভ করা এবং ডুপ্লিকেট আইডি ফিল্টার করা
     socket.on('receive_group_message', (newMsg) => {
+      if (!newMsg || newMsg.groupId !== activeGroup._id) return;
+      
       setMessages(prev => {
-        if (prev.some(m => m._id === newMsg._id)) return prev;
+        // যদি টেম্পোরারি আইডি ওয়ালা মেসেজ অলরেডি থাকে, তবে ব্যাকএন্ডের পার্মানেন্ট মেসেজ দিয়ে ওটাকে রিপ্লেস করুন (যাতে ডুপ্লিকেট না হয় এবং ইমেজ ইউআরএল সেভড ভার্সন পায়)
+        const exists = prev.some(m => m._id === newMsg._id || (newMsg.tempId && m.tempId === newMsg.tempId));
+        if (exists) {
+          return prev.map(m => (m.tempId === newMsg.tempId || m._id === newMsg._id) ? newMsg : m);
+        }
         return [...prev, { ...newMsg, reactions: newMsg.reactions || [] }];
       });
     });
 
+    // টাইপিং ব্রডকাস্ট রিসিভ করা
     socket.on('group_typing_broadcast', ({ username, isTyping }) => {
       setTypingUsers(prev => {
         if (isTyping) {
@@ -107,14 +129,17 @@ const GroupChatInterface = ({ activeGroup, onBack }) => {
       });
     });
 
+    // রিঅ্যাকশন হ্যান্ডলার
     socket.on('receive_group_reaction', ({ msgId, reaction }) => {
       setMessages(prev => prev.map(m => m._id === msgId ? { ...m, currentReaction: reaction } : m));
     });
 
+    // পিন মেসেজ হ্যান্ডলার
     socket.on('group_message_pinned', ({ message }) => {
       setPinnedMsg(message);
     });
 
+    // গ্রুপ মেম্বার লিস্ট আপডেট হওয়া
     socket.on('group_members_updated', ({ updatedMembers }) => {
       if (activeGroup) activeGroup.members = updatedMembers;
     });
@@ -128,32 +153,55 @@ const GroupChatInterface = ({ activeGroup, onBack }) => {
     };
   }, [socket, activeGroup, user]);
 
+  // অটো-স্ক্রলিং এফেক্ট
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, typingUsers]);
 
-  // 📤 মেসেজ সেন্ডিং লজিক
+  // 📤 রিয়েল-টাইম মেসেজ ট্রান্সমিশন লজিক (ইমেজ সেভিং ও নোটিফিকেশন এনাবল্ড)
   const handleSendMessage = () => {
-    if (!inputText.trim() && !selectedMedia || !socket) return;
+    if ((!inputText.trim() && !selectedMedia) || !socket || !activeGroup?._id || !user?._id) return;
 
-    const userInGroup = activeGroup.members?.find(m => m.userId === user._id);
-    const userRole = userInGroup ? userInGroup.role : 'Member';
+    // গ্রুপ মেম্বার ও রোল অবজেক্ট ভ্যালিডেশন চেক
+    const userInGroup = activeGroup.members?.find(m => {
+      const memberId = m?.userId?._id || m?.userId || m?._id || m;
+      return memberId?.toString() === user._id.toString();
+    });
     
-    if (activeGroup.permissions?.canMessage === 'Admin' && userRole === 'Member') {
+    const userRole = userInGroup ? userInGroup.role : 'member';
+    
+    if (activeGroup.permissions?.canMessage === 'Admin' && userRole === 'member') {
       alert("Only Admins can broadcast messages in this cluster node.");
       return;
     }
 
+    const tempId = `temp_${Date.now()}`;
+
+    // সকেটে পাঠানো পেলোড: ইমেজ স্ট্রিম এবং নোটিফিকেশনের জন্য ট্রিগার ফ্ল্যাগ সহ
     const messagePayload = {
-      _id: "msg_" + Date.now(),
+      _id: tempId, 
+      tempId: tempId,
       groupId: activeGroup._id,
       text: inputText,
-      mediaUrl: selectedMedia || null,
-      sender: { _id: user._id, fullName: user.fullName || "Drifter Node" },
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      mediaUrl: selectedMedia || null, // বেস৬৪ ইমেজ ডেটা যা ব্যাকএন্ড Cloudinary/S3 তে আপলোড করে ডাটাবেজে সেভ করবে
+      sender: { 
+        _id: user._id, 
+        fullName: user.fullName || "Drifter Node",
+        username: user.username,
+        profilePic: user.profilePic 
+      },
+      triggerNotification: true, // 🔔 ব্যাকএন্ডকে সিগন্যাল দিচ্ছে অন্যান্য মেম্বারদের পুশ নোটিফিকেশন পাঠানোর জন্য
+      groupName: activeGroup.fullName || activeGroup.name, // নোটিফিকেশনে দেখানোর জন্য গ্রুপের নাম
+      timestamp: new Date().toISOString()
     };
 
+    // ১. সকেটের মাধ্যমে ডাটা ব্যাকএন্ডে ফায়ার করা
     socket.emit('send_group_message', messagePayload);
+    
+    // ২. তাৎক্ষণিকভাবে নিজের স্ক্রিনে রেন্ডার
+    setMessages(prev => [...prev, messagePayload]);
+    
+    // ফর্ম এবং মিডিয়া ক্লিয়ার
     setInputText('');
     setSelectedMedia(null);
     socket.emit('group_typing_signal', { groupId: activeGroup._id, username: user.fullName, isTyping: false });
@@ -161,7 +209,7 @@ const GroupChatInterface = ({ activeGroup, onBack }) => {
 
   const handleInputChange = (e) => {
     setInputText(e.target.value);
-    if (!socket) return;
+    if (!socket || !activeGroup?._id) return;
 
     socket.emit('group_typing_signal', { groupId: activeGroup._id, username: user.fullName, isTyping: true });
 
@@ -174,6 +222,11 @@ const GroupChatInterface = ({ activeGroup, onBack }) => {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      // ফাইলের সাইজ চেক (৫ মেগাবাইটের বেশি হলে সকেটে বাফার এরর দিতে পারে)
+      if (file.size > 5 * 1024 * 1024) {
+        alert("File size too large. Please select an image under 5MB.");
+        return;
+      }
       const reader = new FileReader();
       reader.onloadend = () => {
         setSelectedMedia(reader.result); 
@@ -183,14 +236,14 @@ const GroupChatInterface = ({ activeGroup, onBack }) => {
   };
 
   const initiateGroupCall = (type) => {
-    if (!socket || !activeGroup) return;
+    if (!socket || !activeGroup?._id) return;
     const roomId = `call_${activeGroup._id}_${Date.now()}`;
     socket.emit('initiate_group_call', { groupId: activeGroup._id, roomId, callType: type, callerName: user.fullName });
     alert(`Establishing Secure Group ${type === 'video' ? 'Video' : 'Audio'} Pipeline...`);
   };
 
   const handleAddMembersSubmit = () => {
-    if (selectedNewMembers.length === 0) return;
+    if (selectedNewMembers.length === 0 || !socket || !activeGroup?._id) return;
     socket.emit('add_group_members', { groupId: activeGroup._id, memberIds: selectedNewMembers });
     setShowAddMemberModal(false);
     setSelectedNewMembers([]);
@@ -203,11 +256,13 @@ const GroupChatInterface = ({ activeGroup, onBack }) => {
   };
 
   const addReaction = (msgId, reaction) => {
+    if (!socket || !activeGroup?._id) return;
     socket.emit('send_group_reaction', { msgId, groupId: activeGroup._id, reaction, userId: user._id });
     setShowEmojiPicker(null);
   };
 
   const pinMessage = (msg) => {
+    if (!socket || !activeGroup?._id) return;
     socket.emit('pin_group_message', { groupId: activeGroup._id, message: msg });
   };
 
@@ -219,10 +274,10 @@ const GroupChatInterface = ({ activeGroup, onBack }) => {
         <div className="flex items-center gap-3 min-w-0">
           <button onClick={onBack} className="p-2 text-zinc-400 hover:text-white active:scale-90"><FaChevronLeft size={16} /></button>
           <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center font-bold text-sm shadow-[0_0_15px_rgba(124,58,237,0.4)]">
-            {activeGroup.fullName?.charAt(0)}
+            {activeGroup.fullName?.charAt(0) || activeGroup.name?.charAt(0)}
           </div>
           <div className="min-w-0">
-            <h3 className="font-bold text-sm text-zinc-100 truncate">{activeGroup.fullName}</h3>
+            <h3 className="font-bold text-sm text-zinc-100 truncate">{activeGroup.fullName || activeGroup.name}</h3>
             <p className="text-[10px] text-purple-400 font-medium tracking-wide uppercase">Matrix Cluster Node</p>
           </div>
         </div>
@@ -239,7 +294,7 @@ const GroupChatInterface = ({ activeGroup, onBack }) => {
         <div className="bg-purple-950/20 border-b border-purple-500/30 px-5 py-2.5 flex items-center justify-between text-xs backdrop-blur-sm z-40">
           <div className="flex items-center gap-2 truncate text-zinc-300">
             <FaThumbtack className="text-purple-400 shrink-0" size={10} />
-            <span className="font-bold text-purple-300">{pinnedMsg.sender?.fullName}:</span>
+            <span className="font-bold text-purple-300">{pinnedMsg.sender?.fullName || 'User'}:</span>
             <span className="truncate">{pinnedMsg.text}</span>
           </div>
           <button onClick={() => setPinnedMsg(null)} className="text-zinc-500 text-[10px] ml-2">✕</button>
@@ -248,11 +303,14 @@ const GroupChatInterface = ({ activeGroup, onBack }) => {
 
       {/* 💬 Message Screen Matrix */}
       <main className="flex-1 overflow-y-auto p-5 space-y-4 no-scrollbar bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-zinc-900/20 via-[#0b0c10] to-[#0b0c10]">
-        {messages.map((msg) => {
-          const isMe = msg.sender?._id === user._id;
+        {messages && messages.map((msg) => {
+          if (!msg) return null;
+          const senderId = msg.sender?._id || msg.sender;
+          const isMe = senderId?.toString() === user?._id?.toString();
+          
           return (
             <div key={msg._id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group relative`}>
-              {!isMe && <span className="text-[10px] font-bold text-zinc-500 mb-1 ml-2">{msg.sender?.fullName}</span>}
+              {!isMe && <span className="text-[10px] font-bold text-zinc-500 mb-1 ml-2">{msg.sender?.fullName || msg.sender?.username || "Anonymous"}</span>}
               
               <div className="flex items-center gap-2 max-w-[80%] relative">
                 <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-8 bg-[#16171d] border border-zinc-800 rounded-lg p-1 flex gap-2 z-10 shadow-xl">
@@ -280,10 +338,13 @@ const GroupChatInterface = ({ activeGroup, onBack }) => {
                   </motion.div>
                 )}
               </AnimatePresence>
-              <span className="text-[9px] text-zinc-600 font-medium mt-1 mx-1">{msg.timestamp}</span>
+              <span className="text-[9px] text-zinc-600 font-medium mt-1 mx-1">
+                {msg.timestamp || (msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
+              </span>
             </div>
           );
         })}
+        
         {typingUsers.length > 0 && (
           <div className="text-[10px] text-purple-400 font-semibold italic animate-pulse bg-purple-950/10 py-1.5 px-3 rounded-full inline-block">
             {typingUsers.join(', ')} is writing...
@@ -305,7 +366,7 @@ const GroupChatInterface = ({ activeGroup, onBack }) => {
         </AnimatePresence>
 
         <div className="flex items-center gap-2 bg-[#16171d] border border-zinc-800/60 rounded-2xl p-2 focus-within:border-purple-500/60 transition-all">
-          <input type="file" accept="image/*,video/*" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
+          <input type="file" accept="image/*" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
           <button onClick={() => fileInputRef.current?.click()} className="p-2.5 text-zinc-500 hover:text-purple-400"><FaPaperclip size={13} /></button>
           <input 
             type="text" 
@@ -315,7 +376,7 @@ const GroupChatInterface = ({ activeGroup, onBack }) => {
             onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
             className="flex-1 bg-transparent border-none text-xs text-zinc-200 px-2 py-2.5 focus:outline-none"
           />
-          <button onClick={handleSendMessage} className="w-9 h-9 bg-[#7c3aed] text-white flex items-center justify-center rounded-xl active:scale-90"><FaPaperPlane size={11} /></button>
+          <button onClick={handleSendMessage} className="w-9 h-9 bg-[#7c3aed] text-white flex items-center justify-center rounded-xl active:scale-95"><FaPaperPlane size={11} /></button>
         </div>
       </footer>
 

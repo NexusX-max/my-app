@@ -138,4 +138,15 @@ router.post("/process-voice", protect, async (req, res) => {
     }
 });
 
+router.post('/generate-caption', async (req, res) => {
+  const { mediaUrl } = req.body;
+  try {
+    // এখানে আপনার AI লজিক বা OpenAI API কল থাকবে
+    // মিডিয়া অ্যানালাইসিস করে টেক্সট রিটার্ন করবে
+    const caption = await callVisionAI(mediaUrl); 
+    res.json({ success: true, caption });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "AI Engine Busy" });
+  }
+});
 export default router;

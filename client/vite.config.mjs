@@ -10,27 +10,20 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
 
   return {
-    // ১. প্রজেক্ট রুট থেকে ফাইল লোড হওয়া নিশ্চিত করে
     base: '/',
-    
-    // ২. নিশ্চিত করে যে 'public' ফোল্ডারের manifest.json সরাসরি 'dist' এ যাবে
     publicDir: 'public',
-
     plugins: [react()],
 
     define: {
       'global': 'globalThis',
-      // 'process.env' কে সরাসরি JSON.stringify না করে এভাবে দেওয়া নিরাপদ
-      'process.env': env,
-      // 🚨 ফিক্স: 'process.nextTick' কে সরাসরি স্ট্রিং হিসেবে ডিফাইন না করে গ্লোবাল অবজেক্টে রাখা ভালো। 
-      // তবে যদি একান্তই প্রয়োজন হয়, তবে নিচের ফরম্যাটটি ব্যবহার করুন:
-      'process.nextTick': JSON.stringify('process.nextTick'),
+      'process.env': {}, // env এরর এড়াতে এটি ব্যবহার করুন
     },
 
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
-        'util': 'util/', 
+        // Node.js মডিউলের জন্য সঠিক প্যাকেজ ব্যবহার নিশ্চিত করুন
+        'util': 'util/',
         'stream': 'stream-browserify',
         'buffer': 'buffer',
         'events': 'events',
@@ -40,53 +33,42 @@ export default defineConfig(({ mode }) => {
 
     server: {
       port: 5173,
-      host: true, 
       strictPort: true,
-      allowedHosts: [
-        'onyx-drift.com',
-        'www.onyx-drift.com',
-        '.onyx-drift.com'
-      ],
+      host: true,
       hmr: {
-        host: mode === 'production' ? 'onyx-drift.com' : 'localhost',
         protocol: mode === 'production' ? 'wss' : 'ws',
-        clientPort: mode === 'production' ? 443 : 5173, 
+        host: mode === 'production' ? 'onyx-drift.com' : 'localhost',
       }
     },
 
     optimizeDeps: {
+      // 🚨 ফিক্স: এখানে react এবং react-dom যোগ করা জরুরি
       include: [
+        'react', 
+        'react-dom', 
         'buffer', 
         'stream-browserify', 
         'events',
-        'util',
         'process'
       ],
       esbuildOptions: {
-        // OptimizeDeps এর ভেতরেও global ডিফাইন করা জরুরি
         define: {
           global: 'globalThis'
-        }
+        },
       }
     },
 
     build: {
       outDir: 'dist',
-      assetsDir: 'assets',
-      sourcemap: false,
-      chunkSizeWarningLimit: 2000,
-      minify: 'esbuild',
       commonjsOptions: {
         transformMixedEsModules: true,
       },
       rollupOptions: {
         output: {
-          // ফাইলের নামের শেষে হ্যাশ কোড ক্যাশ সমস্যা সমাধান করে
-          chunkFileNames: 'assets/js/[name]-[hash].js',
-          entryFileNames: 'assets/js/[name]-[hash].js',
-          assetFileNames: 'assets/[ext]/[name]-[hash].[ext]',
           manualChunks(id) {
             if (id.includes('node_modules')) {
+              // React-কে আলাদা ভেন্ডর চঙ্কে রাখা ভালো
+              if (id.includes('react') || id.includes('react-dom')) return 'react-vendor';
               return 'vendor';
             }
           }

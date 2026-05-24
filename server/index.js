@@ -4,292 +4,995 @@ dotenv.config();
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
-import { createClient } from "redis"; 
-import { createAdapter } from "@socket.io/redis-adapter"; 
+import { createClient } from "redis";
+import { createAdapter } from "@socket.io/redis-adapter";
 import cors from "cors";
-import jwt from 'jsonwebtoken';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
+import jwt from "jsonwebtoken";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+import mongoose from "mongoose";
 
-// 🛠️ Config & Routes
-import connectAllDB from "./config/db.js"; 
-import authRoutes from './routes/authRoutes.js';
-import userRoutes from './routes/user.js'; 
-import profileRoutes from './routes/profile.js'; 
+// DATABASE + MODELS
+import connectAllDB from "./config/db.js";
+import Message from "./models/Message.js";
+import Group from "./models/Group.js";
+
+// ROUTES
+import authRoutes from "./routes/authRoutes.js";
+import userRoutes from "./routes/user.js";
+import profileRoutes from "./routes/profile.js";
 import postRoutes from "./routes/posts.js";
-import reelRoutes from "./routes/reels.js";      
-import storyRoute from "./routes/story.js";    
-import groupRoutes from "./routes/group.js";      
-import marketRoutes from "./routes/market.js";    
-import adminRoutes from "./routes/admin.js";      
+import reelRoutes from "./routes/reels.js";
+import storyRoute from "./routes/story.js";
+import groupRoutes from "./routes/group.js";
+import marketRoutes from "./routes/market.js";
+import adminRoutes from "./routes/admin.js";
 import messageRoutes from "./routes/messages.js";
-import aiRoutes from './routes/aiRoutes.js'; 
-import { getNeuralFeed } from "./controllers/feedController.js";
-import notificationRoutes from './routes/notificationRoutes.js';
-import searchRoutes from './routes/searchRoutes.js'; 
+import aiRoutes from "./routes/aiRoutes.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
+import searchRoutes from "./routes/searchRoutes.js";
 
+import { getNeuralFeed } from "./controllers/feedController.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
 const server = http.createServer(app);
 
-// Cloudflare-এর মাধ্যমে প্রক্সি ট্রাস্ট করার জন্য
-app.set('trust proxy', 1);
+app.set("trust proxy", 1);
 
-// --- 🌐 CORS Configuration (Cloudflare ডোমেইন সহ) ---
+// =====================================================
+// ALLOWED ORIGINS
+// =====================================================
+
 const allowedOrigins = [
-  "http://localhost:5173", 
+  "http://localhost:5173",
   "http://localhost:3000",
-  "https://onyx-drift.com", // আপনার মেইন ডোমেইন
+  "https://onyx-drift.com",
   "https://www.onyx-drift.com",
+  "https://api.onyx-drift.com",
   "https://onyx-messenger.vercel.app"
 ];
 
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Onyx Security: Origin Unauthorized'));
-    }
+// =====================================================
+// SOCKET.IO
+// =====================================================
+
+const io = new Server(server, {
+  cors: {
+    origin: allowedOrigins,
+    credentials: true
   },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"]
-}));
 
-app.use(express.json({ limit: "150mb" }));
-app.use(express.urlencoded({ limit: "150mb", extended: true }));
+  transports: ["websocket", "polling"],
 
-// Uploads static directory
-const uploadDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
+  pingTimeout: 60000,
+  pingInterval: 25000,
+
+  maxHttpBufferSize: 1e8
+});
+
+// =====================================================
+// REDIS
+// =====================================================
+
+const pubClient = createClient({
+  url:
+    process.env.REDIS_URL ||
+    "redis://localhost:6379"
+});
+
+const subClient = pubClient.duplicate();
+
+pubClient.on("error", (err) => {
+  console.error("Redis Pub Error:", err);
+});
+
+subClient.on("error", (err) => {
+  console.error("Redis Sub Error:", err);
+});
+
+// =====================================================
+// ONLINE USERS MAP
+// =====================================================
+
+const onlineUsers = new Map();
+
+function addUser(userId, socketId) {
+  if (!userId || !socketId) return;
+
+  onlineUsers.set(userId.toString(), {
+    socketId,
+    lastSeen: Date.now()
+  });
+
+  io.emit(
+    "getOnlineUsers",
+    Array.from(onlineUsers.keys())
+  );
+
+  console.log(
+    `📡 User Connected: ${userId}`
+  );
 }
-app.use('/uploads', express.static(uploadDir));
 
-// --- 🔐 Neural Link Protection (Middleware) ---
-const protect = async (req, res, next) => {
-  let token;
-  if (req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
-    try {
-      token = req.headers.authorization.split(" ")[1];
-      const secret = process.env.JWT_SECRET || "onyx_drift_super_secret_key_2026";
-      const decoded = jwt.verify(token, secret);
-      const userId = decoded.id || decoded._id || decoded.userId || decoded.sub;
-      
-      if (!userId) {
-        return res.status(401).json({ error: "Unauthorized", msg: "Invalid token payload." });
+function getUserSocket(userId) {
+  return onlineUsers.get(userId?.toString());
+}
+
+// =====================================================
+// EXPRESS MIDDLEWARE
+// =====================================================
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (
+        !origin ||
+        allowedOrigins.includes(origin)
+      ) {
+        callback(null, true);
+      } else {
+        callback(
+          new Error(
+            "Unauthorized Origin"
+          )
+        );
       }
+    },
 
-      req.user = { id: userId, _id: userId }; 
-      next();
-    } catch (error) {
-      return res.status(401).json({ error: "Neural Link Severed", msg: "Session expired." });
+    credentials: true
+  })
+);
+
+app.use(
+  express.json({
+    limit: "150mb"
+  })
+);
+
+app.use(
+  express.urlencoded({
+    limit: "150mb",
+    extended: true
+  })
+);
+
+// =====================================================
+// UPLOADS
+// =====================================================
+
+const uploadDir = path.join(
+  __dirname,
+  "uploads"
+);
+
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, {
+    recursive: true
+  });
+}
+
+app.use(
+  "/uploads",
+  express.static(uploadDir)
+);
+
+// =====================================================
+// AUTH MIDDLEWARE
+// =====================================================
+
+const protect = async (
+  req,
+  res,
+  next
+) => {
+  try {
+    const token =
+      req.headers.authorization?.split(
+        " "
+      )[1];
+
+    if (!token) {
+      return res
+        .status(401)
+        .json({
+          error: "Token missing"
+        });
     }
-  } else {
-    return res.status(401).json({ error: "Access Denied", msg: "Token missing." });
+
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET
+    );
+
+    const userId =
+      decoded.id ||
+      decoded._id ||
+      decoded.userId;
+
+    req.user = {
+      id: userId,
+      _id: userId
+    };
+
+    next();
+  } catch (err) {
+    return res
+      .status(401)
+      .json({
+        error: "Unauthorized"
+      });
   }
 };
 
-/* ==========================================================
-    🚀 API ROUTES
-========================================================== */
-app.get("/", (req, res) => res.json({ 
-    status: "Active", 
-    system: "OnyxDrift Core", 
-    node: process.env.NODE_ID || "Main", 
-    version: "3.1.0" 
-}));
+// =====================================================
+// API ROUTES
+// =====================================================
 
-app.use('/api/auth', authRoutes); 
-app.use("/api/profile", protect, profileRoutes); 
-app.use("/api/users", protect, userRoutes); 
-app.use('/api/notifications', protect, notificationRoutes);
-app.use("/api/reels", protect, reelRoutes);
-app.use('/api/ai', protect, aiRoutes); 
-app.get("/api/feed", protect, getNeuralFeed);
-app.use("/api/posts", protect, postRoutes); 
-app.use("/api/story", protect, storyRoute);
-app.use("/api/groups", protect, groupRoutes);
-app.use("/api/market", protect, marketRoutes);
-app.use("/api/admin", protect, adminRoutes);
-app.use("/api/messages", protect, messageRoutes);
-app.use('/api/v1/search', protect, searchRoutes); 
-
-/* ==========================================================
-    ⚡ SOCKET.IO (Redis Sync Engine)
-========================================================== */
-const io = new Server(server, { 
-  cors: { origin: allowedOrigins, methods: ["GET", "POST"], credentials: true },
-  pingTimeout: 60000,
+app.get("/", (req, res) => {
+  res.json({
+    status: "ACTIVE",
+    system: "ONYX CORE"
+  });
 });
 
-// --- Redis Cloud Connection ---
-const pubClient = createClient({ 
-    url: process.env.REDIS_URL, 
-    socket: {
-        reconnectStrategy: retries => Math.min(retries * 50, 2000)
+app.use("/api/auth", authRoutes);
+
+app.use(
+  "/api/profile",
+  protect,
+  profileRoutes
+);
+
+app.use(
+  "/api/users",
+  protect,
+  userRoutes
+);
+
+app.use(
+  "/api/posts",
+  protect,
+  postRoutes
+);
+
+app.use(
+  "/api/reels",
+  protect,
+  reelRoutes
+);
+
+app.use(
+  "/api/story",
+  protect,
+  storyRoute
+);
+
+app.use(
+  "/api/groups",
+  protect,
+  groupRoutes
+);
+
+app.use(
+  "/api/messages",
+  protect,
+  messageRoutes
+);
+
+app.use(
+  "/api/market",
+  protect,
+  marketRoutes
+);
+
+app.use(
+  "/api/admin",
+  protect,
+  adminRoutes
+);
+
+app.use(
+  "/api/notifications",
+  protect,
+  notificationRoutes
+);
+
+app.use(
+  "/api/ai",
+  protect,
+  aiRoutes
+);
+
+app.use(
+  "/api/v1/search",
+  protect,
+  searchRoutes
+);
+
+app.get(
+  "/api/feed",
+  protect,
+  getNeuralFeed
+);
+
+// =====================================================
+// SOCKET AUTH
+// =====================================================
+
+io.use((socket, next) => {
+  try {
+    const token =
+      socket.handshake.auth?.token;
+
+    if (!token) {
+      return next(
+        new Error("Unauthorized")
+      );
     }
-});
-const subClient = pubClient.duplicate();
 
-let onlineUsers = [];
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET
+    );
+
+    socket.user = decoded;
+
+    next();
+  } catch (err) {
+    next(new Error("Unauthorized"));
+  }
+});
+
+// =====================================================
+// SOCKET SYSTEM
+// =====================================================
 
 const setupSocket = async () => {
   try {
     await pubClient.connect();
     await subClient.connect();
-    
-    io.adapter(createAdapter(pubClient, subClient));
-    console.log("💎 Neural Sync: Global Redis Adapter Linked");
+
+    io.adapter(
+      createAdapter(
+        pubClient,
+        subClient
+      )
+    );
+
+    console.log(
+      "💎 Redis Adapter Connected"
+    );
   } catch (err) {
-    console.error("⚠️ Redis Connection Failed:", err);
+    console.error(
+      "❌ Redis Failed:",
+      err
+    );
   }
 
   io.on("connection", (socket) => {
-    const userId = socket.handshake.query.userId;
-    if (userId && userId !== 'undefined') {
+
+    const userId =
+      socket.handshake.query.userId;
+
+    if (
+      userId &&
+      userId !== "undefined"
+    ) {
+      addUser(userId, socket.id);
+    }
+
+    // =========================================
+    // ADD USER
+    // =========================================
+
+    socket.on(
+      "addNewUser",
+      (userId) => {
         addUser(userId, socket.id);
-    }
-
-    function addUser(userId, socketId) {
-      const index = onlineUsers.findIndex(u => u.userId === userId);
-      if (index !== -1) {
-        onlineUsers[index].socketId = socketId;
-      } else {
-        onlineUsers.push({ userId, socketId });
       }
-      console.log(`📡 Onyx Core: Node Connected [User: ${userId} -> Socket: ${socketId}]`);
-      io.emit("getOnlineUsers", onlineUsers);
-    }
+    );
 
-    // 📩 MESSAGE HANDLER (১-টু-১ চ্যাট মেসেজ)
-    socket.on("sendMessage", (message) => {
-      if (message.isCallSignal || message.isIncomingCall || message.type === 'audio' || message.type === 'video') return;
-      io.emit("getMessage", { ...message });
-    });
+    // =========================================
+    // DIRECT MESSAGE
+    // =========================================
 
-    /* ==========================================================
-        👥 ONYX MONSTER GROUP REALTIME ENGINE
-    ========================================================== */
+    socket.on(
+      "sendMessage",
+      async (message) => {
+        try {
 
-    // ১. গ্রুপ ম্যাট্রিক্স রুমে ক্লায়েন্ট নোড কানেক্ট করা
-    socket.on('join_group_room', ({ groupId, userId }) => {
-      socket.join(groupId);
-      console.log(`👥 Onyx Core: Node ${userId} integrated into Group Room [${groupId}]`);
-    });
+          const receiver =
+            getUserSocket(
+              message.receiverId
+            );
 
-    // ২. ইনস্ট্যান্ট গ্রুপ মেসেজ ব্রডকাস্ট (রুমে থাকা সবাইকে পাঠানো)
-    socket.on('send_group_message', (messageData) => {
-      // messageData = { _id, groupId, sender: { _id, fullName }, text, timestamp }
-      if (messageData && messageData.groupId) {
-        io.to(messageData.groupId).emit('receive_group_message', messageData);
-        console.log(`💬 Group Msg: Broadcasted to cluster room ${messageData.groupId}`);
+          const payload = {
+            ...message,
+            delivered:
+              !!receiver,
+            createdAt:
+              new Date()
+          };
+
+          if (receiver) {
+
+            io.to(
+              receiver.socketId
+            ).emit(
+              "getMessage",
+              payload
+            );
+
+            io.to(
+              receiver.socketId
+            ).emit(
+              "getNotification",
+              {
+                senderId:
+                  message.senderId,
+
+                senderName:
+                  message.senderName ||
+                  "User",
+
+                text:
+                  message.text ||
+                  "New message",
+
+                isRead: false,
+
+                createdAt:
+                  new Date()
+              }
+            );
+          }
+
+          socket.emit(
+            "messageDelivered",
+            {
+              messageId:
+                message.id,
+
+              delivered:
+                !!receiver
+            }
+          );
+
+        } catch (err) {
+
+          console.error(
+            "❌ sendMessage:",
+            err
+          );
+
+        }
       }
-    });
+    );
 
-    // ৩. গ্রুপ টাইপিং ইন্ডিকেটর রিয়েলটাইম পালস
-    socket.on('group_typing_signal', ({ groupId, username, isTyping }) => {
-      if (groupId) {
-        socket.to(groupId).emit('group_typing_broadcast', { username, isTyping });
+    // =========================================
+    // MESSAGE SEEN
+    // =========================================
+
+    socket.on(
+      "messageSeen",
+      ({
+        senderId,
+        receiverId
+      }) => {
+
+        const senderSocket =
+          getUserSocket(
+            senderId
+          );
+
+        if (senderSocket) {
+
+          io.to(
+            senderSocket.socketId
+          ).emit(
+            "messagesSeen",
+            {
+              by: receiverId
+            }
+          );
+
+        }
+
       }
-    });
+    );
 
-    // ৪. গ্রুপ চ্যাট রিঅ্যাকশন ইঞ্জিন (❤️, 🔥, 😂 ইত্যাদি)
-    socket.on('send_group_reaction', ({ msgId, groupId, reaction, userId }) => {
-      if (groupId) {
-        io.to(groupId).emit('receive_group_reaction', { msgId, reaction, userId });
-        console.log(`🔥 Reaction Pulsed: Message [${msgId}] in Group [${groupId}]`);
+    // =========================================
+    // TYPING
+    // =========================================
+
+    socket.on(
+      "typing",
+      ({
+        to,
+        userId,
+        isTyping
+      }) => {
+
+        const receiver =
+          getUserSocket(to);
+
+        if (!receiver) return;
+
+        io.to(
+          receiver.socketId
+        ).emit(
+          "typing",
+          {
+            userId,
+            isTyping
+          }
+        );
+
       }
-    });
+    );
 
-    // ৫. গ্রুপ মেসেজ পিনিং সিস্টেম সিগন্যাল
-    socket.on('pin_group_message', ({ groupId, message }) => {
-      if (groupId) {
-        io.to(groupId).emit('group_message_pinned', { message });
-        console.log(`📌 Message Pinned: Imposed on cluster node ${groupId}`);
+    // =========================================
+    // GROUP ROOM JOIN
+    // =========================================
+
+    socket.on(
+      "join_group_room",
+      ({ groupId }) => {
+
+        if (!groupId) return;
+
+        socket.join(
+          `group_${groupId}`
+        );
+
       }
-    });
+    );
 
-    /* ==========================================================
-        📞 ONYX REAL-TIME CALL SIGNALING ENGINE
-    ========================================================== */
-    
-    // ১. কলার থেকে ইনবাউন্ড কলের সিগন্যাল রিসিভ ও ফরওয়ার্ড করা
-    socket.on("$incomingCall", (data) => {
-      console.log("📥 Onyx Network: Inbound call pulse caught on '$incomingCall'. Target User:", data.receiverId || data.userToCall);
-      
-      const targetId = data.receiverId || data.userToCall;
-      const targetUser = onlineUsers.find(user => user.userId === targetId);
-      
-      if (targetUser && targetUser.socketId) {
-        io.to(targetUser.socketId).emit("$incomingCall", {
-          id: data.id,
-          from: data.senderId || data.from,
-          name: data.senderName || data.name,
-          avatar: data.avatar,
-          type: data.type,
-          roomId: data.roomId,
-          signalData: data.signalData,
-          isIncomingCall: true
-        });
-        console.log(`✅ Onyx Network: Call Signal forwarded successfully to target socket ${targetUser.socketId}`);
-      } else {
-        console.log(`⚠️ Onyx Network: Target Node ${targetId} is offline or session missing.`);
-        socket.emit("callOpponentOffline");
+    // =========================================
+    // GROUP MESSAGE
+    // =========================================
+
+    socket.on(
+      "send_group_message",
+      async (payload) => {
+
+        try {
+
+          const {
+            groupId,
+            text,
+            mediaUrl,
+            sender,
+            tempId
+          } = payload;
+
+          if (
+            !groupId ||
+            !sender?._id
+          )
+            return;
+
+          let processedMediaUrl =
+            null;
+
+          if (
+            mediaUrl &&
+            mediaUrl.startsWith(
+              "data:"
+            )
+          ) {
+
+            const matches =
+              mediaUrl.match(
+                /^data:([A-Za-z-+/]+);base64,(.+)$/
+              );
+
+            if (
+              matches &&
+              matches.length === 3
+            ) {
+
+              const ext =
+                matches[1].split(
+                  "/"
+                )[1];
+
+              const buffer =
+                Buffer.from(
+                  matches[2],
+                  "base64"
+                );
+
+              const filename =
+                `onyx_${Date.now()}.${ext}`;
+
+              const fullPath =
+                path.join(
+                  uploadDir,
+                  filename
+                );
+
+              fs.writeFileSync(
+                fullPath,
+                buffer
+              );
+
+              processedMediaUrl =
+                `${
+                  process.env
+                    .VITE_API_URL
+                }/uploads/${filename}`;
+            }
+
+          } else {
+            processedMediaUrl =
+              mediaUrl;
+          }
+
+          const newMessage =
+            await Message.create({
+              groupId:
+                new mongoose.Types.ObjectId(
+                  groupId
+                ),
+
+              sender:
+                new mongoose.Types.ObjectId(
+                  sender._id
+                ),
+
+              text:
+                text || "",
+
+              mediaUrl:
+                processedMediaUrl
+            });
+
+          const populated =
+            await Message.findById(
+              newMessage._id
+            ).populate(
+              "sender",
+              "fullName username profilePic"
+            );
+
+          io.to(
+            `group_${groupId}`
+          ).emit(
+            "receive_group_message",
+            {
+              _id:
+                populated._id,
+
+              tempId,
+
+              groupId,
+
+              text:
+                populated.text,
+
+              mediaUrl:
+                populated.mediaUrl,
+
+              sender:
+                populated.sender,
+
+              createdAt:
+                populated.createdAt,
+
+              reactions: []
+            }
+          );
+
+        } catch (err) {
+
+          console.error(
+            "❌ Group Message Error:",
+            err
+          );
+
+        }
       }
-    });
+    );
 
-    // ২. কল অ্যাকসেপ্ট বা হ্যান্ডশেক রেসপন্স পাঠানো
-    socket.on("answerCall", (data) => {
-      const callerUser = onlineUsers.find(user => user.userId === data.to);
-      if (callerUser && callerUser.socketId) {
-        io.to(callerUser.socketId).emit("callAccepted", {
-          signal: data.signal,
-          roomId: data.roomId
-        });
-        console.log(`✅ Handshake Complete: Call accepted for roomId ${data.roomId}`);
+    // =========================================
+    // GROUP TYPING
+    // =========================================
+
+    socket.on(
+      "group_typing_signal",
+      ({
+        groupId,
+        username,
+        isTyping
+      }) => {
+
+        socket.to(
+          `group_${groupId}`
+        ).emit(
+          "group_typing_broadcast",
+          {
+            username,
+            isTyping
+          }
+        );
+
       }
-    });
+    );
 
-    // ৩. কল রিজেক্ট বা এন্ড করার ইভেন্ট ট্রান্সমিশন
-    socket.on("endCall", (data) => {
-      const opponentUser = onlineUsers.find(user => user.userId === data.to);
-      if (opponentUser && opponentUser.socketId) {
-        io.to(opponentUser.socketId).emit("callEnded");
-        console.log(`🛑 Call terminated between peers.`);
+    // =========================================
+    // CALL USER
+    // =========================================
+
+    socket.on(
+      "callUser",
+      (data) => {
+
+        try {
+
+          const receiver =
+            getUserSocket(
+              data.userToCall
+            );
+
+          if (!receiver) {
+
+            socket.emit(
+              "callOffline",
+              {
+                message:
+                  "User offline"
+              }
+            );
+
+            return;
+          }
+
+          io.to(
+            receiver.socketId
+          ).emit(
+            "incomingCall",
+            {
+              signal:
+                data.signalData,
+
+              from:
+                data.from,
+
+              name:
+                data.name,
+
+              avatar:
+                data.avatar,
+
+              type:
+                data.type,
+
+              roomId:
+                data.roomId,
+
+              createdAt:
+                Date.now()
+            }
+          );
+
+          setTimeout(() => {
+
+            io.to(
+              socket.id
+            ).emit(
+              "callTimeout",
+              {
+                roomId:
+                  data.roomId
+              }
+            );
+
+          }, 30000);
+
+        } catch (err) {
+
+          console.error(
+            "❌ callUser:",
+            err
+          );
+
+        }
       }
-    });
+    );
 
-    // 🛑 DISCONNECT HANDLER
-    socket.on("disconnect", () => {
-      onlineUsers = onlineUsers.filter(user => user.socketId !== socket.id);
-      io.emit("getOnlineUsers", onlineUsers);
-      console.log(`🛑 Neural link severed for socket: ${socket.id}`);
-    });
+    // =========================================
+    // ANSWER CALL
+    // =========================================
+
+    socket.on(
+      "answerCall",
+      (data) => {
+
+        const caller =
+          getUserSocket(
+            data.to
+          );
+
+        if (!caller) return;
+
+        io.to(
+          caller.socketId
+        ).emit(
+          "callAccepted",
+          {
+            signal:
+              data.signal,
+
+            answerBy:
+              data.answerBy
+          }
+        );
+
+      }
+    );
+
+    // =========================================
+    // REJECT CALL
+    // =========================================
+
+    socket.on(
+      "rejectCall",
+      ({ to }) => {
+
+        const caller =
+          getUserSocket(to);
+
+        if (!caller) return;
+
+        io.to(
+          caller.socketId
+        ).emit(
+          "callRejected"
+        );
+
+      }
+    );
+
+    // =========================================
+    // END CALL
+    // =========================================
+
+    socket.on(
+      "endCall",
+      ({ to }) => {
+
+        const receiver =
+          getUserSocket(to);
+
+        if (!receiver) return;
+
+        io.to(
+          receiver.socketId
+        ).emit(
+          "callEnded"
+        );
+
+      }
+    );
+
+    // =========================================
+    // DISCONNECT
+    // =========================================
+
+    socket.on(
+      "disconnect",
+      () => {
+
+        for (const [
+          userId,
+          value
+        ] of onlineUsers.entries()) {
+
+          if (
+            value.socketId ===
+            socket.id
+          ) {
+
+            onlineUsers.delete(
+              userId
+            );
+
+            break;
+          }
+        }
+
+        io.emit(
+          "getOnlineUsers",
+          Array.from(
+            onlineUsers.keys()
+          )
+        );
+
+        console.log(
+          "🛑 User disconnected"
+        );
+
+      }
+    );
+
   });
+
+  // =========================================
+  // HEARTBEAT CLEANER
+  // =========================================
+
+  setInterval(() => {
+
+    for (const [
+      userId,
+      value
+    ] of onlineUsers.entries()) {
+
+      if (
+        Date.now() -
+          value.lastSeen >
+        1000 * 60 * 5
+      ) {
+
+        onlineUsers.delete(
+          userId
+        );
+
+      }
+
+    }
+
+  }, 60000);
+
 };
 
-/* ==========================================================
-    🏁 START SERVER
-========================================================== */
+// =====================================================
+// START SERVER
+// =====================================================
+
 const startApp = async () => {
+
   try {
-    await connectAllDB(); // MongoDB কানেক্ট
-    await setupSocket(); // Socket + Redis কানেক্ট
-    
-    const PORT = process.env.PORT || 5005; 
-    server.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 ONYX CORE ACTIVE: PORT ${PORT}`);
-    });
-  } catch (error) {
-    console.error("❌ FAILURE:", error.message);
-    setTimeout(startApp, 5000); 
+
+    await connectAllDB();
+
+    await setupSocket();
+
+    const PORT =
+      process.env.PORT || 5005;
+
+    server.listen(
+      PORT,
+      "0.0.0.0",
+      () => {
+
+        console.log(
+          `🚀 ONYX CORE ACTIVE ON ${PORT}`
+        );
+
+      }
+    );
+
+  } catch (err) {
+
+    console.error(
+      "❌ START FAILURE:",
+      err
+    );
+
+    setTimeout(
+      startApp,
+      3000
+    );
+
   }
+
 };
 
 startApp();
