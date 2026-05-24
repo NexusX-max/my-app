@@ -4,995 +4,341 @@ dotenv.config();
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
-import { createClient } from "redis";
-import { createAdapter } from "@socket.io/redis-adapter";
+import { createClient } from "redis"; 
+import { createAdapter } from "@socket.io/redis-adapter"; 
 import cors from "cors";
-import jwt from "jsonwebtoken";
-import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
-import mongoose from "mongoose";
+import jwt from 'jsonwebtoken';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import mongoose from 'mongoose';
 
-// DATABASE + MODELS
-import connectAllDB from "./config/db.js";
-import Message from "./models/Message.js";
-import Group from "./models/Group.js";
-
-// ROUTES
-import authRoutes from "./routes/authRoutes.js";
-import userRoutes from "./routes/user.js";
-import profileRoutes from "./routes/profile.js";
+// 🛠️ Config & Models & Routes
+import connectAllDB from "./config/db.js"; 
+import Message from "./models/Message.js"; 
+import Group from "./models/Group.js"; 
+import authRoutes from './routes/authRoutes.js';
+import userRoutes from './routes/user.js'; 
+import profileRoutes from './routes/profile.js'; 
 import postRoutes from "./routes/posts.js";
-import reelRoutes from "./routes/reels.js";
-import storyRoute from "./routes/story.js";
-import groupRoutes from "./routes/group.js";
-import marketRoutes from "./routes/market.js";
-import adminRoutes from "./routes/admin.js";
-import messageRoutes from "./routes/messages.js";
-import aiRoutes from "./routes/aiRoutes.js";
-import notificationRoutes from "./routes/notificationRoutes.js";
-import searchRoutes from "./routes/searchRoutes.js";
-
+import reelRoutes from "./routes/reels.js";      
+import storyRoute from "./routes/story.js";    
+import groupRoutes from "./routes/group.js"; 
+import marketRoutes from "./routes/market.js";    
+import adminRoutes from "./routes/admin.js";      
+import messageRoutes from "./routes/messages.js"; 
+import aiRoutes from './routes/aiRoutes.js'; 
 import { getNeuralFeed } from "./controllers/feedController.js";
+import notificationRoutes from './routes/notificationRoutes.js';
+import searchRoutes from './routes/searchRoutes.js'; 
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-
 const server = http.createServer(app);
 
-app.set("trust proxy", 1);
-
-// =====================================================
-// ALLOWED ORIGINS
-// =====================================================
+app.set('trust proxy', 1);
 
 const allowedOrigins = [
-  "http://localhost:5173",
+  "http://localhost:5173", 
   "http://localhost:3000",
-  "https://onyx-drift.com",
+  "http://127.0.0.1:5173",
+  "https://onyx-drift.com", 
   "https://www.onyx-drift.com",
   "https://api.onyx-drift.com",
   "https://onyx-messenger.vercel.app"
 ];
 
-// =====================================================
-// SOCKET.IO
-// =====================================================
-
-const io = new Server(server, {
-  cors: {
-    origin: allowedOrigins,
-    credentials: true
-  },
-
-  transports: ["websocket", "polling"],
-
-  pingTimeout: 60000,
-  pingInterval: 25000,
-
-  maxHttpBufferSize: 1e8
-});
-
-// =====================================================
-// REDIS
-// =====================================================
-
-const pubClient = createClient({
-  url:
-    process.env.REDIS_URL ||
-    "redis://localhost:6379"
-});
-
-const subClient = pubClient.duplicate();
-
-pubClient.on("error", (err) => {
-  console.error("Redis Pub Error:", err);
-});
-
-subClient.on("error", (err) => {
-  console.error("Redis Sub Error:", err);
-});
-
-// =====================================================
-// ONLINE USERS MAP
-// =====================================================
-
-const onlineUsers = new Map();
-
-function addUser(userId, socketId) {
-  if (!userId || !socketId) return;
-
-  onlineUsers.set(userId.toString(), {
-    socketId,
-    lastSeen: Date.now()
-  });
-
-  io.emit(
-    "getOnlineUsers",
-    Array.from(onlineUsers.keys())
-  );
-
-  console.log(
-    `📡 User Connected: ${userId}`
-  );
-}
-
-function getUserSocket(userId) {
-  return onlineUsers.get(userId?.toString());
-}
-
-// =====================================================
-// EXPRESS MIDDLEWARE
-// =====================================================
-
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (
-        !origin ||
-        allowedOrigins.includes(origin)
-      ) {
-        callback(null, true);
-      } else {
-        callback(
-          new Error(
-            "Unauthorized Origin"
-          )
-        );
-      }
-    },
-
-    credentials: true
-  })
-);
-
-app.use(
-  express.json({
-    limit: "150mb"
-  })
-);
-
-app.use(
-  express.urlencoded({
-    limit: "150mb",
-    extended: true
-  })
-);
-
-// =====================================================
-// UPLOADS
-// =====================================================
-
-const uploadDir = path.join(
-  __dirname,
-  "uploads"
-);
-
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, {
-    recursive: true
-  });
-}
-
-app.use(
-  "/uploads",
-  express.static(uploadDir)
-);
-
-// =====================================================
-// AUTH MIDDLEWARE
-// =====================================================
-
-const protect = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const token =
-      req.headers.authorization?.split(
-        " "
-      )[1];
-
-    if (!token) {
-      return res
-        .status(401)
-        .json({
-          error: "Token missing"
-        });
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Neural Network Access Denied: Unauthorized Origin'));
     }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"]
+}));
 
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET
-    );
+app.use(express.json({ limit: "150mb" }));
+app.use(express.urlencoded({ limit: "150mb", extended: true }));
 
-    const userId =
-      decoded.id ||
-      decoded._id ||
-      decoded.userId;
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+app.use('/uploads', express.static(uploadDir));
 
-    req.user = {
-      id: userId,
-      _id: userId
-    };
+// --- 🔐 Neural Link Protection (Middleware) ---
+const protect = async (req, res, next) => {
+  let token;
+  if (req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
+    try {
+      token = req.headers.authorization.split(" ")[1];
+      const secret = process.env.JWT_SECRET || "onyx_drift_super_secret_key_2026";
+      const decoded = jwt.verify(token, secret);
+      const userId = decoded.id || decoded._id || decoded.userId || decoded.sub;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized", msg: "Invalid token payload." });
+      }
 
-    next();
-  } catch (err) {
-    return res
-      .status(401)
-      .json({
-        error: "Unauthorized"
-      });
+      req.user = { id: userId, _id: userId }; 
+      next();
+    } catch (error) {
+      return res.status(401).json({ error: "Neural Link Severed", msg: "Session expired." });
+    }
+  } else {
+    return res.status(401).json({ error: "Access Denied", msg: "Token missing." });
   }
 };
 
-// =====================================================
-// API ROUTES
-// =====================================================
+/* ==========================================================
+    🚀 API ROUTES
+========================================================== */
+app.get("/", (req, res) => res.json({ status: "Active", system: "OnyxDrift Core", version: "3.0.0" }));
 
-app.get("/", (req, res) => {
-  res.json({
-    status: "ACTIVE",
-    system: "ONYX CORE"
-  });
+app.use('/api/auth', authRoutes); 
+app.use("/api/profile", protect, profileRoutes); 
+app.use("/api/users", protect, userRoutes); 
+app.use('/api/notifications', protect, notificationRoutes);
+app.use("/api/reels", protect, reelRoutes);
+app.use('/api/ai', protect, aiRoutes); 
+app.get("/api/feed", protect, getNeuralFeed);
+app.use("/api/posts", protect, postRoutes); 
+app.use("/api/story", protect, storyRoute); // মূল স্টোরি রাউট
+
+// 👥 Clean Group Routing Layout
+app.use("/api/groups", protect, groupRoutes);
+app.use("/api/group", protect, groupRoutes);
+
+// 💬 Direct Messenger Routine
+app.use("/api/messages", protect, messageRoutes);
+
+app.use("/api/market", protect, marketRoutes);
+app.use("/api/admin", protect, adminRoutes);
+app.use('/api/v1/search', protect, searchRoutes); 
+app.use('/api/user', protect, searchRoutes);        
+app.use('/api/user/profile', protect, profileRoutes); 
+
+/* ==========================================================
+    ⚡ SOCKET.IO (Neural Sync Engine)
+========================================================== */
+const io = new Server(server, { 
+  cors: { origin: allowedOrigins, methods: ["GET", "POST"], credentials: true },
+  pingTimeout: 60000,
 });
 
-app.use("/api/auth", authRoutes);
+const pubClient = createClient({ url: process.env.REDIS_URL || "redis://localhost:6379" });
+const subClient = pubClient.duplicate();
 
-app.use(
-  "/api/profile",
-  protect,
-  profileRoutes
-);
-
-app.use(
-  "/api/users",
-  protect,
-  userRoutes
-);
-
-app.use(
-  "/api/posts",
-  protect,
-  postRoutes
-);
-
-app.use(
-  "/api/reels",
-  protect,
-  reelRoutes
-);
-
-app.use(
-  "/api/story",
-  protect,
-  storyRoute
-);
-
-app.use(
-  "/api/groups",
-  protect,
-  groupRoutes
-);
-
-app.use(
-  "/api/messages",
-  protect,
-  messageRoutes
-);
-
-app.use(
-  "/api/market",
-  protect,
-  marketRoutes
-);
-
-app.use(
-  "/api/admin",
-  protect,
-  adminRoutes
-);
-
-app.use(
-  "/api/notifications",
-  protect,
-  notificationRoutes
-);
-
-app.use(
-  "/api/ai",
-  protect,
-  aiRoutes
-);
-
-app.use(
-  "/api/v1/search",
-  protect,
-  searchRoutes
-);
-
-app.get(
-  "/api/feed",
-  protect,
-  getNeuralFeed
-);
-
-// =====================================================
-// SOCKET AUTH
-// =====================================================
-
-io.use((socket, next) => {
-  try {
-    const token =
-      socket.handshake.auth?.token;
-
-    if (!token) {
-      return next(
-        new Error("Unauthorized")
-      );
-    }
-
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET
-    );
-
-    socket.user = decoded;
-
-    next();
-  } catch (err) {
-    next(new Error("Unauthorized"));
-  }
-});
-
-// =====================================================
-// SOCKET SYSTEM
-// =====================================================
+let onlineUsers = [];
 
 const setupSocket = async () => {
   try {
     await pubClient.connect();
     await subClient.connect();
-
-    io.adapter(
-      createAdapter(
-        pubClient,
-        subClient
-      )
-    );
-
-    console.log(
-      "💎 Redis Adapter Connected"
-    );
+    io.adapter(createAdapter(pubClient, subClient));
+    console.log("💎 Neural Sync: Redis Adapter Linked");
   } catch (err) {
-    console.error(
-      "❌ Redis Failed:",
-      err
-    );
+    console.error("⚠️ Redis Connection Failed, falling back to Memory Adapter");
   }
 
   io.on("connection", (socket) => {
-
-    const userId =
-      socket.handshake.query.userId;
-
-    if (
-      userId &&
-      userId !== "undefined"
-    ) {
-      addUser(userId, socket.id);
+    const userIdFromQuery = socket.handshake.query.userId;
+    if (userIdFromQuery && userIdFromQuery !== 'undefined') {
+      addUser(userIdFromQuery, socket.id);
     }
 
-    // =========================================
-    // ADD USER
-    // =========================================
-
-    socket.on(
-      "addNewUser",
-      (userId) => {
-        addUser(userId, socket.id);
+    function addUser(userId, socketId) {
+      const index = onlineUsers.findIndex(u => u.userId === userId);
+      if (index !== -1) {
+        onlineUsers[index].socketId = socketId;
+      } else {
+        onlineUsers.push({ userId, socketId });
       }
-    );
+      io.emit("getOnlineUsers", onlineUsers);
+      console.log(`📡 Neural Link: User ${userId} mapped to ${socketId}`);
+    }
 
-    // =========================================
-    // DIRECT MESSAGE
-    // =========================================
+    socket.on("addNewUser", (userId) => {
+      if (userId) addUser(userId, socket.id);
+    });
 
-    socket.on(
-      "sendMessage",
-      async (message) => {
+    // --- 📥 1-ON-1 DIRECT MESSAGES ---
+    socket.on("sendMessage", (message) => {
+      const receiver = onlineUsers.find(u => u.userId === message.receiverId);
+      if (receiver) {
+        io.to(receiver.socketId).emit("getMessage", { ...message, status: 'delivered' });
+        io.to(receiver.socketId).emit("getNotification", {
+          senderId: message.senderId,
+          senderName: message.senderName || "New User",
+          isRead: false,
+          date: new Date(),
+        });
+      }
+    });
+
+    /* ==========================================================
+        ⚙️ CLUSTER GROUP CHAT PIPELINE
+        ========================================================== */
+    
+    socket.on('join_group_room', ({ groupId, userId }) => {
+      if (!groupId) return;
+      socket.join(`group_${groupId}`);
+      console.log(`📡 Matrix Room Synced: group_${groupId} for User: ${userId}`);
+    });
+
+    socket.on('send_group_message', async (payload) => {
+      try {
+        const { groupId, text, mediaUrl, sender, tempId } = payload;
+        if (!groupId || !sender?._id) return;
+
+        let processedMediaUrl = null;
+        if (mediaUrl && mediaUrl.startsWith('data:')) {
+          try {
+            const matches = mediaUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+            if (matches && matches.length === 3) {
+              const ext = matches[1].split('/')[1];
+              const buffer = Buffer.from(matches[2], 'base64');
+              const filename = `onyx_chat_${Date.now()}_${Math.floor(Math.random() * 1000)}.${ext}`;
+              const fullFilePath = path.join(uploadDir, filename);
+              fs.writeFileSync(fullFilePath, buffer);
+              const envUrl = process.env.VITE_API_URL || 'http://localhost:5005';
+              const cleanEnvUrl = envUrl.endsWith('/') ? envUrl.slice(0, -1) : envUrl;
+              processedMediaUrl = `${cleanEnvUrl}/uploads/${filename}`;
+            }
+          } catch (uploadError) {
+            console.error("❌ Media stream write execution error:", uploadError);
+          }
+        } else if (mediaUrl) {
+          processedMediaUrl = mediaUrl;
+        }
+
+        const newMessage = await Message.create({
+          groupId: new mongoose.Types.ObjectId(groupId),
+          sender: new mongoose.Types.ObjectId(sender._id),
+          text: text || '',
+          mediaUrl: processedMediaUrl
+        });
+
+        const populatedMsg = await Message.findById(newMessage._id).populate(
+          'sender',
+          'fullName username profilePic'
+        );
+
+        if (!populatedMsg) {
+          throw new Error("Failed to populate saved cluster message.");
+        }
+
+        const broadcastPayload = {
+          _id: populatedMsg._id,
+          tempId: tempId || null,
+          groupId: populatedMsg.groupId,
+          text: populatedMsg.text,
+          mediaUrl: populatedMsg.mediaUrl,
+          sender: {
+            _id: populatedMsg.sender._id,
+            fullName: populatedMsg.sender.fullName || "Drifter Node",
+            username: populatedMsg.sender.username,
+            profilePic: populatedMsg.sender.profilePic
+          },
+          timestamp: new Date(populatedMsg.createdAt).toLocaleTimeString([], { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          }),
+          createdAt: populatedMsg.createdAt,
+          reactions: []
+        };
+
+        io.to(`group_${groupId}`).emit('receive_group_message', broadcastPayload);
+
         try {
-
-          const receiver =
-            getUserSocket(
-              message.receiverId
-            );
-
-          const payload = {
-            ...message,
-            delivered:
-              !!receiver,
-            createdAt:
-              new Date()
-          };
-
-          if (receiver) {
-
-            io.to(
-              receiver.socketId
-            ).emit(
-              "getMessage",
-              payload
-            );
-
-            io.to(
-              receiver.socketId
-            ).emit(
-              "getNotification",
-              {
-                senderId:
-                  message.senderId,
-
-                senderName:
-                  message.senderName ||
-                  "User",
-
-                text:
-                  message.text ||
-                  "New message",
-
-                isRead: false,
-
-                createdAt:
-                  new Date()
+          const groupDetails = await Group.findById(groupId);
+          if (groupDetails && groupDetails.members) {
+            groupDetails.members.forEach((memberObj) => {
+              const targetUserId = memberObj.userId ? memberObj.userId.toString() : memberObj.toString();
+              if (targetUserId !== sender._id.toString()) {
+                const liveSession = onlineUsers.find(u => u.userId === targetUserId);
+                if (liveSession) {
+                  io.to(liveSession.socketId).emit("getNotification", {
+                    senderId: sender._id,
+                    senderName: `${sender.fullName || 'Someone'} (${groupDetails.name || 'Group'})`,
+                    text: text ? (text.length > 30 ? text.substring(0, 30) + '...' : text) : "Sent a matrix file Node.",
+                    isRead: false,
+                    date: new Date(),
+                  });
+                }
               }
-            );
-          }
-
-          socket.emit(
-            "messageDelivered",
-            {
-              messageId:
-                message.id,
-
-              delivered:
-                !!receiver
-            }
-          );
-
-        } catch (err) {
-
-          console.error(
-            "❌ sendMessage:",
-            err
-          );
-
-        }
-      }
-    );
-
-    // =========================================
-    // MESSAGE SEEN
-    // =========================================
-
-    socket.on(
-      "messageSeen",
-      ({
-        senderId,
-        receiverId
-      }) => {
-
-        const senderSocket =
-          getUserSocket(
-            senderId
-          );
-
-        if (senderSocket) {
-
-          io.to(
-            senderSocket.socketId
-          ).emit(
-            "messagesSeen",
-            {
-              by: receiverId
-            }
-          );
-
-        }
-
-      }
-    );
-
-    // =========================================
-    // TYPING
-    // =========================================
-
-    socket.on(
-      "typing",
-      ({
-        to,
-        userId,
-        isTyping
-      }) => {
-
-        const receiver =
-          getUserSocket(to);
-
-        if (!receiver) return;
-
-        io.to(
-          receiver.socketId
-        ).emit(
-          "typing",
-          {
-            userId,
-            isTyping
-          }
-        );
-
-      }
-    );
-
-    // =========================================
-    // GROUP ROOM JOIN
-    // =========================================
-
-    socket.on(
-      "join_group_room",
-      ({ groupId }) => {
-
-        if (!groupId) return;
-
-        socket.join(
-          `group_${groupId}`
-        );
-
-      }
-    );
-
-    // =========================================
-    // GROUP MESSAGE
-    // =========================================
-
-    socket.on(
-      "send_group_message",
-      async (payload) => {
-
-        try {
-
-          const {
-            groupId,
-            text,
-            mediaUrl,
-            sender,
-            tempId
-          } = payload;
-
-          if (
-            !groupId ||
-            !sender?._id
-          )
-            return;
-
-          let processedMediaUrl =
-            null;
-
-          if (
-            mediaUrl &&
-            mediaUrl.startsWith(
-              "data:"
-            )
-          ) {
-
-            const matches =
-              mediaUrl.match(
-                /^data:([A-Za-z-+/]+);base64,(.+)$/
-              );
-
-            if (
-              matches &&
-              matches.length === 3
-            ) {
-
-              const ext =
-                matches[1].split(
-                  "/"
-                )[1];
-
-              const buffer =
-                Buffer.from(
-                  matches[2],
-                  "base64"
-                );
-
-              const filename =
-                `onyx_${Date.now()}.${ext}`;
-
-              const fullPath =
-                path.join(
-                  uploadDir,
-                  filename
-                );
-
-              fs.writeFileSync(
-                fullPath,
-                buffer
-              );
-
-              processedMediaUrl =
-                `${
-                  process.env
-                    .VITE_API_URL
-                }/uploads/${filename}`;
-            }
-
-          } else {
-            processedMediaUrl =
-              mediaUrl;
-          }
-
-          const newMessage =
-            await Message.create({
-              groupId:
-                new mongoose.Types.ObjectId(
-                  groupId
-                ),
-
-              sender:
-                new mongoose.Types.ObjectId(
-                  sender._id
-                ),
-
-              text:
-                text || "",
-
-              mediaUrl:
-                processedMediaUrl
             });
-
-          const populated =
-            await Message.findById(
-              newMessage._id
-            ).populate(
-              "sender",
-              "fullName username profilePic"
-            );
-
-          io.to(
-            `group_${groupId}`
-          ).emit(
-            "receive_group_message",
-            {
-              _id:
-                populated._id,
-
-              tempId,
-
-              groupId,
-
-              text:
-                populated.text,
-
-              mediaUrl:
-                populated.mediaUrl,
-
-              sender:
-                populated.sender,
-
-              createdAt:
-                populated.createdAt,
-
-              reactions: []
-            }
-          );
-
-        } catch (err) {
-
-          console.error(
-            "❌ Group Message Error:",
-            err
-          );
-
+          }
+        } catch (notifErr) {
+          console.error("⚠️ Background cluster notification pipeline error:", notifErr);
         }
+      } catch (error) {
+        console.error("❌ Matrix Server Room Save Failure:", error);
       }
-    );
+    });
 
-    // =========================================
-    // GROUP TYPING
-    // =========================================
+    socket.on('group_typing_signal', ({ groupId, username, isTyping }) => {
+      if (!groupId) return;
+      socket.to(`group_${groupId}`).emit('group_typing_broadcast', { username, isTyping });
+    });
 
-    socket.on(
-      "group_typing_signal",
-      ({
-        groupId,
-        username,
-        isTyping
-      }) => {
 
-        socket.to(
-          `group_${groupId}`
-        ).emit(
-          "group_typing_broadcast",
-          {
-            username,
-            isTyping
-          }
-        );
-
+    // --- WebRTC Calls ---
+    socket.on("callUser", (data) => {
+      const receiver = onlineUsers.find(u => u.userId === data.userToCall);
+      if (receiver) {
+        io.to(receiver.socketId).emit("incomingCall", {
+          signal: data.signalData, 
+          from: data.from,            
+          name: data.name,            
+          type: data.type,
+          roomId: data.roomId
+        });
+      } else {
+        socket.emit("callError", { message: "User is currently offline." });
       }
-    );
+    });
 
-    // =========================================
-    // CALL USER
-    // =========================================
-
-    socket.on(
-      "callUser",
-      (data) => {
-
-        try {
-
-          const receiver =
-            getUserSocket(
-              data.userToCall
-            );
-
-          if (!receiver) {
-
-            socket.emit(
-              "callOffline",
-              {
-                message:
-                  "User offline"
-              }
-            );
-
-            return;
-          }
-
-          io.to(
-            receiver.socketId
-          ).emit(
-            "incomingCall",
-            {
-              signal:
-                data.signalData,
-
-              from:
-                data.from,
-
-              name:
-                data.name,
-
-              avatar:
-                data.avatar,
-
-              type:
-                data.type,
-
-              roomId:
-                data.roomId,
-
-              createdAt:
-                Date.now()
-            }
-          );
-
-          setTimeout(() => {
-
-            io.to(
-              socket.id
-            ).emit(
-              "callTimeout",
-              {
-                roomId:
-                  data.roomId
-              }
-            );
-
-          }, 30000);
-
-        } catch (err) {
-
-          console.error(
-            "❌ callUser:",
-            err
-          );
-
-        }
+    socket.on("answerCall", (data) => {
+      const caller = onlineUsers.find(u => u.userId === data.to);
+      if (caller) {
+        io.to(caller.socketId).emit("callAccepted", data.signal);
       }
-    );
+    });
 
-    // =========================================
-    // ANSWER CALL
-    // =========================================
-
-    socket.on(
-      "answerCall",
-      (data) => {
-
-        const caller =
-          getUserSocket(
-            data.to
-          );
-
-        if (!caller) return;
-
-        io.to(
-          caller.socketId
-        ).emit(
-          "callAccepted",
-          {
-            signal:
-              data.signal,
-
-            answerBy:
-              data.answerBy
-          }
-        );
-
+    socket.on("endCall", ({ to }) => {
+      const receiver = onlineUsers.find(u => u.userId === to);
+      if (receiver) {
+        io.to(receiver.socketId).emit("callEnded");
       }
-    );
+    });
 
-    // =========================================
-    // REJECT CALL
-    // =========================================
-
-    socket.on(
-      "rejectCall",
-      ({ to }) => {
-
-        const caller =
-          getUserSocket(to);
-
-        if (!caller) return;
-
-        io.to(
-          caller.socketId
-        ).emit(
-          "callRejected"
-        );
-
-      }
-    );
-
-    // =========================================
-    // END CALL
-    // =========================================
-
-    socket.on(
-      "endCall",
-      ({ to }) => {
-
-        const receiver =
-          getUserSocket(to);
-
-        if (!receiver) return;
-
-        io.to(
-          receiver.socketId
-        ).emit(
-          "callEnded"
-        );
-
-      }
-    );
-
-    // =========================================
-    // DISCONNECT
-    // =========================================
-
-    socket.on(
-      "disconnect",
-      () => {
-
-        for (const [
-          userId,
-          value
-        ] of onlineUsers.entries()) {
-
-          if (
-            value.socketId ===
-            socket.id
-          ) {
-
-            onlineUsers.delete(
-              userId
-            );
-
-            break;
-          }
-        }
-
-        io.emit(
-          "getOnlineUsers",
-          Array.from(
-            onlineUsers.keys()
-          )
-        );
-
-        console.log(
-          "🛑 User disconnected"
-        );
-
-      }
-    );
-
+    socket.on("disconnect", () => {
+      onlineUsers = onlineUsers.filter(user => user.socketId !== socket.id);
+      io.emit("getOnlineUsers", onlineUsers);
+      console.log("🛑 Neural link severed for a user.");
+    });
   });
-
-  // =========================================
-  // HEARTBEAT CLEANER
-  // =========================================
-
-  setInterval(() => {
-
-    for (const [
-      userId,
-      value
-    ] of onlineUsers.entries()) {
-
-      if (
-        Date.now() -
-          value.lastSeen >
-        1000 * 60 * 5
-      ) {
-
-        onlineUsers.delete(
-          userId
-        );
-
-      }
-
-    }
-
-  }, 60000);
-
 };
 
-// =====================================================
-// START SERVER
-// =====================================================
-
 const startApp = async () => {
-
   try {
-
-    await connectAllDB();
-
-    await setupSocket();
-
-    const PORT =
-      process.env.PORT || 5005;
-
-    server.listen(
-      PORT,
-      "0.0.0.0",
-      () => {
-
-        console.log(
-          `🚀 ONYX CORE ACTIVE ON ${PORT}`
-        );
-
-      }
-    );
-
-  } catch (err) {
-
-    console.error(
-      "❌ START FAILURE:",
-      err
-    );
-
-    setTimeout(
-      startApp,
-      3000
-    );
-
+    await connectAllDB(); 
+    await setupSocket(); 
+    const PORT = process.env.PORT || 5005; 
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 ONYX CORE ACTIVE: PORT ${PORT}`);
+    });
+  } catch (error) {
+    console.error("❌ FAILURE:", error.message);
+    setTimeout(startApp, 3000); 
   }
-
 };
 
 startApp();
