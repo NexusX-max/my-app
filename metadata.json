@@ -1,0 +1,11 @@
+{
+  "name": "Voltagram",
+  "description": "The world's most advanced futuristic AI-powered messenger application with 2035 communication UI, glassmorphism, stories, and real-time social integration.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

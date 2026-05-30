@@ -1,296 +1,624 @@
-import React, { useEffect, useRef, useState, useContext } from 'react';
+import React, { useEffect, useRef, useState, useContext, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { FaMicrophone, FaMicrophoneSlash, FaVideo, FaVideoSlash, FaPhoneSlash } from 'react-icons/fa';
-import Peer from 'simple-peer'; 
-import axios from 'axios'; 
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  FaMicrophone,
+  FaMicrophoneSlash,
+  FaVideo,
+  FaVideoSlash,
+  FaPhoneSlash,
+  FaWifi,
+  FaExclamationTriangle
+} from 'react-icons/fa';
+
+import Peer from 'simple-peer';
+import axios from 'axios';
+
 import { AuthContext } from '../context/AuthContext';
 
 const iceServers = [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    {
-      urls: "turn:free.expressturn.com:3478", 
-      username: "000000002092873381",        
-      credential: "41a1p2kRNdmvElbOfj71IniQi7Q=" 
-    }
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+
+  {
+    urls: 'turn:free.expressturn.com:3478',
+    username: '000000002092873381',
+    credential: '41a1p2kRNdmvElbOfj71IniQi7Q='
+  }
 ];
+
+const CALL_TIMEOUT = 30000;
 
 const CallPage = () => {
   const { roomId } = useParams();
+
   const [searchParams] = useSearchParams();
+
   const location = useLocation();
+
   const navigate = useNavigate();
+
   const { user, socket } = useContext(AuthContext);
 
   const callType = searchParams.get('type') || 'video';
+
   const incomingSignal = location.state?.incomingSignal;
+
   const callerId = location.state?.callerId;
 
   const [stream, setStream] = useState(null);
+
   const [callAccepted, setCallAccepted] = useState(false);
-  const [callStatus, setCallStatus] = useState('idle'); 
+
+  const [callStatus, setCallStatus] = useState('idle');
+
   const [remoteUser, setRemoteUser] = useState(null);
-  
+
   const [isMicOn, setIsMicOn] = useState(true);
+
   const [isVideoOn, setIsVideoOn] = useState(callType === 'video');
 
-  // টাইমার স্টেট
   const [callDuration, setCallDuration] = useState(0);
 
+  const [networkState, setNetworkState] = useState('good');
+
+  const [showControls, setShowControls] = useState(true);
+
   const localVideoRef = useRef(null);
+
   const remoteVideoRef = useRef(null);
+
   const connectionRef = useRef(null);
 
-  // ১. কল টাইমার লজিক
+  const timeoutRef = useRef(null);
+
+  const controlsTimeoutRef = useRef(null);
+
+  const targetId =
+    callerId || roomId?.split('-').find((id) => id !== user?._id);
+
+  /* =========================================================
+      FORMAT TIME
+  ========================================================= */
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+
+    const secs = seconds % 60;
+
+    return `${mins.toString().padStart(2, '0')}:${secs
+      .toString()
+      .padStart(2, '0')}`;
+  };
+
+  /* =========================================================
+      AUTO HIDE CONTROLS
+  ========================================================= */
+
+  const resetControlsTimer = () => {
+    setShowControls(true);
+
+    clearTimeout(controlsTimeoutRef.current);
+
+    controlsTimeoutRef.current = setTimeout(() => {
+      setShowControls(false);
+    }, 4000);
+  };
+
+  /* =========================================================
+      CALL TIMER
+  ========================================================= */
+
   useEffect(() => {
     let interval;
+
     if (callAccepted) {
       interval = setInterval(() => {
         setCallDuration((prev) => prev + 1);
       }, 1000);
     }
+
     return () => clearInterval(interval);
   }, [callAccepted]);
 
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
+  /* =========================================================
+      FETCH REMOTE USER
+  ========================================================= */
 
-  // ২. রিমোট ইউজারের ডাটা ফেচ
   useEffect(() => {
     const fetchRemoteUser = async () => {
       try {
-        const targetId = callerId || roomId.split("-").find(id => id !== user?._id);
-        if (targetId) {
-          const response = await axios.get(`/api/users/${targetId}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-          });
-          setRemoteUser(response.data);
-        }
+        if (!targetId) return;
+
+        const response = await axios.get(`/api/users/${targetId}`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+
+        setRemoteUser(response.data);
       } catch (err) {
-        console.error("Failed to fetch remote user profile:", err);
+        console.log('Remote user fetch error', err);
       }
     };
-    if (user) fetchRemoteUser();
-  }, [roomId, callerId, user]);
 
-  // ৩. সকেট লিসেনার এবং মিডিয়া ইনিশিয়ালাইজেশন
+    if (user) fetchRemoteUser();
+  }, [targetId, user]);
+
+  /* =========================================================
+      CLEANUP
+  ========================================================= */
+
+  const cleanupAndExit = useCallback(() => {
+    clearTimeout(timeoutRef.current);
+
+    clearTimeout(controlsTimeoutRef.current);
+
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+    }
+
+    if (connectionRef.current) {
+      connectionRef.current.destroy();
+    }
+
+    navigate('/messages', { replace: true });
+  }, [navigate, stream]);
+
+  /* =========================================================
+      END CALL
+  ========================================================= */
+
+  const endCall = useCallback(() => {
+    if (socket && targetId) {
+      socket.emit('endCall', { to: targetId });
+    }
+
+    cleanupAndExit();
+  }, [socket, targetId, cleanupAndExit]);
+
+  /* =========================================================
+      CREATE PEER
+  ========================================================= */
+
+  const createPeer = (initiator, currentStream) => {
+    const peer = new Peer({
+      initiator,
+      trickle: false,
+
+      stream: currentStream,
+
+      config: {
+        iceServers
+      }
+    });
+
+    peer.on('connect', () => {
+      setCallAccepted(true);
+
+      setCallStatus('connected');
+
+      clearTimeout(timeoutRef.current);
+    });
+
+    peer.on('stream', async (remoteStream) => {
+      try {
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = remoteStream;
+
+          remoteVideoRef.current.muted = false;
+
+          await remoteVideoRef.current.play();
+        }
+      } catch (err) {
+        console.log('Playback error:', err);
+      }
+    });
+
+    peer.on('error', (err) => {
+      console.log('Peer error:', err);
+
+      setCallStatus('failed');
+    });
+
+    peer.on('close', () => {
+      cleanupAndExit();
+    });
+
+    const interval = setInterval(async () => {
+      try {
+        if (!peer._pc) return;
+
+        const stats = await peer._pc.getStats();
+
+        stats.forEach((report) => {
+          if (report.type === 'candidate-pair') {
+            if (report.currentRoundTripTime) {
+              const ping = report.currentRoundTripTime * 1000;
+
+              if (ping < 150) {
+                setNetworkState('excellent');
+              } else if (ping < 300) {
+                setNetworkState('good');
+              } else {
+                setNetworkState('poor');
+              }
+            }
+          }
+        });
+      } catch (err) {}
+    }, 4000);
+
+    peer.on('close', () => clearInterval(interval));
+
+    return peer;
+  };
+
+  /* =========================================================
+      CALL USER
+  ========================================================= */
+
+  const callUser = (currentStream) => {
+    const peer = createPeer(true, currentStream);
+
+    peer.on('signal', (data) => {
+      socket.emit('callUser', {
+        userToCall: targetId,
+
+        signalData: data,
+
+        from: user._id,
+
+        name: user.fullName || 'Onyx User',
+
+        type: callType,
+
+        roomId
+      });
+    });
+
+    connectionRef.current = peer;
+  };
+
+  /* =========================================================
+      ANSWER CALL
+  ========================================================= */
+
+  const answerCall = (currentStream, signal) => {
+    const peer = createPeer(false, currentStream);
+
+    peer.on('signal', (data) => {
+      socket.emit('answerCall', {
+        signal: data,
+
+        to: targetId
+      });
+    });
+
+    peer.signal(signal);
+
+    connectionRef.current = peer;
+  };
+
+  /* =========================================================
+      INIT MEDIA
+  ========================================================= */
+
   useEffect(() => {
     if (!socket || !user) return;
 
+    let mounted = true;
+
     const initMedia = async () => {
       try {
-        const currentStream = await navigator.mediaDevices.getUserMedia({
-          video: callType === 'video' ? { width: 1280, height: 720 } : false,
-          audio: true,
-        });
+        setCallStatus('requesting_media');
+
+        const currentStream =
+          await navigator.mediaDevices.getUserMedia({
+            video:
+              callType === 'video'
+                ? {
+                    width: { ideal: 1280 },
+
+                    height: { ideal: 720 },
+
+                    frameRate: { ideal: 30 },
+
+                    facingMode: 'user'
+                  }
+                : false,
+
+            audio: {
+              echoCancellation: true,
+
+              noiseSuppression: true,
+
+              autoGainControl: true
+            }
+          });
+
+        if (!mounted) return;
 
         setStream(currentStream);
+
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = currentStream;
         }
 
-        const targetId = callerId || roomId.split("-").find(id => id !== user?._id);
+        timeoutRef.current = setTimeout(() => {
+          if (!callAccepted) {
+            setCallStatus('timeout');
+
+            endCall();
+          }
+        }, CALL_TIMEOUT);
 
         if (incomingSignal) {
           setCallStatus('connecting');
-          answerCall(currentStream, incomingSignal, targetId);
+
+          answerCall(currentStream, incomingSignal);
         } else {
           setCallStatus('ringing');
-          callUser(currentStream, targetId);
+
+          callUser(currentStream);
         }
       } catch (err) {
-        console.error("❌ Media Error:", err);
+        console.log('Media error:', err);
+
         navigate('/messages');
       }
     };
 
     initMedia();
 
-    socket.on("callAccepted", (signal) => {
-      setCallAccepted(true);
-      setCallStatus('connected');
+    const handleCallAccepted = (signal) => {
       if (connectionRef.current) {
         connectionRef.current.signal(signal);
       }
-    });
 
-    socket.on("callEnded", () => cleanupAndExit());
+      setCallAccepted(true);
+
+      setCallStatus('connected');
+    };
+
+    const handleCallEnded = () => {
+      cleanupAndExit();
+    };
+
+    const handleUserBusy = () => {
+      setCallStatus('busy');
+
+      setTimeout(() => {
+        cleanupAndExit();
+      }, 1500);
+    };
+
+    socket.on('callAccepted', handleCallAccepted);
+
+    socket.on('callEnded', handleCallEnded);
+
+    socket.on('userBusy', handleUserBusy);
 
     return () => {
-      socket.off("callAccepted");
-      socket.off("callEnded");
-      if (connectionRef.current) connectionRef.current.destroy();
+      mounted = false;
+
+      socket.off('callAccepted', handleCallAccepted);
+
+      socket.off('callEnded', handleCallEnded);
+
+      socket.off('userBusy', handleUserBusy);
+
+      if (connectionRef.current) {
+        connectionRef.current.destroy();
+      }
     };
-  }, [socket, user, roomId]);
+  }, []);
 
-  /* ==========================================================
-      📞 পিয়ার ফাংশনস (রিমোট ফেস এবং অডিও ফিক্স)
-  ========================================================== */
-
-  const callUser = (stream, targetId) => {
-    const peer = new Peer({ initiator: true, trickle: false, stream, config: { iceServers } });
-
-    peer.on("signal", (data) => {
-      socket.emit("callUser", { 
-        userToCall: targetId,
-        signalData: data,
-        from: user._id,
-        name: user.fullName || "Onyx User",
-        type: callType,
-        roomId: roomId
-      });
-    });
-
-    peer.on("stream", (remoteStream) => {
-      setCallAccepted(true);
-      // অডিও ফিক্স: সরাসরি প্লে করার চেষ্টা
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = remoteStream;
-        remoteVideoRef.current.onloadedmetadata = () => {
-          remoteVideoRef.current.play().catch(e => console.log("Audio Playback Error:", e));
-        };
-      }
-    });
-
-    connectionRef.current = peer;
-  };
-
-  const answerCall = (stream, signal, targetId) => {
-    const peer = new Peer({ initiator: false, trickle: false, stream, config: { iceServers } });
-
-    peer.on("signal", (data) => {
-      socket.emit("answerCall", { signal: data, to: targetId });
-    });
-
-    peer.on("stream", (remoteStream) => {
-      setCallAccepted(true);
-      setCallStatus('connected');
-      // অডিও ফিক্স: সরাসরি প্লে করার চেষ্টা
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = remoteStream;
-        remoteVideoRef.current.onloadedmetadata = () => {
-          remoteVideoRef.current.play().catch(e => console.log("Audio Playback Error:", e));
-        };
-      }
-    });
-
-    peer.signal(signal);
-    connectionRef.current = peer;
-  };
-
-  const cleanupAndExit = () => {
-    if (stream) stream.getTracks().forEach(track => track.stop());
-    if (connectionRef.current) connectionRef.current.destroy();
-    navigate('/messages');
-    setTimeout(() => window.location.reload(), 200); 
-  };
-
-  const endCall = () => {
-    const targetId = callerId || roomId.split("-").find(id => id !== user?._id);
-    socket.emit("endCall", { to: targetId });
-    cleanupAndExit();
-  };
+  /* =========================================================
+      TOGGLE MIC
+  ========================================================= */
 
   const toggleMic = () => {
-    if (stream) {
-      const audioTrack = stream.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !isMicOn;
-        setIsMicOn(!isMicOn);
-      }
-    }
+    if (!stream) return;
+
+    const audioTrack = stream.getAudioTracks()[0];
+
+    if (!audioTrack) return;
+
+    audioTrack.enabled = !audioTrack.enabled;
+
+    setIsMicOn(audioTrack.enabled);
   };
+
+  /* =========================================================
+      TOGGLE VIDEO
+  ========================================================= */
 
   const toggleVideo = () => {
-    if (stream && callType === 'video') {
-      const videoTrack = stream.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.enabled = !isVideoOn;
-        setIsVideoOn(!isVideoOn);
-      }
-    }
+    if (!stream || callType !== 'video') return;
+
+    const videoTrack = stream.getVideoTracks()[0];
+
+    if (!videoTrack) return;
+
+    videoTrack.enabled = !videoTrack.enabled;
+
+    setIsVideoOn(videoTrack.enabled);
   };
 
+  /* =========================================================
+      UI
+  ========================================================= */
+
   return (
-    <div className="h-screen bg-black flex flex-col items-center justify-center relative overflow-hidden font-sans">
-      
-      {/* রিমোট ভিডিও গ্রিড (অন্য পাশের ফেস) */}
-      <div className="absolute inset-0 bg-[#020617] flex items-center justify-center">
+    <div
+      onMouseMove={resetControlsTimer}
+      onClick={resetControlsTimer}
+      className="h-screen w-screen overflow-hidden bg-black relative flex items-center justify-center"
+    >
+      {/* REMOTE VIDEO */}
+
+      <div className="absolute inset-0 bg-[#020617]">
         {callAccepted ? (
-            /* অডিওর জন্য muted={false} এবং playsInline নিশ্চিত করা হয়েছে */
-            <video 
-              ref={remoteVideoRef} 
-              autoPlay 
-              playsInline 
-              className="w-full h-full object-cover" 
-            />
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            className="w-full h-full object-cover"
+          />
         ) : (
-          <div className="flex flex-col items-center gap-8">
-             <div className="w-40 h-40 rounded-[2.5rem] border border-cyan-500/20 flex items-center justify-center relative bg-zinc-900/50 backdrop-blur-xl">
-                <div className="absolute inset-0 rounded-[2.5rem] border-2 border-cyan-500 animate-ping opacity-10" />
-                <div className="w-32 h-32 rounded-[2rem] bg-zinc-800 overflow-hidden border border-white/5 flex items-center justify-center shadow-2xl">
-                    <img 
-                      src={remoteUser?.profilePic || `https://ui-avatars.com/api/?name=${remoteUser?.fullName || 'Onyx'}&background=06b6d4&color=fff&size=128`} 
-                      className="w-full h-full object-cover" 
-                      alt="avatar" 
-                    />
-                </div>
-             </div>
-             <div className="text-center space-y-2">
-                <p className="text-white text-xl font-bold tracking-tight">{remoteUser?.fullName || "Syncing Name..."}</p>
-                <p className="text-cyan-500 text-xs font-black uppercase tracking-[0.6em] animate-pulse">
-                    {callStatus === 'ringing' ? 'Initiating_Pulse...' : 'Syncing_Neural_Link...'}
-                </p>
-             </div>
+          <div className="w-full h-full flex flex-col items-center justify-center gap-8">
+            <motion.div
+              animate={{
+                scale: [1, 1.03, 1]
+              }}
+              transition={{
+                duration: 2,
+                repeat: Infinity
+              }}
+              className="relative"
+            >
+              <div className="absolute inset-0 rounded-full bg-cyan-500 blur-3xl opacity-20" />
+
+              <img
+                src={
+                  remoteUser?.profilePic ||
+                  `https://ui-avatars.com/api/?name=${
+                    remoteUser?.fullName || 'Onyx'
+                  }`
+                }
+                alt="avatar"
+                className="w-44 h-44 rounded-full object-cover border border-cyan-500/30 relative z-10"
+              />
+            </motion.div>
+
+            <div className="text-center">
+              <h2 className="text-white text-3xl font-bold">
+                {remoteUser?.fullName || 'Connecting...'}
+              </h2>
+
+              <p className="text-cyan-400 mt-3 tracking-[0.4em] uppercase text-xs">
+                {callStatus === 'ringing'
+                  ? 'Calling...'
+                  : callStatus === 'connecting'
+                  ? 'Connecting...'
+                  : callStatus === 'busy'
+                  ? 'User Busy'
+                  : 'Waiting...'}
+              </p>
+            </div>
           </div>
         )}
       </div>
 
-      {/* কল টাইমার (Call Duration) */}
+      {/* NETWORK */}
+
+      <div className="absolute top-8 left-8 z-50 flex items-center gap-3 bg-black/40 backdrop-blur-xl px-4 py-2 rounded-full border border-white/10">
+        {networkState === 'poor' ? (
+          <FaExclamationTriangle className="text-red-500" />
+        ) : (
+          <FaWifi className="text-green-400" />
+        )}
+
+        <span className="text-white text-sm uppercase tracking-wider">
+          {networkState}
+        </span>
+      </div>
+
+      {/* TIMER */}
+
       {callAccepted && (
-        <div className="absolute top-10 z-[60] bg-black/40 backdrop-blur-xl px-5 py-2 rounded-full border border-cyan-500/30">
-          <p className="text-cyan-400 font-black tracking-widest text-sm font-mono">
+        <div className="absolute top-8 z-50 bg-black/40 backdrop-blur-xl px-6 py-2 rounded-full border border-cyan-500/20">
+          <p className="text-cyan-400 font-mono font-bold tracking-widest">
             {formatTime(callDuration)}
           </p>
         </div>
       )}
 
-      {/* লোকাল ভিডিও (Floating Window) */}
-      <motion.div 
+      {/* LOCAL VIDEO */}
+
+      <motion.div
         drag
-        dragConstraints={{ left: -150, right: 150, top: -200, bottom: 200 }}
-        className="absolute top-10 right-6 w-32 md:w-44 aspect-[3/4] bg-zinc-900 rounded-[2rem] border border-white/10 overflow-hidden shadow-2xl z-50 ring-1 ring-cyan-500/30 backdrop-blur-3xl"
+        dragMomentum={false}
+        className="absolute top-8 right-6 w-36 md:w-48 aspect-[3/4] rounded-[2rem] overflow-hidden bg-zinc-900 z-50 border border-white/10 shadow-2xl"
       >
-        <video 
-          ref={localVideoRef} 
-          autoPlay 
-          playsInline 
-          muted 
-          className={`w-full h-full object-cover scale-x-[-1] transition-opacity duration-500 ${!isVideoOn ? 'opacity-0' : 'opacity-100'}`} 
+        <video
+          ref={localVideoRef}
+          autoPlay
+          playsInline
+          muted
+          className={`w-full h-full object-cover scale-x-[-1] transition-all duration-300 ${
+            !isVideoOn ? 'opacity-0' : 'opacity-100'
+          }`}
         />
-        {!isVideoOn && <div className="absolute inset-0 flex items-center justify-center bg-zinc-800"><FaVideoSlash className="text-zinc-600" size={24} /></div>}
+
+        {!isVideoOn && (
+          <div className="absolute inset-0 flex items-center justify-center bg-zinc-900">
+            <FaVideoSlash className="text-zinc-600" size={28} />
+          </div>
+        )}
       </motion.div>
 
-      {/* কন্ট্রোল ইন্টারফেস */}
-      <div className="absolute bottom-16 flex items-center gap-8 z-50">
-        <motion.button onClick={toggleMic} className={`p-5 rounded-3xl transition-all ${!isMicOn ? 'bg-red-500' : 'bg-zinc-800/80 hover:bg-zinc-700'}`}>
-          {isMicOn ? <FaMicrophone size={20} className="text-white" /> : <FaMicrophoneSlash size={20} className="text-white" />}
-        </motion.button>
+      {/* CONTROLS */}
 
-        <motion.button onClick={endCall} className="p-8 rounded-[2.5rem] bg-red-600 text-white shadow-2xl hover:bg-red-500 transition-all border border-red-400/20">
-          <FaPhoneSlash size={32} />
-        </motion.button>
+      <AnimatePresence>
+        {showControls && (
+          <motion.div
+            initial={{ opacity: 0, y: 80 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 80 }}
+            className="absolute bottom-14 z-50 flex items-center gap-7"
+          >
+            {/* MIC */}
 
-        {callType === 'video' && (
-          <motion.button onClick={toggleVideo} className={`p-5 rounded-3xl transition-all ${!isVideoOn ? 'bg-red-500' : 'bg-zinc-800/80 hover:bg-zinc-700'}`}>
-            {isVideoOn ? <FaVideo size={20} className="text-white" /> : <FaVideoSlash size={20} className="text-white" />}
-          </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={toggleMic}
+              className={`p-5 rounded-3xl transition-all ${
+                !isMicOn
+                  ? 'bg-red-500'
+                  : 'bg-zinc-800/80 hover:bg-zinc-700'
+              }`}
+            >
+              {isMicOn ? (
+                <FaMicrophone className="text-white" size={20} />
+              ) : (
+                <FaMicrophoneSlash className="text-white" size={20} />
+              )}
+            </motion.button>
+
+            {/* END */}
+
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={endCall}
+              className="p-8 rounded-[2.5rem] bg-red-600 hover:bg-red-500 shadow-2xl"
+            >
+              <FaPhoneSlash className="text-white" size={32} />
+            </motion.button>
+
+            {/* VIDEO */}
+
+            {callType === 'video' && (
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={toggleVideo}
+                className={`p-5 rounded-3xl transition-all ${
+                  !isVideoOn
+                    ? 'bg-red-500'
+                    : 'bg-zinc-800/80 hover:bg-zinc-700'
+                }`}
+              >
+                {isVideoOn ? (
+                  <FaVideo className="text-white" size={20} />
+                ) : (
+                  <FaVideoSlash className="text-white" size={20} />
+                )}
+              </motion.button>
+            )}
+          </motion.div>
         )}
-      </div>
+      </AnimatePresence>
     </div>
   );
 };
