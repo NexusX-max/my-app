@@ -7,6 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export default defineConfig(({ mode }) => {
+  // .env ফাইল লোড করা
   const env = loadEnv(mode, process.cwd(), '');
 
   return {
@@ -16,17 +17,13 @@ export default defineConfig(({ mode }) => {
 
     define: {
       'global': 'globalThis',
-      'process.env': {}, // env এরর এড়াতে এটি ব্যবহার করুন
     },
 
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
-        // Node.js মডিউলের জন্য সঠিক প্যাকেজ ব্যবহার নিশ্চিত করুন
-        'util': 'util/',
-        'stream': 'stream-browserify',
+        // শুধুমাত্র প্রয়োজনীয় পলিফিলগুলো রাখুন
         'buffer': 'buffer',
-        'events': 'events',
         'process': 'process/browser',
       },
     },
@@ -35,22 +32,11 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       strictPort: true,
       host: true,
-      hmr: {
-        protocol: mode === 'production' ? 'wss' : 'ws',
-        host: mode === 'production' ? 'onyx-drift.com' : 'localhost',
-      }
     },
 
     optimizeDeps: {
-      // 🚨 ফিক্স: এখানে react এবং react-dom যোগ করা জরুরি
-      include: [
-        'react', 
-        'react-dom', 
-        'buffer', 
-        'stream-browserify', 
-        'events',
-        'process'
-      ],
+      // রিয়্যাক্ট এবং রিয়্যাক্ট-ডমকে এখানে অন্তর্ভুক্ত করার প্রয়োজন নেই, Vite নিজেই এগুলো বোঝে
+      include: ['buffer', 'process'],
       esbuildOptions: {
         define: {
           global: 'globalThis'
@@ -60,15 +46,16 @@ export default defineConfig(({ mode }) => {
 
     build: {
       outDir: 'dist',
+      sourcemap: false, // প্রোডাকশনে সাইজ কমাতে ফলস রাখুন
+      minify: 'esbuild', // এটি দ্রুত এবং নিরাপদ
       commonjsOptions: {
         transformMixedEsModules: true,
       },
       rollupOptions: {
         output: {
+          // রিয়্যাক্টকে আলাদা চঙ্কে ভাগ করবেন না, এতে কনটেক্সট এরর হয়
           manualChunks(id) {
             if (id.includes('node_modules')) {
-              // React-কে আলাদা ভেন্ডর চঙ্কে রাখা ভালো
-              if (id.includes('react') || id.includes('react-dom')) return 'react-vendor';
               return 'vendor';
             }
           }
