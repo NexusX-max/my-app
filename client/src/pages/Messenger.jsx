@@ -11,6 +11,7 @@ import {
   INITIAL_GROUPS, 
   MOCK_TRANSCRIPTS 
 } from "../data";
+import { AuthContext } from '../context/AuthContext';
 import Sidebar from "./Sidebar";
 import ChatWindow from '../components/ChatWindow';
 import CallScreen from '../components/CallScreen';
