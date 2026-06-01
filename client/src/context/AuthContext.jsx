@@ -66,7 +66,7 @@ export const AuthProvider = ({ children }) => {
 
       socketInstance = io(BASE_URL, {
         query: { userId: currentUserId },
-        transports: ['websocket'], 
+        transports: ['polling', 'websocket'], 
         reconnection: true,
         reconnectionAttempts: 15, 
         reconnectionDelay: 1000,
