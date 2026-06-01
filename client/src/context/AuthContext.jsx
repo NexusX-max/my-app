@@ -2,7 +2,7 @@ import React, { createContext, useState, useEffect, useContext, useMemo, useCall
 import axios from 'axios';
 import { io } from 'socket.io-client';
 
-// Global Onyx network nodes
+// ✅ ১. গ্লোবাল ওনিক্স নেটওয়ার্ক নোডস
 const API_NODES = [
   'https://my-app-v6xz.onrender.com', 
   'https://my-app-2-uzoi.onrender.com',
@@ -11,7 +11,10 @@ const API_NODES = [
 ];
 
 const getLiveNode = () => {
-  return window.location.origin;
+  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+    return "http://localhost:5005";
+  }
+  return API_NODES[0]; 
 };
 
 const BASE_URL = getLiveNode();
@@ -27,7 +30,7 @@ export const AuthProvider = ({ children }) => {
   
   const socketConnecting = useRef(false);
 
-  // Configure Axios Instance
+  // 🛠️ ২. Axios Instance কনফিগারেশন
   const api = useMemo(() => {
     const instance = axios.create({
       baseURL: API_BASE_URL,
@@ -44,7 +47,7 @@ export const AuthProvider = ({ children }) => {
     return instance;
   }, []);
 
-  // Data cleanup (logout logic)
+  // 🛠️ ৩. ডাটা ক্লিনআপ (Logout logic)
   const clearAuthData = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     if (socket) {
@@ -56,7 +59,7 @@ export const AuthProvider = ({ children }) => {
     socketConnecting.current = false;
   }, [socket, user?._id]);
 
-  // Socket connection & active call signaling setup
+  // 🛠️ ৪. সকেট কানেকশন ও গ্লোবাল কলিং পাইপলাইন
   useEffect(() => {
     let socketInstance = null;
 
@@ -66,7 +69,7 @@ export const AuthProvider = ({ children }) => {
 
       socketInstance = io(BASE_URL, {
         query: { userId: currentUserId },
-        transports: ['polling', 'websocket'], 
+        transports: ['websocket'], 
         reconnection: true,
         reconnectionAttempts: 15, 
         reconnectionDelay: 1000,
@@ -86,7 +89,7 @@ export const AuthProvider = ({ children }) => {
         console.log("📡 Incoming Onyx Pulse Detected:", data);
         
         // Browser Notification
-        if (typeof Notification !== 'undefined' && Notification.permission === "granted") {
+        if (Notification.permission === "granted") {
           new Notification(`Onyx Call from ${data.name}`, { body: `Tap to accept ${data.type} link.` });
         }
         
@@ -95,7 +98,7 @@ export const AuthProvider = ({ children }) => {
         sessionStorage.setItem("onyx_caller_name", data.name || "Unknown Link");
         sessionStorage.setItem("onyx_caller_avatar", data.avatar || "");
         sessionStorage.setItem("onyx_call_type", data.type);
-        sessionStorage.setItem("onyx_call_room", data.roomId); // Call UI roomId
+        sessionStorage.setItem("onyx_call_room", data.roomId); // Call UI রেন্ডার করার জন্য রুম আইডি
       });
 
       socketInstance.on("callEnded", () => {
@@ -113,66 +116,18 @@ export const AuthProvider = ({ children }) => {
     }
   }, [user?._id]); 
 
-  // Session Recovery
+  // 🛠️ ৫. সেশন রিকভারি
   useEffect(() => {
     let isMounted = true;
     const initAuth = async () => {
       const token = localStorage.getItem(TOKEN_KEY);
-      if (!token) { 
-        // Fallback or temporary local user initialization if token is missing
-        const activeUserId = localStorage.getItem('onyx_selected_user_id') || 'me';
-        const savedProfile = localStorage.getItem('onyx_profile_node');
-        let defaultProfile = savedProfile ? JSON.parse(savedProfile) : {
-          _id: "me",
-          firstName: "Operator",
-          lastName: "Node",
-          username: "me_operator",
-          avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80",
-          bio: "Rogue Quantum Deck Architect"
-        };
-        
-        if (activeUserId !== 'me' && (!savedProfile || JSON.parse(savedProfile)._id !== activeUserId)) {
-          const match = [
-            { _id: "user-kaelen", firstName: "Kaelen", lastName: "Vex", username: "kaelen_deck", avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&q=80", bio: "Underground network decker and freelance ingress engineer." },
-            { _id: "user-sasha", firstName: "Sasha", lastName: "Glimmer", username: "sasha_design", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80", bio: "Synthetic interface architect." }
-          ].find(u => u._id === activeUserId);
-          if (match) {
-            defaultProfile = match;
-          }
-        }
-        
-        setUser(defaultProfile);
-        setLoading(false); 
-        return; 
-      }
+      if (!token) { setLoading(false); return; }
 
       try {
         const res = await api.get('/auth/me'); 
         if (isMounted) setUser(res.data.user || res.data);
       } catch (err) {
-        if (isMounted) {
-          // If auth fails on real backend, fallback to default local operator
-          const activeUserId = localStorage.getItem('onyx_selected_user_id') || 'me';
-          const savedProfile = localStorage.getItem('onyx_profile_node');
-          let defaultProfile = savedProfile ? JSON.parse(savedProfile) : {
-            _id: "me",
-            firstName: "Operator",
-            lastName: "Node",
-            username: "me_operator",
-            avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80",
-            bio: "Rogue Quantum Deck Architect"
-          };
-          if (activeUserId !== 'me' && (!savedProfile || JSON.parse(savedProfile)._id !== activeUserId)) {
-            const match = [
-              { _id: "user-kaelen", firstName: "Kaelen", lastName: "Vex", username: "kaelen_deck", avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&q=80", bio: "Underground network decker and freelance ingress engineer." },
-              { _id: "user-sasha", firstName: "Sasha", lastName: "Glimmer", username: "sasha_design", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80", bio: "Synthetic interface architect." }
-            ].find(u => u._id === activeUserId);
-            if (match) {
-              defaultProfile = match;
-            }
-          }
-          setUser(defaultProfile);
-        }
+        if (isMounted) clearAuthData();
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -181,44 +136,7 @@ export const AuthProvider = ({ children }) => {
     return () => { isMounted = false; };
   }, [api, clearAuthData]);
 
-  // Handle local switching of operative profile identities
-  const switchUser = useCallback((userId) => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.setItem('onyx_selected_user_id', userId);
-    
-    if (socket) {
-      socket.disconnect();
-    }
-    setSocket(null);
-    socketConnecting.current = false;
-    
-    let profile = {
-      _id: "me",
-      firstName: "Operator",
-      lastName: "Node",
-      username: "me_operator",
-      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80",
-      bio: "Rogue Quantum Deck Architect"
-    };
-    
-    if (userId !== 'me') {
-      const match = [
-        { _id: "user-kaelen", firstName: "Kaelen", lastName: "Vex", username: "kaelen_deck", avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&q=80", bio: "Underground network decker and freelance ingress engineer." },
-        { _id: "user-sasha", firstName: "Sasha", lastName: "Glimmer", username: "sasha_design", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80", bio: "Synthetic interface architect." }
-      ].find(u => u._id === userId);
-      if (match) profile = match;
-    }
-    
-    setUser(profile);
-    localStorage.setItem('onyx_profile_node', JSON.stringify({
-      name: `${profile.firstName} ${profile.lastName}`,
-      avatar: profile.avatar,
-      bio: profile.bio,
-      _id: profile._id
-    }));
-  }, [socket]);
-
-  // Auth Actions
+  // 🛠️ ৬. Auth Actions
   const login = useCallback(async (email, password) => {
     const res = await api.post('/auth/login', { email, password });
     const { token, user: userData } = res.data;
@@ -245,9 +163,9 @@ export const AuthProvider = ({ children }) => {
   }, [clearAuthData]);
 
   const contextValue = useMemo(() => ({
-    user, socket, loading, login, signup, logout, switchUser,
+    user, socket, loading, login, signup, logout,
     isAuthenticated: !!user, api, currentNode: BASE_URL 
-  }), [user, socket, loading, login, signup, logout, switchUser, api]);
+  }), [user, socket, loading, login, signup, logout, api]);
 
   return (
     <AuthContext.Provider value={contextValue}>
