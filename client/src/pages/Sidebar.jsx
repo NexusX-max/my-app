@@ -30,6 +30,7 @@ const Sidebar = ({
   searchedNodes = [],
   onConnectUser,
   showSettingsView,
+  showSearchScreen,
   onCreateGroup,
   onToggleMute,
   onToggleBlock,
@@ -139,7 +140,7 @@ const Sidebar = ({
 
   return (
     <div id="sidebar-container" className={`w-full md:w-[380px] h-full border-r border-white/5 bg-zinc-950/90 flex flex-col shrink-0 overflow-hidden relative font-mono ${
-      (selectedChatId || showSettingsView) ? 'hidden md:flex' : 'flex'
+      (selectedChatId || showSettingsView || showSearchScreen) ? 'hidden md:flex' : 'flex'
     }`}>
       
       {/* Visual Terminal Static Blur Border */}

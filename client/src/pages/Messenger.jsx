@@ -18,6 +18,7 @@ import SettingsScreen from '../components/SettingsScreen';
 import BiometricScreen from '../components/BiometricScreen';
 import SearchScreen from './SearchScreen';
 import { ShieldAlert, Clock } from 'lucide-react';
+
 export default function Messenger() {
   const { user, api, socket, currentNode } = useAuth();
 
@@ -876,6 +877,7 @@ export default function Messenger() {
           searchedNodes={searchedNodes}
           onConnectUser={handleConnectUser}
           showSettingsView={showSettingsView}
+          showSearchScreen={showSearchScreen}
           onCreateGroup={handleCreateGroup}
           onToggleMute={handleToggleMute}
           onToggleBlock={handleToggleBlock}
