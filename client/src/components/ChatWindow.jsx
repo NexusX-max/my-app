@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Send, Paperclip, Globe, Volume2, Trash2, Terminal, ShieldCheck, 
-  Maximize2, Smile, FileText, Phone, Video, Info, RefreshCw, X, 
-  Sparkles, Check, CheckCheck 
+  Send, Paperclip, Globe, Volume2, VolumeX, Trash2, Terminal, ShieldCheck, 
+  FileText, Phone, Video, X, CheckCheck, ArrowLeft, UserPlus, Users, Ban, ShieldAlert
 } from 'lucide-react';
 
 const ChatWindow = ({
@@ -13,14 +12,100 @@ const ChatWindow = ({
   onInitiateCall,
   onDeleteMessage,
   activeAccent,
-  userProfile
+  onBackToList,
+  chatList = [],
+  onAddGroupMember,
+  showControlLab = false,
+  onToggleControlLab,
+  isMuted = false,
+  isBlocked = false,
+  onToggleMute,
+  onToggleBlock,
+  onDeleteChat
 }) => {
   const [inputText, setInputText] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [decryptionStates, setDecryptionStates] = useState({}); // Stores translated/decoded text for elements
+  const [decryptionStates, setDecryptionStates] = useState({}); 
   const [isDecodingId, setIsDecodingId] = useState(null);
   const [commandSuccessMsg, setCommandSuccessMsg] = useState(null);
+  const [showInvitePopover, setShowInvitePopover] = useState(false);
+  
+  // States and refs for 2-second hold-press security options
+  const [isHolding, setIsHolding] = useState(false);
+  const [holdProgress, setHoldProgress] = useState(0);
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+
+  const progressIntervalRef = useRef(null);
+  const startTimeRef = useRef(0);
+  const hasTriggeredRef = useRef(false);
+  const touchStartRef = useRef({ x: 0, y: 0 });
+
+  const handleStartHold = (e) => {
+    if (e.type === 'mousedown' && e.button !== 0) return;
+
+    handleCancelHold();
+
+    hasTriggeredRef.current = false;
+    startTimeRef.current = Date.now();
+    setIsHolding(true);
+    setHoldProgress(0);
+
+    if (e.touches && e.touches[0]) {
+      const touch = e.touches[0];
+      touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+    }
+
+    const duration = 2000; // 2 seconds
+    const intervalTime = 40;
+    let currentProgress = 0;
+
+    progressIntervalRef.current = setInterval(() => {
+      currentProgress += (intervalTime / duration) * 100;
+      if (currentProgress >= 100) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+        setHoldProgress(100);
+        hasTriggeredRef.current = true;
+
+        if (window.navigator?.vibrate) {
+          window.navigator.vibrate(40);
+        }
+
+        setShowOptionsMenu(true);
+        setIsHolding(false);
+        setHoldProgress(0);
+      } else {
+        setHoldProgress(currentProgress);
+      }
+    }, intervalTime);
+  };
+
+  const handleCancelHold = () => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+    setIsHolding(false);
+    setHoldProgress(0);
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isHolding) return;
+    if (e.touches && e.touches[0]) {
+      const touch = e.touches[0];
+      const dx = touch.clientX - touchStartRef.current.x;
+      const dy = touch.clientY - touchStartRef.current.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance > 15) {
+        handleCancelHold();
+      }
+    }
+  };
+
+  const handleRelease = (e) => {
+    if (e.type === 'mouseup' && e.button !== 0) return;
+    handleCancelHold();
+  };
   
   const viewportRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -35,7 +120,7 @@ const ChatWindow = ({
   const handleSend = () => {
     if (!inputText.trim() && !selectedFile) return;
 
-    // Check for special slash commands inside direct / group channels
+    // Check for special slash commands inside direct or group channels
     if (inputText.startsWith("/")) {
       handleSlashCommand(inputText.trim());
       setInputText("");
@@ -127,7 +212,7 @@ const ChatWindow = ({
   };
 
   const selectImgAttachment = (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = () => {
@@ -142,7 +227,7 @@ const ChatWindow = ({
   };
 
   const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter') {
       e.preventDefault();
       handleSend();
     }
@@ -160,44 +245,112 @@ const ChatWindow = ({
       {/* Viewport Header */}
       <header className="p-4 border-b border-white/5 bg-zinc-950/80 backdrop-blur-md flex justify-between items-center z-10 shrink-0">
         <div className="flex items-center gap-3.5 min-w-0">
-          <div className="relative shrink-0">
-            <img 
-              src={activeChat.avatar} 
-              className={`w-11 h-11 rounded-xl object-cover border ${
-                isGroup ? 'border-purple-500/20' : 'border-cyan-500/20'
-              }`} 
-              alt={activeChat.name} 
-            />
-            {activeChat.online && (
-              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-black rounded-full" />
-            )}
-          </div>
-          
-          <div className="min-w-0">
-            <h2 className="text-sm font-black text-zinc-100 flex items-center gap-1.5 truncate">
-              {activeChat.name}
-              {activeChat.isBot && (
-                <span className="text-[7px] px-1 bg-cyan-950 border border-cyan-800 text-cyan-400 font-mono rounded font-black">
-                  SECURE BOT
+          <button
+            onClick={onBackToList}
+            className="md:hidden p-2.5 rounded-xl bg-zinc-900 border border-white/5 text-zinc-455 hover:text-white transition-colors cursor-pointer shrink-0"
+            title="Return to channels"
+          >
+            <ArrowLeft size={14} />
+          </button>
+
+          {/* Interactive holdable profile info wrapper */}
+          <div 
+            onMouseDown={handleStartHold}
+            onMouseUp={handleRelease}
+            onMouseLeave={handleCancelHold}
+            onTouchStart={handleStartHold}
+            onTouchEnd={handleRelease}
+            onTouchMove={handleTouchMove}
+            onTouchCancel={handleCancelHold}
+            onContextMenu={(e) => e.preventDefault()}
+            className="flex items-center gap-3.5 min-w-0 cursor-pointer select-none active:opacity-80 relative overflow-hidden rounded-2xl p-1.5 -m-1.5 border border-transparent hover:border-white/5 group"
+            title="Hold for 2 seconds for secure options (Mute, Block, Delete)"
+          >
+            {/* Visual Holding Decrypt Progress Overlay */}
+            {isHolding && (
+              <div className="absolute inset-0 bg-cyan-950/40 backdrop-blur-[0.5px] pointer-events-none overflow-hidden rounded-2xl z-30 flex items-center justify-center">
+                <div className="absolute bottom-0 left-0 top-0 bg-cyan-500/30 transition-all duration-75" style={{ width: `${holdProgress}%` }} />
+                <span className="font-mono text-[8px] font-black text-cyan-400 uppercase tracking-widest animate-pulse z-40">
+                  CONNECTING OPTIONS... {Math.round(holdProgress)}%
                 </span>
+              </div>
+            )}
+
+            <div className="relative shrink-0">
+              <img 
+                src={activeChat.avatar} 
+                className={`w-11 h-11 rounded-xl object-cover border ${
+                  isGroup ? 'border-purple-500/20' : 'border-cyan-500/20'
+                }`} 
+                alt={activeChat.name} 
+              />
+              {activeChat.online && (
+                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-black rounded-full" />
               )}
-            </h2>
-            <p className="text-[10px] text-zinc-500 truncate font-mono">
-              {isGroup ? `${activeChat.membersCount} connected nodes on mesh` : `Signal Link: ${activeChat.encryptionKey || 'N/A'}`}
-            </p>
+            </div>
+            
+            <div className="min-w-0">
+              <h2 className="text-sm font-black text-zinc-100 flex items-center gap-1.5 truncate font-mono">
+                {activeChat.name}
+                {activeChat.isBot && (
+                  <span className="text-[7px] px-1 bg-cyan-950 border border-cyan-800 text-cyan-400 font-mono rounded font-black">
+                    SECURE BOT
+                  </span>
+                )}
+                {isMuted && (
+                  <span className="text-[7px] px-1 bg-zinc-800 border border-zinc-700 text-zinc-450 font-mono rounded font-black uppercase">
+                    MUTED
+                  </span>
+                )}
+                {isBlocked && (
+                  <span className="text-[7px] px-1 bg-red-950 border border-red-800 text-red-400 font-mono rounded font-black uppercase">
+                    BLOCKED
+                  </span>
+                )}
+              </h2>
+              <p className="text-[10px] text-zinc-500 truncate font-mono">
+                {isGroup ? `${activeChat.membersCount} connected nodes on mesh` : `Signal Link: ${activeChat.encryptionKey || 'N/A'}`}
+              </p>
+            </div>
           </div>
         </div>
 
         {/* Real-time Diagnostics Header Panel */}
         <div className="flex items-center gap-2.5">
           <div className="hidden lg:flex flex-col items-end text-[9px] font-mono text-zinc-500 border-l border-white/5 pl-4">
-            <span className="text-zinc-600">ENCRYPTION PROTOCOL:</span>
+            <span className="text-zinc-650">ENCRYPTION PROTOCOL:</span>
             <span className="text-cyan-400/80 font-bold flex items-center gap-1">
               <ShieldCheck size={10} className="text-cyan-400" /> {activeChat.encryptionKey || 'SEC-CHANNEL-X'}
             </span>
           </div>
 
           <div className="flex items-center gap-1.5">
+            <button
+              onClick={onToggleControlLab}
+              className={`px-3 py-2 rounded-xl border transition-all cursor-pointer flex items-center justify-center gap-1.5 text-xs font-bold font-mono ${
+                showControlLab 
+                  ? 'bg-purple-950 border-purple-500 text-purple-400 font-extrabold shadow-[0_0_15px_rgba(168,85,247,0.3)] animate-pulse' 
+                  : 'bg-zinc-900 border-white/5 text-zinc-400 hover:text-purple-400 hover:bg-zinc-805 hover:border-purple-500/20'
+              }`}
+              title="Toggle Security Labs & Voice Commands"
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${showControlLab ? 'bg-purple-400 animate-ping' : 'bg-purple-500'}`} />
+              ⚡ CYBER LAB
+            </button>
+
+            {isGroup && (
+              <button
+                onClick={() => setShowInvitePopover(!showInvitePopover)}
+                className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-center relative ${
+                  showInvitePopover 
+                    ? 'bg-purple-950 border-purple-500 text-purple-400' 
+                    : 'bg-zinc-900 border-white/5 text-zinc-400 hover:text-purple-400 hover:bg-zinc-805 hover:border-purple-500/20'
+                }`}
+                title="Link/Invite Peer Operator"
+              >
+                <UserPlus size={13} />
+              </button>
+            )}
             <button
               onClick={() => onInitiateCall(activeChat, 'audio')}
               className="p-3 rounded-xl bg-zinc-900 border border-white/5 text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800 hover:border-cyan-500/20 transition-all cursor-pointer"
@@ -216,6 +369,62 @@ const ChatWindow = ({
         </div>
       </header>
 
+      {/* Dynamic Popover / Drawer to Invite Peers to an Existing Group */}
+      {isGroup && showInvitePopover && (
+        <div className="absolute top-[73px] left-0 right-0 bg-zinc-950/95 border-b border-purple-500/20 shadow-[0_15px_30px_rgba(0,0,0,0.85)] z-40 p-4 animate-slide-down">
+          <div className="max-w-md mx-auto">
+            <div className="flex justify-between items-center mb-3">
+              <h4 className="text-[11px] font-bold text-purple-400 uppercase tracking-widest flex items-center gap-1.5 font-mono">
+                <Users size={12} className="text-purple-400" /> DIRECT INBOUND LINK PEER (Invite)
+              </h4>
+              <button 
+                onClick={() => setShowInvitePopover(false)} 
+                className="text-[10px] text-zinc-500 hover:text-zinc-300 font-bold uppercase font-mono cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[160px] overflow-y-auto no-scrollbar pb-1">
+              {(() => {
+                const curMemberIds = (activeChat.members || []).map(m => m.id);
+                const candidates = chatList.filter(c => !curMemberIds.includes(c.id));
+
+                if (candidates.length === 0) {
+                  return (
+                    <div className="text-[11px] text-zinc-500 font-mono py-4 col-span-2 text-center bg-zinc-900/30 rounded-xl border border-white/5">
+                      All available nodes successfully patched into this channel mesh connection.
+                    </div>
+                  );
+                }
+
+                return candidates.map(contact => (
+                  <div 
+                    key={contact.id}
+                    onClick={() => {
+                      onAddGroupMember(activeChat.id, contact.id);
+                    }}
+                    className="flex items-center justify-between p-2 rounded-xl bg-zinc-950 border border-white/5 hover:border-purple-500/30 hover:bg-purple-950/20 cursor-pointer transition-all group"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <img src={contact.avatar} className="w-7 h-7 rounded-lg object-cover border border-white/10" alt="" referrerPolicy="no-referrer" />
+                      <div className="min-w-0">
+                        <p className="text-xs text-zinc-200 truncate font-semibold leading-tight">{contact.name}</p>
+                        <p className="text-[9px] text-zinc-500 font-mono leading-none tracking-tight">Latency: {contact.latency || '10ms'}</p>
+                      </div>
+                    </div>
+                    
+                    <button className="text-[10px] font-bold text-purple-400 opacity-60 group-hover:opacity-100 hover:text-purple-300 px-2 py-1 bg-purple-500/10 border border-purple-500/20 uppercase rounded-lg cursor-pointer">
+                      Link +
+                    </button>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Success Command Console Banner */}
       {commandSuccessMsg && (
         <div className="bg-cyan-950/80 border-b border-cyan-800/40 px-5 py-3 text-xs font-mono text-cyan-300 flex items-center gap-2.5 justify-between relative z-20 animate-slide-down">
@@ -232,7 +441,7 @@ const ChatWindow = ({
       {/* Messages Canvas Workspace */}
       <main 
         ref={viewportRef}
-        className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 no-scrollbar bg-zinc-950/20"
+        className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 no-scrollbar bg-zinc-950/20 font-mono"
       >
         {/* Connection Established Warning banner */}
         <div className="flex justify-center my-2">
@@ -244,8 +453,8 @@ const ChatWindow = ({
         {messages.map((msg) => {
           const isMe = msg.sender === 'me';
           const decryptionText = decryptionStates[msg.id];
-          const hasImage = msg.file && msg.file.type.startsWith('image/');
-          const hasGenericFile = msg.file && !msg.file.type.startsWith('image/');
+          const hasImage = msg.file && msg.file.type?.startsWith('image/');
+          const hasGenericFile = msg.file && !msg.file.type?.startsWith('image/');
 
           return (
             <div 
@@ -270,19 +479,19 @@ const ChatWindow = ({
                 }`}
               >
                 {/* Image Media attachment */}
-                {hasImage && (
+                {hasImage && msg.file && (
                   <div className="mb-2.5 rounded-xl overflow-hidden max-h-[220px] max-w-[280px] bg-zinc-950 border border-white/5">
                     <img src={msg.file.dataUrl} className="object-cover w-full h-full" alt="Attachment" />
                   </div>
                 )}
 
                 {/* File Attachment */}
-                {hasGenericFile && (
+                {hasGenericFile && msg.file && (
                   <div className="mb-2 bg-black/40 p-2.5 rounded-xl border border-white/5 flex items-center gap-2.5 font-mono text-zinc-400 text-[11px]">
                     <FileText size={16} className="text-cyan-400" />
                     <div className="truncate">
                       <p className="text-zinc-200 text-xs truncate font-bold">{msg.file.name}</p>
-                      <p className="text-[9px] text-zinc-500 uppercase">Binary Stream</p>
+                      <p className="text-[9px] text-zinc-505 uppercase">Binary Stream</p>
                     </div>
                   </div>
                 )}
@@ -341,11 +550,11 @@ const ChatWindow = ({
       </main>
 
       {/* Footer input panel */}
-      <footer className="p-3 bg-zinc-950/90 border-t border-white/5 relative z-10">
+      <footer className="p-3 bg-zinc-950/90 border-t border-white/5 relative z-10 font-mono">
         
         {/* File preview dialog */}
         {selectedFile && (
-          <div className="px-4 py-2 mb-2 bg-zinc-900/60 border border-zinc-800 rounded-xl flex items-center justify-between font-mono text-xs text-zinc-300">
+          <div className="px-4 py-2 mb-2 bg-zinc-905 border border-zinc-850 rounded-xl flex items-center justify-between font-mono text-xs text-zinc-300">
             <div className="flex items-center gap-2 truncate">
               <FileText size={14} className="text-cyan-400" />
               <span className="truncate">{selectedFile.name} (Ready to upload)</span>
@@ -358,7 +567,7 @@ const ChatWindow = ({
 
         {/* Emojis & Command helper bar */}
         <div className="flex items-center justify-between mb-2">
-          <div className="flex gap-1">
+          <div className="flex gap-1" id="quick-emojis-row">
             {quickEmojis.map(emoji => (
               <button
                 key={emoji}
@@ -376,55 +585,171 @@ const ChatWindow = ({
         </div>
 
         {/* Console Textarea Bar */}
-        <div className="flex gap-2 items-center">
-          {/* File Link Button */}
-          <button
-            onClick={() => fileInputRef.current.click()}
-            className="p-3 rounded-xl bg-zinc-900 border border-white/5 text-zinc-400 hover:text-cyan-400 transition-colors cursor-pointer shrink-0"
-            title="Attach Signal Asset"
-          >
-            <Paperclip size={14} />
-          </button>
-          
-          <input 
-            type="file"
-            ref={fileInputRef}
-            onChange={selectImgAttachment}
-            className="hidden"
-            accept="image/*,application/pdf,text/*"
-          />
-
-          {/* Primary inputs */}
-          <div className="flex-1 relative">
-            <input
-              type="text"
-              placeholder={isGroup ? "Query active hub... try /hack or /quote" : "Type message... (Real AI responses for Onyx AI Core bot)"}
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={handleKeyPress}
-              className="w-full bg-zinc-900/50 border border-white/5 text-zinc-100 placeholder-zinc-500 rounded-xl py-3 pl-4 pr-10 text-xs font-mono focus:outline-none focus:border-cyan-500/40 focus:bg-zinc-900/80 transition-all"
-            />
-            {inputText.startsWith("/") && (
-              <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[9px] bg-cyan-950 border border-cyan-800 text-cyan-400 px-1 py-0.5 font-bold font-mono uppercase tracking-widest rounded animate-pulse">
-                SLASH COMMAND
-              </div>
-            )}
+        {isBlocked ? (
+          <div className="flex gap-2.5 items-center justify-center p-4 bg-red-950/20 border border-red-900/30 rounded-xl text-red-400 font-mono text-xs uppercase tracking-widest animate-pulse">
+            <ShieldAlert size={14} className="text-red-500 shrink-0" />
+            <span>⛔ [SECURE COUPLING RESTRICTED] Link blocked. Unblock target node to resume channel communications.</span>
           </div>
+        ) : (
+          <div className="flex gap-2 items-center">
+            {/* File Link Button */}
+            <button
+              onClick={() => {
+                if (fileInputRef.current) {
+                  fileInputRef.current.click();
+                }
+              }}
+              className="p-3 rounded-xl bg-zinc-900 border border-white/5 text-zinc-400 hover:text-cyan-400 transition-colors cursor-pointer shrink-0"
+              title="Attach Signal Asset"
+            >
+              <Paperclip size={14} />
+            </button>
+            
+            <input 
+              type="file"
+              ref={fileInputRef}
+              onChange={selectImgAttachment}
+              className="hidden"
+              accept="image/*,application/pdf,text/*"
+            />
 
-          {/* Core Send command */}
-          <button
-            onClick={handleSend}
-            disabled={!inputText.trim() && !selectedFile}
-            className={`p-3 rounded-xl font-bold flex items-center justify-center transition-all cursor-pointer border shrink-0 ${
-              (inputText.trim() || selectedFile)
-                ? `bg-cyan-500 border-cyan-400 text-black hover:-translate-y-0.5 hover:shadow-[0_0_15px_rgba(6,182,212,0.4)]`
-                : 'bg-zinc-900 border-transparent text-zinc-600 cursor-not-allowed'
-            }`}
-          >
-            <Send size={14} />
-          </button>
-        </div>
+            {/* Primary inputs */}
+            <div className="flex-1 relative">
+              <input
+                type="text"
+                placeholder={isGroup ? "Query active hub... try /hack or /quote" : "Type message... (Real AI responses for Onyx AI Core bot)"}
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyDown={handleKeyPress}
+                className="w-full bg-zinc-900/50 border border-white/5 text-zinc-100 placeholder-zinc-500 rounded-xl py-3 pl-4 pr-10 text-xs font-mono focus:outline-none focus:border-cyan-500/40 focus:bg-zinc-900/80 transition-all"
+              />
+              {inputText.startsWith("/") && (
+                <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[9px] bg-cyan-950 border border-cyan-800 text-cyan-400 px-1 py-0.5 font-bold font-mono uppercase tracking-widest rounded animate-pulse">
+                  SLASH COMMAND
+                </div>
+              )}
+            </div>
+
+            {/* Core Send command */}
+            <button
+              onClick={handleSend}
+              disabled={!inputText.trim() && !selectedFile}
+              className={`p-3 rounded-xl font-bold flex items-center justify-center transition-all cursor-pointer border shrink-0 ${
+                (inputText.trim() || selectedFile)
+                  ? `bg-cyan-500 border-cyan-400 text-black hover:-translate-y-0.5 hover:shadow-[0_0_15px_rgba(6,182,212,0.4)]`
+                  : 'bg-zinc-900 border-transparent text-zinc-600 cursor-not-allowed'
+              }`}
+            >
+              <Send size={14} />
+            </button>
+          </div>
+        )}
       </footer>
+
+      {/* 2-Second Hold Context Menu Dialog / Bottom Sheet modal */}
+      {showOptionsMenu && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 font-mono">
+          <div className="w-full max-w-sm bg-zinc-950 border border-zinc-800 rounded-3xl p-6 shadow-[0_0_50px_rgba(0,0,0,0.8)] relative overflow-hidden">
+            {/* Top micro scan lines */}
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-cyan-500 via-transparent to-purple-500" />
+            
+            {/* Profile/Identity target header */}
+            <div className="text-center mb-6">
+              <div className="relative inline-block mb-3">
+                <img 
+                  src={activeChat.avatar} 
+                  className="w-16 h-16 rounded-2xl object-cover mx-auto border-2 border-cyan-500/30" 
+                  alt={activeChat.name} 
+                />
+                {activeChat.online && (
+                  <div className="absolute -bottom-1 -right-1 w-4.5 h-4.5 bg-emerald-500 border-2 border-black rounded-full" />
+                )}
+              </div>
+              <h3 className="font-mono font-black text-white text-base tracking-tight uppercase">
+                {activeChat.name}
+              </h3>
+              <p className="text-[10px] text-zinc-500 font-mono italic truncate max-w-xs mx-auto mt-1">
+                {activeChat.bio || "Zero-Knowledge Terminal Node"}
+              </p>
+            </div>
+
+            {/* Grid Axis Options spacing */}
+            <div className="space-y-3.5">
+              {/* Toggle Mute option button */}
+              {!isGroup && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onToggleMute(activeChat.id);
+                  }}
+                  className={`w-full py-3.5 px-4 rounded-xl border flex items-center justify-between text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                    isMuted 
+                      ? 'bg-amber-950/30 border-amber-500/40 text-amber-400' 
+                      : 'bg-zinc-900/50 border-white/5 text-zinc-300 hover:border-amber-500/30 hover:text-amber-400'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                    <span>{isMuted ? "UNMUTE SECURE LINK" : "MUTE SECURE LINK"}</span>
+                  </div>
+                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-zinc-800">
+                    {isMuted ? "MUTED" : "ALERTS"}
+                  </span>
+                </button>
+              )}
+
+              {/* Toggle Block option button */}
+              {!isGroup && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onToggleBlock(activeChat.id);
+                  }}
+                  className={`w-full py-3.5 px-4 rounded-xl border flex items-center justify-between text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                    isBlocked 
+                      ? 'bg-red-950/30 border-red-500/40 text-red-400' 
+                      : 'bg-zinc-900/50 border-white/5 text-zinc-300 hover:border-red-500/30 hover:text-red-400'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Ban size={14} />
+                    <span>{isBlocked ? "UNBLOCK PEER TRANSIT" : "BLOCK PEER TRANSIT"}</span>
+                  </div>
+                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-zinc-800">
+                    {isBlocked ? "BLOCKED" : "ALLOWED"}
+                  </span>
+                </button>
+              )}
+
+              {/* Delete button (dangerous crimson layout) */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`Purge all decrypted logs and channel links with ${activeChat.name}? This action is permanent.`)) {
+                    onDeleteChat(activeChat.id);
+                    setShowOptionsMenu(false);
+                  }
+                }}
+                className="w-full py-3.5 px-4 bg-red-950/20 hover:bg-red-950/40 border border-red-900/20 hover:border-red-500/40 text-red-400 rounded-xl flex items-center gap-2.5 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
+              >
+                <Trash2 size={14} className="text-red-500" />
+                <span>PURGE DATABASE LOGS (DELETE)</span>
+              </button>
+            </div>
+
+            {/* Dismiss boundary element */}
+            <div className="mt-6 pt-4 border-t border-white/5">
+              <button
+                type="button"
+                onClick={() => setShowOptionsMenu(false)}
+                className="w-full py-3 bg-zinc-900 hover:bg-zinc-800 border border-white/5 text-zinc-400 hover:text-white transition-all rounded-xl text-xs font-bold uppercase tracking-widest cursor-pointer text-center"
+              >
+                DISMISS INTERFACE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

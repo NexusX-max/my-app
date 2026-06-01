@@ -1,15 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  PhoneOff, Mic, MicOff, Video, VideoOff, Volume2, VolumeX, Shield, 
-  Eye, EyeOff, Radio, Lock, Zap, RefreshCw, Layers 
+  PhoneOff, Mic, MicOff, Video, VideoOff, Shield, 
+  Layers, Radio, Zap 
 } from 'lucide-react';
 import { MOCK_TRANSCRIPTS } from '../data';
 
 const CallScreen = ({
   callTarget,
   callType,
-  onEndCall,
-  activeAccent
+  onEndCall
 }) => {
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(callType === 'audio');
@@ -62,6 +61,7 @@ const CallScreen = ({
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
+    if (!ctx) return;
     let animationId;
     let phase = 0;
 
@@ -72,7 +72,7 @@ const CallScreen = ({
       const height = canvas.height;
       const centerY = height / 2;
 
-      // Draw beautiful layered particle cyber-waves
+      // Draw beautiful layered particle waves
       const waveCount = 3;
       const colors = [
         `rgba(6, 182, 212, ${isMuted ? '0.08' : '0.4'})`,  // Cyan
@@ -158,7 +158,7 @@ const CallScreen = ({
   };
 
   return (
-    <div id="call-interface-portal" className="fixed inset-0 z-[6000] bg-zinc-950 flex flex-col justify-between p-6 overflow-hidden">
+    <div id="call-interface-portal" className="fixed inset-0 z-[6000] bg-zinc-950 flex flex-col justify-between p-4 md:p-6 overflow-y-auto md:overflow-hidden no-scrollbar">
       
       {/* Decorative tech grid overlay for call */}
       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/[0.04] to-purple-500/[0.04]" />
@@ -173,7 +173,7 @@ const CallScreen = ({
           <div>
             <span className="text-[10px] font-mono text-zinc-500 block uppercase">CRYP-MESH LEVEL-V</span>
             <span className="text-xs font-bold font-mono text-white flex items-center gap-1.5 uppercase tracking-wider">
-              <Zap size={11} className="text-emerald-400" /> SECURE HANDSHAPE ({Math.min(100, encryptionProgress)}%)
+              <Zap size={11} className="text-emerald-400" /> SECURE HANDSHAKE ({Math.min(100, encryptionProgress)}%)
             </span>
           </div>
         </div>
@@ -186,10 +186,10 @@ const CallScreen = ({
       </header>
 
       {/* Main Calling Frame Grid split */}
-      <main className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6 my-6 items-center z-10 max-w-5xl mx-auto w-full">
+      <main className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 my-4 md:my-6 items-center z-10 max-w-5xl mx-auto w-full font-mono">
         
         {/* Participant Profile / Avatar camera mock */}
-        <div className="relative aspect-video rounded-[30px] overflow-hidden bg-zinc-900 border border-white/5 flex flex-col items-center justify-center p-6 shadow-2xl relative">
+        <div className="relative aspect-video rounded-2xl md:rounded-[30px] overflow-hidden bg-zinc-900 border border-white/5 flex flex-col items-center justify-center p-4 md:p-6 shadow-2xl">
           
           {/* Subtle camera scanline overlay */}
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/[0.015] to-transparent bg-[size:100%_4px] pointer-events-none" />
@@ -218,7 +218,7 @@ const CallScreen = ({
         </div>
 
         {/* Local Feed / Camera Mock with particle matrix fallback */}
-        <div className="relative aspect-video rounded-[30px] overflow-hidden bg-zinc-900 border border-white/5 flex flex-col items-center justify-center p-6 shadow-2xl relative transition-all">
+        <div className="relative aspect-video rounded-2xl md:rounded-[30px] overflow-hidden bg-zinc-900 border border-white/5 flex flex-col items-center justify-center p-4 md:p-6 shadow-2xl transition-all">
           
           <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/60 px-3 py-1.5 rounded-xl border border-white/5 font-mono text-[10px] text-zinc-400">
             <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
@@ -254,7 +254,7 @@ const CallScreen = ({
       </main>
 
       {/* Acoustic wave visualizer and real-time phonetic transcript bar */}
-      <section className="bg-zinc-950/80 border border-white/5 p-4 rounded-3xl max-w-4xl mx-auto w-full mb-6 relative z-10 overflow-hidden">
+      <section className="bg-zinc-950/80 border border-white/5 p-4 rounded-2xl md:rounded-3xl max-w-4xl mx-auto w-full mb-4 md:mb-6 relative z-10 overflow-hidden">
         
         {/* Real-time transcript ticker */}
         <div className="mb-3.5 pb-3 border-b border-white/5 flex items-start gap-3">
@@ -265,7 +265,7 @@ const CallScreen = ({
             <span className="text-[9px] font-mono text-cyan-500/80 uppercase font-black tracking-widest block mb-0.5">
               Phonetic Transcription Feed (Live Ticker)
             </span>
-            <p className="text-zinc-300 font-mono text-xs italic animate-slide-up leading-relaxed">
+            <p className="text-zinc-300 font-mono text-xs italic leading-relaxed">
               "{currentTranscript}"
             </p>
           </div>
@@ -292,7 +292,7 @@ const CallScreen = ({
       </section>
 
       {/* Control console controls at the footer */}
-      <footer className="z-10 bg-zinc-900 border border-white/10 rounded-[35px] max-w-xl mx-auto w-full p-4 flex justify-around items-center shrink-0 shadow-2xl">
+      <footer className="z-10 bg-zinc-900 border border-white/10 rounded-2xl md:rounded-[35px] max-w-xl mx-auto w-full p-3 md:p-4 flex justify-around items-center shrink-0 shadow-2xl">
         {/* Mute toggle button */}
         <button
           onClick={handleMuteBtn}

@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Fingerprint, Scan, ShieldCheck, Orbit, Unlock, Zap, Clock } from 'lucide-react';
+import { Fingerprint, Scan, ShieldCheck, Orbit, Zap, Clock } from 'lucide-react';
 
 const BiometricScreen = ({ 
   onApproved, 
-  userProfile, 
   activeAccent 
 }) => {
-  const [scanState, setScanState] = useState('idle'); // idle | scanning | completed
+  const [scanState, setScanState] = useState('idle');
   const [dotsChecked, setDotsChecked] = useState([]);
   const [scanProgress, setScanProgress] = useState(0);
 
@@ -29,7 +28,7 @@ const BiometricScreen = ({
     }, 120);
 
     return () => clearInterval(interval);
-  }, [scanState]);
+  }, [scanState, onApproved]);
 
   const handleTriggerScan = () => {
     setScanProgress(0);
@@ -44,7 +43,7 @@ const BiometricScreen = ({
     }
   };
 
-  // Node pattern layout 3x3 grid
+  // Pattern layout grid
   const renderDotsGrid = () => {
     const dots = Array.from({ length: 9 }, (_, i) => i + 1);
     return (
@@ -70,14 +69,14 @@ const BiometricScreen = ({
   };
 
   return (
-    <div id="biometric-terminal-portal" className="fixed inset-0 z-[8000] bg-zinc-950 flex flex-col items-center justify-center p-6 text-white text-center">
+    <div id="biometric-terminal-portal" className="fixed inset-0 z-[8000] bg-zinc-950 flex flex-col items-center justify-center p-4 md:p-6 text-white text-center overflow-y-auto no-scrollbar">
       
       {/* Immersive technical scanning lights */}
       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/[0.03] to-transparent pointer-events-none animate-pulse" />
       <div className="absolute top-0 left-0 right-0 h-[2px] bg-cyan-500/30 animate-scanline pointer-events-none" />
 
       {/* Primary security locks content */}
-      <div className="w-full max-w-sm bg-zinc-900/60 border border-white/10 rounded-[45px] p-8 relative overflow-hidden backdrop-blur-3xl shadow-2xl">
+      <div className="w-full max-w-sm bg-zinc-900/60 border border-white/10 rounded-3xl md:rounded-[45px] p-6 md:p-8 relative overflow-hidden backdrop-blur-3xl shadow-2xl my-auto">
         
         {/* Glowing top line based on active theme */}
         <div className={`absolute top-0 left-0 right-0 h-1.5 ${activeAccent.bg} animate-pulse shadow-[0_0_10px_2px_rgba(6,182,212,0.4)]`} />
