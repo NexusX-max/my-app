@@ -34,7 +34,8 @@ const Sidebar = ({
   onCreateGroup,
   onToggleMute,
   onToggleBlock,
-  onDeleteChat
+  onDeleteChat,
+  switchUser
 }) => {
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
@@ -193,6 +194,49 @@ const Sidebar = ({
           </div>
         </div>
 
+        {/* Active Identity Switcher */}
+        <div className="bg-zinc-900/10 border border-cyan-500/15 rounded-xl p-3 space-y-1.5 flex flex-col">
+          <span className="text-[8.5px] font-mono text-cyan-500/80 uppercase font-black tracking-widest block">
+            🌌 CURRENT OPERANT IDENTITY CODES:
+          </span>
+          <div className="flex justify-between gap-1.5">
+            {[
+              { id: "me", short: "OP-ME", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80" },
+              { id: "user-kaelen", short: "KAELEN", avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&q=80" },
+              { id: "user-sasha", short: "SASHA", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80" }
+            ].map(ident => (
+              <button
+                key={ident.id}
+                onClick={() => {
+                  try {
+                    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.frequency.value = ident.id === 'me' ? 440 : ident.id === 'user-kaelen' ? 520 : 600;
+                    osc.type = "triangle";
+                    gain.gain.setValueAtTime(0.06, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.15);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.2);
+                  } catch (e) {}
+                  switchUser(ident.id);
+                }}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg border text-[9px] font-bold tracking-wider font-mono cursor-pointer transition-all active:scale-95 ${
+                  (userProfile._id === ident.id || (ident.id === 'me' && (!userProfile._id || userProfile._id === 'me')))
+                    ? 'bg-cyan-950 border-cyan-400 text-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.15)] font-black'
+                    : 'bg-zinc-900/30 border-white/5 text-zinc-500 hover:border-zinc-800 hover:text-zinc-300'
+                }`}
+                title={`Switch connection to identity ${ident.short}`}
+              >
+                <img src={ident.avatar} className="w-3.5 h-3.5 rounded-md object-cover border border-white/10" alt="" />
+                <span>{ident.short}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Neural search interface */}
         <div className="relative">
           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500">
@@ -331,6 +375,9 @@ const Sidebar = ({
                     <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-black rounded-full shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
                   ) : (
                     <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-zinc-650 border-2 border-black rounded-full" />
+                  )}
+                  {chat.unread && (
+                    <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-400 border-2 border-black rounded-full animate-ping z-30" />
                   )}
                 </div>
 

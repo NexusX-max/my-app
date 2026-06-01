@@ -18,9 +18,8 @@ import SettingsScreen from '../components/SettingsScreen';
 import BiometricScreen from '../components/BiometricScreen';
 import SearchScreen from './SearchScreen';
 import { ShieldAlert, Clock } from 'lucide-react';
-
 export default function Messenger() {
-  const { user, api, socket, currentNode } = useAuth();
+  const { user, api, socket, currentNode, switchUser } = useAuth();
 
   // --- Persistent Client States ---
   const [userProfile, setUserProfile] = useState(() => {
@@ -52,6 +51,8 @@ export default function Messenger() {
 
   const [messagesHistory, setMessagesHistory] = useState({});
   const [searchedNodes, setSearchedNodes] = useState([]);
+  const [unreadChatIds, setUnreadChatIds] = useState([]);
+  const [incomingCallSession, setIncomingCallSession] = useState(null);
 
   const [selectedChatId, setSelectedChatId] = useState("conv-onyx");
   const [activeTab, setActiveTab] = useState("chats"); 
@@ -280,6 +281,154 @@ export default function Messenger() {
 
     return () => clearTimeout(searchTimeout);
   }, [searchQuery]);
+
+  // --- Socket.IO Multi-User real-time sync & Calling Handshakes ---
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on("receiveMessage", (data) => {
+      console.log("⚡ [SOCKET] Message stream ingress payload:", data);
+      
+      // Play a quick soft digital chirp synth sound for message notification
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.frequency.setValueAtTime(580, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.12);
+        osc.type = "sine";
+        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.2);
+      } catch (e) {}
+
+      // Trigger standard browser notification if permitted
+      if (typeof Notification !== 'undefined' && Notification.permission === "granted") {
+        new Notification("Onyx Node Message", { body: data.message?.text || "Secured packet received." });
+      }
+
+      // Reload conversations list to update previews
+      loadAllConversations();
+
+      const msgId = data.message?.id || data.message?._id;
+      const originId = data.conversationId;
+
+      // Update current history list if in active chat
+      if (originId === selectedChatId) {
+        setMessagesHistory(prev => {
+          const currentList = prev[originId] || [];
+          if (currentList.some(m => m.id === msgId)) return prev;
+          
+          const newMsgFormatted = {
+            id: msgId,
+            sender: data.message.senderId,
+            senderName: data.message.senderId === 'me' ? userProfile.name : "Remote Operator",
+            text: data.message.text,
+            file: data.message.image,
+            time: new Date(data.message.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+          return {
+            ...prev,
+            [originId]: [...currentList, newMsgFormatted]
+          };
+        });
+      } else {
+        // Mark as unread!
+        setUnreadChatIds(prev => prev.includes(originId) ? prev : [...prev, originId]);
+      }
+    });
+
+    socket.on("incomingCall", (data) => {
+      console.log("📞 [SOCKET] Telemetry Incoming call detected:", data);
+      
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        new Notification(`Onyx Secure Call from ${data.name}`, { body: `Encryption rate synced.` });
+      }
+
+      setIncomingCallSession({
+        from: data.from,
+        name: data.name,
+        avatar: data.avatar || "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80",
+        type: data.type
+      });
+    });
+
+    socket.on("callCancelled", (data) => {
+      console.log("🛑 [SOCKET] Incoming call aborted by remote peer.");
+      setIncomingCallSession(null);
+      setActiveCallSession(null);
+    });
+
+    socket.on("callConnected", (data) => {
+      console.log("🔗 [SOCKET] Incoming call accepted by remote agent.");
+    });
+
+    return () => {
+      socket.off("receiveMessage");
+      socket.off("incomingCall");
+      socket.off("callCancelled");
+      socket.off("callConnected");
+    };
+  }, [socket, selectedChatId, userProfile.name]);
+
+  // If a chat is selected, clear its unread status
+  useEffect(() => {
+    if (selectedChatId) {
+      setUnreadChatIds(prev => prev.filter(id => id !== selectedChatId));
+    }
+  }, [selectedChatId]);
+
+  // --- Beautiful recurring Dial Tone Ringtone synthesis ---
+  useEffect(() => {
+    let timer;
+    if (incomingCallSession) {
+      const playBbeebRing = () => {
+        try {
+          const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          const playDualTone = (f1, f2, duration, delay) => {
+            const osc1 = audioCtx.createOscillator();
+            const osc2 = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc1.frequency.value = f1;
+            osc1.type = "sine";
+            osc2.frequency.value = f2;
+            osc2.type = "sine";
+
+            gain.gain.setValueAtTime(0, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.12, audioCtx.currentTime + delay + 0.05);
+            gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + delay + duration);
+
+            osc1.connect(gain);
+            osc2.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc1.start(audioCtx.currentTime + delay);
+            osc2.start(audioCtx.currentTime + delay);
+
+            osc1.stop(audioCtx.currentTime + delay + duration + 0.1);
+            osc2.stop(audioCtx.currentTime + delay + duration + 0.1);
+          };
+
+          // Mimics standard secure electronic ringtone chord double ring
+          playDualTone(440, 480, 0.35, 0);
+          playDualTone(440, 480, 0.35, 0.45);
+        } catch (e) {
+          console.warn("Ringtone synthesizer blocked in browser canvas context.");
+        }
+      };
+
+      playBbeebRing();
+      timer = setInterval(playBbeebRing, 2200);
+    }
+
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [incomingCallSession]);
 
   // Handle Mute, Block and Delete Actions
   const handleToggleMute = (chatId) => {
@@ -589,7 +738,8 @@ export default function Messenger() {
     .map(c => ({
       ...c,
       isMuted: mutedChatIds.includes(c.id),
-      isBlocked: blockedChatIds.includes(c.id)
+      isBlocked: blockedChatIds.includes(c.id),
+      unread: unreadChatIds.includes(c.id)
     }));
 
   const isSelectedChatGroup = selectedChatId ? selectedChatId.startsWith("group-") : false;
@@ -794,6 +944,18 @@ export default function Messenger() {
       target: target,
       type: type || 'video'
     });
+
+    if (socket && target) {
+      const otherId = target.otherId || target.id;
+      console.log(`📞 Emitting initiateCall on socket to otherId: ${otherId}`);
+      socket.emit("initiateCall", {
+        to: otherId,
+        type: type || 'video',
+        from: userProfile._id || 'me',
+        name: userProfile.name,
+        avatar: userProfile.avatar
+      });
+    }
   };
 
   const handleDeleteMessage = (messageId) => {
@@ -837,9 +999,130 @@ export default function Messenger() {
         <CallScreen 
           callTarget={activeCallSession.target}
           callType={activeCallSession.type}
-          onEndCall={() => setActiveCallSession(null)}
+          onEndCall={() => {
+            if (socket && activeCallSession?.target) {
+              const otherId = activeCallSession.target.otherId || activeCallSession.target.id;
+              socket.emit("declineCall", {
+                to: otherId,
+                from: userProfile._id || 'me'
+              });
+            }
+            setActiveCallSession(null);
+          }}
           activeAccent={activeAccent}
         />
+      )}
+
+      {incomingCallSession && (
+        <div id="incoming-call-portal" className="fixed inset-0 z-[7000] bg-black/90 backdrop-blur-md flex flex-col items-center justify-center font-mono">
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.015)_1px,_transparent_1px),_linear-gradient(90deg,_rgba(255,255,255,0.015)_1px,_transparent_1px)] bg-[size:30px_30px]" />
+          <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/10 via-transparent to-purple-500/10 animate-pulse" />
+          
+          <div className="relative z-10 max-w-sm w-full mx-4 p-8 rounded-3xl bg-zinc-900 border border-cyan-500/20 text-center shadow-[0_0_50px_rgba(6,182,212,0.15)] flex flex-col items-center">
+            {/* Visual signal wave */}
+            <div className="w-20 h-20 rounded-full border-4 border-dashed border-cyan-500/30 animate-spin flex items-center justify-center mb-6">
+              <img src={incomingCallSession.avatar} className="w-16 h-16 rounded-full object-cover border-2 border-cyan-400 p-0.5" alt="Caller" />
+            </div>
+
+            <p className="text-[10px] text-cyan-400 uppercase tracking-[0.3em] font-black mb-1 animate-pulse">
+              INCOMING ONYX SECURE TELEMETRY LINE
+            </p>
+            <h2 className="text-xl font-bold text-white uppercase tracking-wider mb-2">
+              {incomingCallSession.name}
+            </h2>
+            <p className="text-xs text-zinc-500 uppercase tracking-widest mb-8">
+              REQ RATE SYNCED ({incomingCallSession.type})
+            </p>
+
+            {/* Glowing ring waves simulation */}
+            <div className="flex gap-1.5 items-center justify-center mb-10 h-6">
+              <span className="w-1.5 h-3 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.1s]" />
+              <span className="w-1.5 h-6 bg-cyan-500 rounded-full animate-bounce [animation-delay:0.2s]" />
+              <span className="w-1.5 h-4 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.3s]" />
+              <span className="w-1.5 h-6 bg-cyan-500 rounded-full animate-bounce [animation-delay:0.4s]" />
+              <span className="w-1.5 h-3 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.5s]" />
+            </div>
+
+            {/* Actions: Accept or Decline */}
+            <div className="flex justify-center gap-8 w-full">
+              {/* Decline Call Button */}
+              <button
+                onClick={() => {
+                  try {
+                    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.frequency.value = 180;
+                    osc.type = "sawtooth";
+                    gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.3);
+                  } catch (e) {}
+
+                  if (socket) {
+                    socket.emit("declineCall", {
+                      to: incomingCallSession.from,
+                      from: userProfile._id || 'me'
+                    });
+                  }
+                  setIncomingCallSession(null);
+                }}
+                className="w-16 h-16 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center transition-all cursor-pointer shadow-[0_0_20px_rgba(239,68,68,0.4)] active:scale-95 animate-pulse"
+                title="Decline Secure Connection"
+              >
+                <PhoneOff size={24} />
+              </button>
+
+              {/* Accept Call Button */}
+              <button
+                onClick={() => {
+                  try {
+                    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.frequency.value = 880;
+                    osc.type = "sine";
+                    gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.3);
+                  } catch(e) {}
+
+                  if (socket) {
+                    socket.emit("acceptCall", {
+                      to: incomingCallSession.from,
+                      from: userProfile._id || 'me'
+                    });
+                  }
+
+                  // Launch active call session full-screen
+                  setActiveCallSession({
+                    target: {
+                      id: incomingCallSession.from,
+                      name: incomingCallSession.name,
+                      avatar: incomingCallSession.avatar,
+                      otherId: incomingCallSession.from
+                    },
+                    type: incomingCallSession.type
+                  });
+
+                  setIncomingCallSession(null);
+                }}
+                className="w-16 h-16 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center transition-all cursor-pointer shadow-[0_0_20px_rgba(16,185,129,0.4)] active:scale-95"
+                title="Accept Secure Connection"
+              >
+                <div className="rotate-135">
+                  <Mic size={24} />
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="flex-1 flex overflow-hidden relative font-mono">
@@ -882,6 +1165,7 @@ export default function Messenger() {
           onToggleMute={handleToggleMute}
           onToggleBlock={handleToggleBlock}
           onDeleteChat={handleDeleteChat}
+          switchUser={switchUser}
         />
 
         <div id="viewport-right-frame" className={`flex-1 h-full overflow-hidden flex flex-col bg-zinc-950 ${
