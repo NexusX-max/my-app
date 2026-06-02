@@ -131,7 +131,7 @@ export default function Messenger() {
   }, [ambientSound]);
 
   useEffect(() => {
-    localStorage.setItem('onyx_biometric_lock', String(isBiometricLocked));
+    localStorage.setItem('onyx_token', String(isBiometricLocked));
   }, [isBiometricLocked]);
 
   // Tick the clock ahead by UTC standards
@@ -488,7 +488,7 @@ export default function Messenger() {
     // Un-delete if previously deleted
     setDeletedChatIds(prev => {
       const next = prev.filter(id => id !== tempConvId);
-      localStorage.setItem('onyx_deleted_nodes', JSON.stringify(next));
+      localStorage.setItem('onyx_token', JSON.stringify(next));
       return next;
     });
 
@@ -511,7 +511,7 @@ export default function Messenger() {
     setDynamicChats(prev => {
       if (prev.some(c => c.otherId === nodeUserId || c.id === tempConvId)) return prev;
       const next = [optimisticChat, ...prev];
-      localStorage.setItem('onyx_dynamic_chats', JSON.stringify(next));
+      localStorage.setItem('onyx_token', JSON.stringify(next));
       return next;
     });
 
