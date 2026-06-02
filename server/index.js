@@ -23,7 +23,7 @@ import reelRoutes from "./routes/reels.js";
 import groupRoutes from "./routes/group.js"; 
 import marketRoutes from "./routes/market.js";    
 import adminRoutes from "./routes/admin.js";      
-import messagesRoutes from "./routes/messages.js"; // এখানে কনভারসেশন রাউটস আছে
+import messagesRoutes from "./routes/messages.js"; 
 import aiRoutes from './routes/aiRoutes.js'; 
 import { getNeuralFeed } from "./controllers/feedController.js";
 import notificationRoutes from './routes/notificationRoutes.js';
@@ -58,6 +58,7 @@ app.use(cors({
 app.use(express.json({ limit: "150mb" }));
 app.use(express.urlencoded({ limit: "150mb", extended: true }));
 
+// Upload directory
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 app.use('/uploads', express.static(uploadDir));
@@ -69,7 +70,7 @@ const protect = async (req, res, next) => {
     try {
       const token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET || "onyx_drift_super_secret_key_2026");
-      req.user = { id: decoded.id || decoded._id || decoded.userId };
+      req.user = { _id: decoded.id || decoded._id || decoded.userId }; // _id ব্যবহার করা ভালো
       next();
     } catch (err) {
       res.status(401).json({ error: "Session expired." });
@@ -89,14 +90,19 @@ app.use('/api/ai', protect, aiRoutes);
 app.get("/api/feed", protect, getNeuralFeed);
 app.use("/api/posts", protect, postRoutes); 
 app.use("/api/groups", protect, groupRoutes);
-app.use("/api/messages", protect, messagesRoutes); // এখানে আপনার /api/messages রাউট হ্যান্ডেল হচ্ছে
+app.use("/api/messages", protect, messagesRoutes);
 app.use("/api/market", protect, marketRoutes);
 app.use("/api/admin", protect, adminRoutes);
 app.use('/api/v1/search', protect, searchRoutes); 
 
 /* ⚡ SOCKET.IO (Neural Sync Engine) */
-const io = new Server(server, { cors: { origin: allowedOrigins }, pingTimeout: 60000 });
-let onlineUsers = [];
+const io = new Server(server, { 
+    cors: { origin: allowedOrigins, credentials: true }, 
+    pingTimeout: 60000 
+});
+
+// রাউট থেকে যেন io ব্যবহার করা যায় তার জন্য
+app.set("io", io);
 
 const setupSocket = async () => {
   try {
@@ -112,23 +118,22 @@ const setupSocket = async () => {
   io.on("connection", (socket) => {
     const userId = socket.handshake.query.userId;
     if (userId) {
-      onlineUsers = onlineUsers.filter(u => u.userId !== userId);
-      onlineUsers.push({ userId, socketId: socket.id });
-      io.emit("getOnlineUsers", onlineUsers);
+      socket.join(userId); // ইউজারকে তার নিজস্ব রুমে জয়েন করানো
     }
+
+    socket.on("join_room", (conversationId) => {
+        socket.join(conversationId);
+    });
 
     socket.on('send_group_message', async (payload) => {
       const { groupId, text, mediaUrl, sender } = payload;
-      let processedUrl = mediaUrl;
-      // ... (আপনার আগের লজিক এখানে থাকবে)
-      const msg = await Message.create({ groupId, sender: sender._id, text, mediaUrl: processedUrl });
+      const msg = await Message.create({ groupId, sender: sender._id, text, mediaUrl });
       const populated = await msg.populate('sender', 'fullName username profilePic');
       io.to(`group_${groupId}`).emit('receive_group_message', populated);
     });
 
     socket.on("disconnect", () => {
-      onlineUsers = onlineUsers.filter(u => u.socketId !== socket.id);
-      io.emit("getOnlineUsers", onlineUsers);
+      console.log("User disconnected");
     });
   });
 };
