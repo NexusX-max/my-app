@@ -666,7 +666,18 @@ export default function Messenger() {
       })
       .catch(err => {
         console.warn("History API link offline. Reverting local mock messages history.");
-        setMessagesHistory(INITIAL_MESSAGES);
+        let fallbackKey = selectedChatId;
+        if (!INITIAL_MESSAGES[fallbackKey]) {
+          if (fallbackKey.includes("onyx")) fallbackKey = "bot-onyx";
+          else if (fallbackKey.includes("luna")) fallbackKey = "bot-luna";
+          else if (fallbackKey.includes("kaelen")) fallbackKey = "user-kaelen";
+          else if (fallbackKey.includes("sasha")) fallbackKey = "user-sasha";
+        }
+        const fallbackMsgs = INITIAL_MESSAGES[fallbackKey] || [];
+        setMessagesHistory(prev => ({
+          ...prev,
+          [selectedChatId]: fallbackMsgs
+        }));
       });
   }, [selectedChatId, api]);
 
@@ -874,7 +885,50 @@ export default function Messenger() {
 
     } catch (e) {
       console.warn("Failed sending server-side message. Resorting to local mock simulation logic:", e);
-      setIsAITyping(false);
+      
+      if (selectedChatDetails?.isBot) {
+        setTimeout(() => {
+          let aiResponseText = "";
+          const targetBot = selectedChatDetails.id || selectedChatId;
+          if (targetBot.includes("luna")) {
+            const lowText = (text || "").toLowerCase();
+            if (lowText.includes("tire") || lowText.includes("burn") || lowText.includes("stress")) {
+              aiResponseText = "🌱 [LUNAR SECURITY] Focus cycles indicate psychological hyper-intensity. Your biometric mesh matches baseline stress limits. Rest your eyes or select the Theta binaural hum soundscape in settings.";
+            } else {
+              aiResponseText = "🧠 [LUNAR INSIGHTS] Handshake acknowledged. Bio-telemetry looks stable. Onyx neural link keeps operations safe. Keep coding with breathing intervals.";
+            }
+          } else {
+            aiResponseText = `🤖 [ONYX COMPILER] Local database sync offline. Raw transmission packet parsed: "${text}". Secure terminal interface is operating normally at 100% standard index.`;
+          }
+
+          const botMsg = {
+            id: "msg-local-" + Date.now(),
+            sender: targetBot.includes("luna") ? "bot-luna" : "bot-onyx",
+            senderName: selectedChatDetails.name || "Core AI",
+            text: aiResponseText,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+
+          setMessagesHistory(prev => ({
+            ...prev,
+            [selectedChatId]: [...(prev[selectedChatId] || []).filter(m => m.id !== "usr-predict-" + Date.now()), botMsg]
+          }));
+
+          // Self destruct mechanism for simulated bot message as well
+          if (selfDestructDuration > 0) {
+            setTimeout(() => {
+              setMessagesHistory(prev => ({
+                ...prev,
+                [selectedChatId]: (prev[selectedChatId] || []).filter(item => item.id !== botMsg.id)
+              }));
+            }, selfDestructDuration * 1000);
+          }
+
+          setIsAITyping(false);
+        }, 1500);
+      } else {
+        setIsAITyping(false);
+      }
     }
   };
 
