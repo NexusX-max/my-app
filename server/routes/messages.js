@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose"; // mongoose ইমপোর্ট করুন
 import { protect } from "../middleware/authMiddleware.js";
 import User from "../models/User.js";
 import Conversation from "../models/Conversation.js";
@@ -21,7 +22,7 @@ router.get("/search-users/:query", protect, async (req, res) => {
         
         res.status(200).json(users);
     } catch (err) {
-        res.status(500).json({ error: "সার্চ সম্পন্ন করতে ব্যর্থ হয়েছে" });
+        res.status(500).json({ error: "সার্চ সম্পন্ন করতে ব্যর্থ হয়েছে" });
     }
 });
 
@@ -29,7 +30,10 @@ router.get("/search-users/:query", protect, async (req, res) => {
 router.post("/conversations/create", protect, async (req, res) => {
     try {
         const { otherId } = req.body;
-        if (!otherId) return res.status(400).json({ error: "অন্য ইউজার আইডি পাওয়া যায়নি" });
+        // আইডি ভ্যালিড কিনা চেক করুন
+        if (!otherId || !mongoose.Types.ObjectId.isValid(otherId)) {
+            return res.status(400).json({ error: "ইনভ্যালিড ইউজার আইডি" });
+        }
 
         const currentUserId = req.user._id;
 
@@ -65,7 +69,7 @@ router.get("/conversations", protect, async (req, res) => {
 
         res.status(200).json(result);
     } catch (err) {
-        res.status(500).json({ error: "কনভারসেশন লোড করতে সমস্যা হয়েছে" });
+        res.status(500).json({ error: "কনভারসেশন লোড করতে সমস্যা হয়েছে" });
     }
 });
 
@@ -74,6 +78,10 @@ router.post("/message", protect, async (req, res) => {
     try {
         const { conversationId, text, image } = req.body;
         const senderId = req.user._id;
+
+        if (!conversationId || !mongoose.Types.ObjectId.isValid(conversationId)) {
+            return res.status(400).json({ error: "ইনভ্যালিড কনভারসেশন আইডি" });
+        }
 
         const newMessage = await Message.create({
             conversationId,
@@ -87,15 +95,15 @@ router.post("/message", protect, async (req, res) => {
             updatedAt: Date.now(),
         });
 
-        // Socket.io পারফরম্যান্স চেক
         const io = req.app.get("io");
         if (io) {
+            // কনভারসেশন রুম অনুযায়ী মেসেজ পাঠানো
             io.to(conversationId).emit("receiveMessage", newMessage);
         }
 
         res.status(201).json(newMessage);
     } catch (err) {
-        res.status(500).json({ error: "মেসেজ পাঠানো সম্ভব হয়নি" });
+        res.status(500).json({ error: "মেসেজ পাঠানো সম্ভব হয়নি" });
     }
 });
 
@@ -103,6 +111,12 @@ router.post("/message", protect, async (req, res) => {
 router.get("/history/:conversationId", protect, async (req, res) => {
     try {
         const { conversationId } = req.params;
+        
+        // আইডি চেক করা বাধ্যতামূলক
+        if (!mongoose.Types.ObjectId.isValid(conversationId)) {
+            return res.status(400).json({ error: "ইনভ্যালিড হিস্ট্রি আইডি" });
+        }
+
         const messages = await Message.find({ conversationId })
             .sort({ createdAt: 1 });
         
