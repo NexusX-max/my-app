@@ -30,6 +30,7 @@ router.get("/search-users/:query", protect, async (req, res) => {
 router.post("/conversations/create", protect, async (req, res) => {
     try {
         const { otherId } = req.body;
+        // বোট বা কাস্টম আইডি চেক করা হচ্ছে
         const isBotOrCustom = ['onyx', 'luna', 'kaelen', 'sasha', 'bot-onyx', 'bot-luna', 'user-kaelen', 'user-sasha'].includes(otherId);
         
         if (!isBotOrCustom && (!otherId || !mongoose.Types.ObjectId.isValid(otherId))) {
@@ -94,7 +95,7 @@ router.post("/message", protect, async (req, res) => {
             image: image || null,
         });
 
-        // কনভারসেশন আপডেট (শুধুমাত্র মঙ্গো আইডি হলে)
+        // শুধুমাত্র মঙ্গোডিবি আইডি হলে কনভারসেশন লাস্ট মেসেজ আপডেট হবে
         if (mongoose.Types.ObjectId.isValid(conversationId)) {
             await Conversation.findByIdAndUpdate(conversationId, {
                 lastMessage: { text: image ? "📷 Image" : text, senderId },
@@ -112,23 +113,23 @@ router.post("/message", protect, async (req, res) => {
         res.status(500).json({ error: "মেসেজ পাঠানো সম্ভব হয়নি" });
     }
 });
-// ৫. Get Chat History (সবচেয়ে নিরাপদ ভার্সন)
+
+// 5. Get Chat History (সবচেয়ে নিরাপদ ভার্সন)
 router.get("/history/:conversationId", protect, async (req, res) => {
     try {
         const { conversationId } = req.params;
         
-        // এখানে কোনো 'isValid' চেক নেই। এটিই রুট কজ (Root Cause) হওয়ার কথা।
-        // সরাসরি আইডি দিয়ে মেসেজ খুঁজবে।
+        // এখানে কোনো ভ্যালিডেশন নেই, ফলে এটি সব ধরনের আইডি সাপোর্ট করবে
         const messages = await Message.find({ conversationId: conversationId })
             .sort({ createdAt: 1 })
             .lean();
         
-        // রেজাল্ট পাঠানো
         res.status(200).json(messages);
     } catch (err) {
         console.error("History Error:", err);
-        // এরর হলেও আমরা empty array পাঠাবো, যাতে ফ্রন্টএন্ড এরর না দেখায়
+        // এরর হলেও খালি অ্যারে পাঠিয়ে অ্যাপটিকে সচল রাখা হচ্ছে
         res.status(200).json([]);
     }
 });
+
 export default router;

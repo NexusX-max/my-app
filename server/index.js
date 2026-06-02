@@ -12,17 +12,16 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 
-// 🛠️ Config & Models & Routes
 import connectAllDB from "./config/db.js"; 
 import Message from "./models/Message.js"; 
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/user.js'; 
 import profileRoutes from './routes/profile.js'; 
 import postRoutes from "./routes/posts.js";
-import reelRoutes from "./routes/reels.js";        
+import reelRoutes from "./routes/reels.js"; 
 import groupRoutes from "./routes/group.js"; 
-import marketRoutes from "./routes/market.js";    
-import adminRoutes from "./routes/admin.js";      
+import marketRoutes from "./routes/market.js"; 
+import adminRoutes from "./routes/admin.js"; 
 import messagesRoutes from "./routes/messages.js"; 
 import aiRoutes from './routes/aiRoutes.js'; 
 import { getNeuralFeed } from "./controllers/feedController.js";
@@ -58,25 +57,25 @@ app.use(cors({
 app.use(express.json({ limit: "150mb" }));
 app.use(express.urlencoded({ limit: "150mb", extended: true }));
 
-// Upload directory
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 app.use('/uploads', express.static(uploadDir));
 
-// --- 🔐 Neural Link Protection ---
+// --- 🔐 Neural Link Protection (Refined) ---
 const protect = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer")) {
     try {
       const token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET || "onyx_drift_super_secret_key_2026");
-      req.user = { _id: decoded.id || decoded._id || decoded.userId }; // _id ব্যবহার করা ভালো
+      // ইউজার আইডি সাব এবং আইডি উভয়ই হ্যান্ডেল করা হলো
+      req.user = { _id: decoded.id || decoded.userId || decoded.sub };
       next();
     } catch (err) {
-      res.status(401).json({ error: "Session expired." });
+      return res.status(401).json({ error: "Session expired." });
     }
   } else {
-    res.status(401).json({ error: "Token missing." });
+    return res.status(401).json({ error: "Token missing." });
   }
 };
 
@@ -90,7 +89,7 @@ app.use('/api/ai', protect, aiRoutes);
 app.get("/api/feed", protect, getNeuralFeed);
 app.use("/api/posts", protect, postRoutes); 
 app.use("/api/groups", protect, groupRoutes);
-app.use("/api/messages", protect, messagesRoutes);
+app.use("/api/messages", protect, messagesRoutes); // এখানে আপনার messages.js রাউটটি কাজ করবে
 app.use("/api/market", protect, marketRoutes);
 app.use("/api/admin", protect, adminRoutes);
 app.use('/api/v1/search', protect, searchRoutes); 
@@ -101,7 +100,6 @@ const io = new Server(server, {
     pingTimeout: 60000 
 });
 
-// রাউট থেকে যেন io ব্যবহার করা যায় তার জন্য
 app.set("io", io);
 
 const setupSocket = async () => {
@@ -117,9 +115,7 @@ const setupSocket = async () => {
 
   io.on("connection", (socket) => {
     const userId = socket.handshake.query.userId;
-    if (userId) {
-      socket.join(userId); // ইউজারকে তার নিজস্ব রুমে জয়েন করানো
-    }
+    if (userId) socket.join(userId);
 
     socket.on("join_room", (conversationId) => {
         socket.join(conversationId);
@@ -127,13 +123,8 @@ const setupSocket = async () => {
 
     socket.on('send_group_message', async (payload) => {
       const { groupId, text, mediaUrl, sender } = payload;
-      const msg = await Message.create({ groupId, sender: sender._id, text, mediaUrl });
-      const populated = await msg.populate('sender', 'fullName username profilePic');
-      io.to(`group_${groupId}`).emit('receive_group_message', populated);
-    });
-
-    socket.on("disconnect", () => {
-      console.log("User disconnected");
+      const msg = await Message.create({ conversationId: `group_${groupId}`, senderId: sender._id, text, media: mediaUrl });
+      io.to(`group_${groupId}`).emit('receive_group_message', msg);
     });
   });
 };
