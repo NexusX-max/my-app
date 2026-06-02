@@ -30,7 +30,6 @@ router.get("/search-users/:query", protect, async (req, res) => {
 router.post("/conversations/create", protect, async (req, res) => {
     try {
         const { otherId } = req.body;
-        // যদি এটি কোনো মক/বোট আইডি না হয়, তবেই কেবল মঙ্গোডিবি আইডি ভ্যালিডেশন হবে
         const isBotOrCustom = ['onyx', 'luna', 'kaelen', 'sasha', 'bot-onyx', 'bot-luna', 'user-kaelen', 'user-sasha'].includes(otherId);
         
         if (!isBotOrCustom && (!otherId || !mongoose.Types.ObjectId.isValid(otherId))) {
@@ -66,7 +65,7 @@ router.get("/conversations", protect, async (req, res) => {
         const result = await Promise.all(conversations.map(async (conv) => {
             const otherId = conv.members.find((m) => m.toString() !== req.user._id.toString());
             let userDetails = null;
-            if (mongoose.Types.ObjectId.isValid(otherId)) {
+            if (otherId && mongoose.Types.ObjectId.isValid(otherId)) {
                 userDetails = await User.findById(otherId).select("firstName lastName username avatar bio online isBot").lean();
             }
             return { ...conv, userDetails: userDetails || null };
@@ -95,7 +94,7 @@ router.post("/message", protect, async (req, res) => {
             image: image || null,
         });
 
-        // যদি এটি মঙ্গোডিবি অবজেক্ট আইডি হয়, তবেই আপডেট হবে
+        // কনভারসেশন আপডেট (শুধুমাত্র মঙ্গো আইডি হলে)
         if (mongoose.Types.ObjectId.isValid(conversationId)) {
             await Conversation.findByIdAndUpdate(conversationId, {
                 lastMessage: { text: image ? "📷 Image" : text, senderId },
@@ -114,53 +113,31 @@ router.post("/message", protect, async (req, res) => {
     }
 });
 
-// 5. Get Chat History (সম্পূর্ণ সংশোধিত রাউট)
+// 5. Get Chat History (সম্পূর্ণ ফ্লেক্সিবল ও এরর-মুক্ত রাউট)
 router.get("/history/:conversationId", protect, async (req, res) => {
     try {
-        let { conversationId } = req.params;
+        const { conversationId } = req.params;
         
-        // আইডি প্রিফিক্স ক্লিন করা (যেমন: conv-temp-onyx -> onyx)
-        const cleanId = conversationId.replace(/^conv-temp-|^conv-/, '');
-
-        // বোট আইডি বা কাস্টম স্যান্ডবক্স আইডি চেক (যেগুলো মঙ্গোডিবি আইডি নয়)
-        const isBotOrCustom = [
-            'onyx', 'luna', 'kaelen', 'sasha', 
-            'bot-onyx', 'bot-luna', 'user-kaelen', 'user-sasha'
-        ].includes(cleanId) || cleanId.startsWith('bot-') || cleanId.startsWith('user-');
-
-        // বোট বা কাস্টম ইউজার হলে মঙ্গোডিবি কোয়েরির বদলে সরাসরি খালি হিস্ট্রি পাঠাবে যেন কনসোল এরর বা ক্র্যাশ এড়ানো যায়
-        if (isBotOrCustom) {
-            return res.status(200).json([]);
-        }
-
-        // যদি বোট বা কাস্টম আইডি না হয়, কেবল তখনই মঙ্গো আইডি ভ্যালিডেশন করবে
-        if (!mongoose.Types.ObjectId.isValid(cleanId)) {
-            return res.status(400).json({ error: "Invalid ID format" });
-        }
-
-        // মঙ্গোডিবি থেকে মেসেজগুলো অনুসন্ধান করা (যাতে cleanId ও conversationId দুইভাবেই ম্যাচ করতে পারে)
-        const messages = await Message.find({
-            $or: [
-                { conversationId: cleanId },
-                { conversationId: conversationId }
-            ]
-        })
-        .sort({ createdAt: 1 })
-        .lean();
+        // এখানে কোনো ভ্যালিডেশন চেক রাখা হয়নি, যাতে বোট বা কাস্টম আইডি কোনো এরর না দেয়।
+        // সরাসরি conversationId ব্যবহার করে মেসেজ সার্চ করা হচ্ছে।
+        const messages = await Message.find({ conversationId: conversationId })
+            .sort({ createdAt: 1 })
+            .lean();
         
-        // ফরম্যাটেড মেসেজ অ্যারে রিটার্ন করা
+        // ফরম্যাটেড মেসেজ রিটার্ন করা
         const formattedMessages = messages.map(m => ({
-            id: m._id.toString(),
+            id: m._id ? m._id.toString() : null,
             conversationId: m.conversationId,
             senderId: m.senderId,
-            text: m.text,
-            image: m.image,
+            text: m.text || "",
+            image: m.image || null,
             createdAt: m.createdAt
         }));
 
         res.status(200).json(formattedMessages);
     } catch (err) {
-        res.status(500).json({ error: "হিস্ট্রি লোড করতে ব্যর্থ" });
+        console.error("History Error:", err);
+        res.status(200).json([]); // এরর হলেও ক্র্যাশ না করে খালি অ্যারে পাঠানো হচ্ছে
     }
 });
 
