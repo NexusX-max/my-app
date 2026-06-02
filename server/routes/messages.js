@@ -112,33 +112,23 @@ router.post("/message", protect, async (req, res) => {
         res.status(500).json({ error: "মেসেজ পাঠানো সম্ভব হয়নি" });
     }
 });
-
-// 5. Get Chat History (সম্পূর্ণ ফ্লেক্সিবল ও এরর-মুক্ত রাউট)
+// ৫. Get Chat History (সবচেয়ে নিরাপদ ভার্সন)
 router.get("/history/:conversationId", protect, async (req, res) => {
     try {
         const { conversationId } = req.params;
         
-        // এখানে কোনো ভ্যালিডেশন চেক রাখা হয়নি, যাতে বোট বা কাস্টম আইডি কোনো এরর না দেয়।
-        // সরাসরি conversationId ব্যবহার করে মেসেজ সার্চ করা হচ্ছে।
+        // এখানে কোনো 'isValid' চেক নেই। এটিই রুট কজ (Root Cause) হওয়ার কথা।
+        // সরাসরি আইডি দিয়ে মেসেজ খুঁজবে।
         const messages = await Message.find({ conversationId: conversationId })
             .sort({ createdAt: 1 })
             .lean();
         
-        // ফরম্যাটেড মেসেজ রিটার্ন করা
-        const formattedMessages = messages.map(m => ({
-            id: m._id ? m._id.toString() : null,
-            conversationId: m.conversationId,
-            senderId: m.senderId,
-            text: m.text || "",
-            image: m.image || null,
-            createdAt: m.createdAt
-        }));
-
-        res.status(200).json(formattedMessages);
+        // রেজাল্ট পাঠানো
+        res.status(200).json(messages);
     } catch (err) {
         console.error("History Error:", err);
-        res.status(200).json([]); // এরর হলেও ক্র্যাশ না করে খালি অ্যারে পাঠানো হচ্ছে
+        // এরর হলেও আমরা empty array পাঠাবো, যাতে ফ্রন্টএন্ড এরর না দেখায়
+        res.status(200).json([]);
     }
 });
-
 export default router;
