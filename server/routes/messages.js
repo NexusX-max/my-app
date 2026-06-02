@@ -1,5 +1,5 @@
 import express from "express";
-import mongoose from "mongoose"; // mongoose ইমপোর্ট করুন
+import mongoose from "mongoose";
 import { protect } from "../middleware/authMiddleware.js";
 import User from "../models/User.js";
 import Conversation from "../models/Conversation.js";
@@ -7,7 +7,7 @@ import Message from "../models/Message.js";
 
 const router = express.Router();
 
-// ১. সার্চ ইউজার
+// 1. Search for users
 router.get("/search-users/:query", protect, async (req, res) => {
     try {
         const { query } = req.params;
@@ -26,11 +26,10 @@ router.get("/search-users/:query", protect, async (req, res) => {
     }
 });
 
-// ২. কনভারসেশন তৈরি বা খোঁজা
+// 2. Create or Get Conversation
 router.post("/conversations/create", protect, async (req, res) => {
     try {
         const { otherId } = req.body;
-        // আইডি ভ্যালিড কিনা চেক করুন
         if (!otherId || !mongoose.Types.ObjectId.isValid(otherId)) {
             return res.status(400).json({ error: "ইনভ্যালিড ইউজার আইডি" });
         }
@@ -54,7 +53,7 @@ router.post("/conversations/create", protect, async (req, res) => {
     }
 });
 
-// ৩. কনভারসেশন লিস্ট আনা
+// 3. Get user conversations
 router.get("/conversations", protect, async (req, res) => {
     try {
         const conversations = await Conversation.find({
@@ -73,13 +72,14 @@ router.get("/conversations", protect, async (req, res) => {
     }
 });
 
-// ৪. মেসেজ পাঠানো (Socket.io সহ)
+// 4. Send Message
 router.post("/message", protect, async (req, res) => {
     try {
         const { conversationId, text, image } = req.body;
         const senderId = req.user._id;
 
-        if (!conversationId || !mongoose.Types.ObjectId.isValid(conversationId)) {
+        // এখানেও বোট চ্যাটের জন্য চেক রাখা ভালো, তবে আপাতত আগের মতোই রাখা হলো
+        if (!conversationId) {
             return res.status(400).json({ error: "ইনভ্যালিড কনভারসেশন আইডি" });
         }
 
@@ -90,14 +90,16 @@ router.post("/message", protect, async (req, res) => {
             image: image || null,
         });
 
-        await Conversation.findByIdAndUpdate(conversationId, {
-            lastMessage: { text: image ? "📷 Image" : text, senderId },
-            updatedAt: Date.now(),
-        });
+        // যদি এটি মঙ্গোডিবি অবজেক্ট আইডি হয়, তবেই আপডেট হবে
+        if (mongoose.Types.ObjectId.isValid(conversationId)) {
+            await Conversation.findByIdAndUpdate(conversationId, {
+                lastMessage: { text: image ? "📷 Image" : text, senderId },
+                updatedAt: Date.now(),
+            });
+        }
 
         const io = req.app.get("io");
         if (io) {
-            // কনভারসেশন রুম অনুযায়ী মেসেজ পাঠানো
             io.to(conversationId).emit("receiveMessage", newMessage);
         }
 
@@ -107,18 +109,25 @@ router.post("/message", protect, async (req, res) => {
     }
 });
 
-// ৫. চ্যাট হিস্ট্রি
+// 5. Get Chat History (সংশোধিত রাউট)
 router.get("/history/:conversationId", protect, async (req, res) => {
     try {
-        const { conversationId } = req.params;
+        let { conversationId } = req.params;
         
-        // আইডি চেক করা বাধ্যতামূলক
-        if (!mongoose.Types.ObjectId.isValid(conversationId)) {
-            return res.status(400).json({ error: "ইনভ্যালিড হিস্ট্রি আইডি" });
+        // আইডি প্রিফিক্স ক্লিন করা (যেমন: conv-temp-onyx -> onyx)
+        const cleanId = conversationId.replace(/^conv-temp-|^conv-/, '');
+
+        // বোট আইডি বা কাস্টম আইডি চেক (যেগুলো মঙ্গোডিবি আইডি নয়)
+        const isBotOrCustom = ['onyx', 'luna', 'bot-onyx', 'bot-luna'].includes(cleanId) || cleanId.startsWith('bot-');
+
+        // যদি বোট বা কাস্টম আইডি না হয়, কেবল তখনই মঙ্গো আইডি ভ্যালিডেশন করবে
+        if (!isBotOrCustom && !mongoose.Types.ObjectId.isValid(cleanId)) {
+            return res.status(400).json({ error: "Invalid ID format" });
         }
 
-        const messages = await Message.find({ conversationId })
-            .sort({ createdAt: 1 });
+        const messages = await Message.find({ conversationId: cleanId })
+            .sort({ createdAt: 1 })
+            .lean();
         
         res.status(200).json(messages);
     } catch (err) {
