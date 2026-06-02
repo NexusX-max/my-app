@@ -662,6 +662,8 @@ export default function Messenger() {
             ...prev,
             [selectedChatId]: formattedMsgs
           }));
+        } else {
+          throw new Error("Invalid array payload received. Reverting to local store.");
         }
       })
       .catch(err => {
@@ -846,7 +848,9 @@ export default function Messenger() {
       loadAllConversations();
 
       setTimeout(() => {
-        const historyApi = api ? api.get(`/messages/history/${selectedChatId}`).then(res => res.data) : fetch(`/api/messages/history/${selectedChatId}`).then(res => res.json());
+        const historyApi = api 
+          ? api.get(`/messages/history/${selectedChatId}`).then(res => res.data) 
+          : fetch(`/api/messages/history/${selectedChatId}`).then(res => res.json());
 
         historyApi
           .then(data => {
@@ -879,6 +883,10 @@ export default function Messenger() {
                 });
               }
             }
+            setIsAITyping(false);
+          })
+          .catch(err => {
+            console.warn("Failed retrieving history update. Retaining local predictive state:", err);
             setIsAITyping(false);
           });
       }, 1600);

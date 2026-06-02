@@ -643,7 +643,7 @@ const CallScreen = ({
               ? 'grid-cols-1 lg:grid-cols-3' 
               : isGroupMode 
                 ? 'grid-cols-2 lg:grid-cols-2' 
-                : 'grid-cols-1 sm:grid-cols-2'
+                : 'grid-cols-2 sm:grid-cols-2'
           }`}>
 
             {/* Screen Share Stream Container */}
@@ -686,13 +686,24 @@ const CallScreen = ({
 
               {/* Real Camera Video Output */}
               {!isVideoOff && (
-                <video 
-                  ref={localVideoRef} 
-                  autoPlay 
-                  playsInline 
-                  muted 
-                  className="absolute inset-0 w-full h-full object-cover"
-                />
+                localStream ? (
+                  <video 
+                    ref={localVideoRef} 
+                    autoPlay 
+                    playsInline 
+                    muted 
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                ) : (
+                  <video 
+                    src="https://assets.mixkit.co/videos/preview/mixkit-young-man-with-headphones-talking-40193-large.mp4"
+                    autoPlay 
+                    loop 
+                    muted 
+                    playsInline 
+                    className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-85"
+                  />
+                )
               )}
 
               {/* Dynamic Virtual background and Portrait Face Tracking Mock brackets */}
