@@ -30,7 +30,10 @@ router.get("/search-users/:query", protect, async (req, res) => {
 router.post("/conversations/create", protect, async (req, res) => {
     try {
         const { otherId } = req.body;
-        if (!otherId || !mongoose.Types.ObjectId.isValid(otherId)) {
+        // যদি এটি কোনো মক/বোট আইডি না হয়, তবেই কেবল মঙ্গোডিবি আইডি ভ্যালিডেশন হবে
+        const isBotOrCustom = ['onyx', 'luna', 'kaelen', 'sasha', 'bot-onyx', 'bot-luna', 'user-kaelen', 'user-sasha'].includes(otherId);
+        
+        if (!isBotOrCustom && (!otherId || !mongoose.Types.ObjectId.isValid(otherId))) {
             return res.status(400).json({ error: "ইনভ্যালিড ইউজার আইডি" });
         }
 
@@ -62,7 +65,10 @@ router.get("/conversations", protect, async (req, res) => {
 
         const result = await Promise.all(conversations.map(async (conv) => {
             const otherId = conv.members.find((m) => m.toString() !== req.user._id.toString());
-            const userDetails = await User.findById(otherId).select("firstName lastName username avatar bio online isBot").lean();
+            let userDetails = null;
+            if (mongoose.Types.ObjectId.isValid(otherId)) {
+                userDetails = await User.findById(otherId).select("firstName lastName username avatar bio online isBot").lean();
+            }
             return { ...conv, userDetails: userDetails || null };
         }));
 
@@ -78,7 +84,6 @@ router.post("/message", protect, async (req, res) => {
         const { conversationId, text, image } = req.body;
         const senderId = req.user._id;
 
-        // এখানেও বোট চ্যাটের জন্য চেক রাখা ভালো, তবে আপাতত আগের মতোই রাখা হলো
         if (!conversationId) {
             return res.status(400).json({ error: "ইনভ্যালিড কনভারসেশন আইডি" });
         }
@@ -109,7 +114,7 @@ router.post("/message", protect, async (req, res) => {
     }
 });
 
-// 5. Get Chat History (সংশোধিত রাউট)
+// 5. Get Chat History (সম্পূর্ণ সংশোধিত রাউট)
 router.get("/history/:conversationId", protect, async (req, res) => {
     try {
         let { conversationId } = req.params;
@@ -117,19 +122,43 @@ router.get("/history/:conversationId", protect, async (req, res) => {
         // আইডি প্রিফিক্স ক্লিন করা (যেমন: conv-temp-onyx -> onyx)
         const cleanId = conversationId.replace(/^conv-temp-|^conv-/, '');
 
-        // বোট আইডি বা কাস্টম আইডি চেক (যেগুলো মঙ্গোডিবি আইডি নয়)
-        const isBotOrCustom = ['onyx', 'luna', 'bot-onyx', 'bot-luna'].includes(cleanId) || cleanId.startsWith('bot-');
+        // বোট আইডি বা কাস্টম স্যান্ডবক্স আইডি চেক (যেগুলো মঙ্গোডিবি আইডি নয়)
+        const isBotOrCustom = [
+            'onyx', 'luna', 'kaelen', 'sasha', 
+            'bot-onyx', 'bot-luna', 'user-kaelen', 'user-sasha'
+        ].includes(cleanId) || cleanId.startsWith('bot-') || cleanId.startsWith('user-');
+
+        // বোট বা কাস্টম ইউজার হলে মঙ্গোডিবি কোয়েরির বদলে সরাসরি খালি হিস্ট্রি পাঠাবে যেন কনসোল এরর বা ক্র্যাশ এড়ানো যায়
+        if (isBotOrCustom) {
+            return res.status(200).json([]);
+        }
 
         // যদি বোট বা কাস্টম আইডি না হয়, কেবল তখনই মঙ্গো আইডি ভ্যালিডেশন করবে
-        if (!isBotOrCustom && !mongoose.Types.ObjectId.isValid(cleanId)) {
+        if (!mongoose.Types.ObjectId.isValid(cleanId)) {
             return res.status(400).json({ error: "Invalid ID format" });
         }
 
-        const messages = await Message.find({ conversationId: cleanId })
-            .sort({ createdAt: 1 })
-            .lean();
+        // মঙ্গোডিবি থেকে মেসেজগুলো অনুসন্ধান করা (যাতে cleanId ও conversationId দুইভাবেই ম্যাচ করতে পারে)
+        const messages = await Message.find({
+            $or: [
+                { conversationId: cleanId },
+                { conversationId: conversationId }
+            ]
+        })
+        .sort({ createdAt: 1 })
+        .lean();
         
-        res.status(200).json(messages);
+        // ফরম্যাটেড মেসেজ অ্যারে রিটার্ন করা
+        const formattedMessages = messages.map(m => ({
+            id: m._id.toString(),
+            conversationId: m.conversationId,
+            senderId: m.senderId,
+            text: m.text,
+            image: m.image,
+            createdAt: m.createdAt
+        }));
+
+        res.status(200).json(formattedMessages);
     } catch (err) {
         res.status(500).json({ error: "হিস্ট্রি লোড করতে ব্যর্থ" });
     }
