@@ -43,6 +43,7 @@
     "cookie-parser": "^1.4.7",
     "crypto-js": "^4.2.0",
     "date-fns": "^4.1.0",
+    "dotenv": "^17.4.2",
     "emoji-picker-react": "^4.19.1",
     "events": "^3.3.0",
     "express-rate-limit": "^8.2.1",

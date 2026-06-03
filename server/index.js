@@ -12,7 +12,6 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 
-// --- ⚙️ Modules & Routes Import ---
 import connectAllDB from "./config/db.js"; 
 import Message from "./models/Message.js"; 
 import authRoutes from './routes/authRoutes.js';
@@ -48,11 +47,8 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin) || origin.includes("localhost") || origin.includes("run.app") || origin.includes("ais-")) {
-      callback(null, true);
-    } else {
-      callback(new Error('Neural Network Access Denied'));
-    }
+    if (!origin || allowedOrigins.includes(origin)) callback(null, true);
+    else callback(new Error('Neural Network Access Denied'));
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
@@ -65,46 +61,25 @@ const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 app.use('/uploads', express.static(uploadDir));
 
-// --- 🔐 Neural Link Protection (Refined & Fully Adaptive) ---
+// --- 🔐 Neural Link Protection (Refined) ---
 const protect = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer")) {
     try {
       const token = authHeader.split(" ")[1];
-      
-      // Sandbox fallback token support
-      if (token === "sandbox_token_signature" || token === "onyx_token" || token === "null" || !token) {
-        req.user = { id: "me", _id: "me", username: "me_operator" };
-        return next();
-      }
-
       const decoded = jwt.verify(token, process.env.JWT_SECRET || "onyx_drift_super_secret_key_2026");
-      const decodedId = decoded.id || decoded.userId || decoded.sub || decoded._id || "me";
-      
-      req.user = { 
-        id: decodedId, 
-        _id: decodedId,
-        username: decoded.username || "operator",
-        ...decoded
-      };
+      // ইউজার আইডি সাব এবং আইডি উভয়ই হ্যান্ডেল করা হলো
+      req.user = { _id: decoded.id || decoded.userId || decoded.sub };
       next();
     } catch (err) {
-      if (!process.env.MONGO_URI) {
-        req.user = { id: "me", _id: "me", username: "me_operator" };
-        return next();
-      }
       return res.status(401).json({ error: "Session expired." });
     }
   } else {
-    if (!process.env.MONGO_URI) {
-      req.user = { id: "me", _id: "me", username: "me_operator" };
-      return next();
-    }
     return res.status(401).json({ error: "Token missing." });
   }
 };
 
-/* 🚀 API ROUTES REGISTRATION */
+/* 🚀 API ROUTES */
 app.use('/api/auth', authRoutes); 
 app.use("/api/profile", protect, profileRoutes); 
 app.use("/api/users", protect, userRoutes); 
@@ -114,26 +89,15 @@ app.use('/api/ai', protect, aiRoutes);
 app.get("/api/feed", protect, getNeuralFeed);
 app.use("/api/posts", protect, postRoutes); 
 app.use("/api/groups", protect, groupRoutes);
-app.use("/api/messages", protect, messagesRoutes); // আপনার ফিক্সড messages.js রাউট
+app.use("/api/messages", protect, messagesRoutes); // এখানে আপনার messages.js রাউটটি কাজ করবে
 app.use("/api/market", protect, marketRoutes);
 app.use("/api/admin", protect, adminRoutes);
 app.use('/api/v1/search', protect, searchRoutes); 
 
-app.get("/api/health", (req, res) => {
-  res.json({
-    status: "online",
-    uptime: process.uptime(),
-    node: "ONYX-CORE-MAIN"
-  });
-});
-
 /* ⚡ SOCKET.IO (Neural Sync Engine) */
 const io = new Server(server, { 
-  cors: { 
-    origin: allowedOrigins, 
-    credentials: true 
-  }, 
-  pingTimeout: 60000 
+    cors: { origin: allowedOrigins, credentials: true }, 
+    pingTimeout: 60000 
 });
 
 app.set("io", io);
@@ -149,51 +113,30 @@ const setupSocket = async () => {
     console.warn("⚠️ Redis Failed, using Local Memory Adapter");
   }
 
-  const activeUsers = new Map();
-  app.set("activeUsers", activeUsers);
-
   io.on("connection", (socket) => {
-    const userId = socket.handshake.query.userId || socket.handshake.query.uid;
-    if (userId) {
-      activeUsers.set(userId, socket.id);
-      socket.join(userId);
-    }
+    const userId = socket.handshake.query.userId;
+    if (userId) socket.join(userId);
 
     socket.on("join_room", (conversationId) => {
-      socket.join(conversationId);
-    });
-
-    socket.on("addNewUser", (uid) => {
-      if (uid) activeUsers.set(uid, socket.id);
+        socket.join(conversationId);
     });
 
     socket.on('send_group_message', async (payload) => {
-      try {
-        const { groupId, text, mediaUrl, sender } = payload;
-        const msg = await Message.create({ 
-          conversationId: `group_${groupId}`, 
-          senderId: sender._id, 
-          text, 
-          image: mediaUrl 
-        });
-        io.to(`group_${groupId}`).emit('receive_group_message', msg);
-      } catch (err) {
-        console.warn("⚠️ Group message storage failed:", err.message);
-      }
+      const { groupId, text, mediaUrl, sender } = payload;
+      const msg = await Message.create({ conversationId: `group_${groupId}`, senderId: sender._id, text, media: mediaUrl });
+      io.to(`group_${groupId}`).emit('receive_group_message', msg);
     });
   });
 };
 
 const startApp = async () => {
   try {
-    if (connectAllDB) {
-      await connectAllDB();
-    }
+    await connectAllDB();
     await setupSocket();
     const PORT = process.env.PORT || 5005;
     server.listen(PORT, '0.0.0.0', () => console.log(`🚀 ONYX CORE ACTIVE: ${PORT}`));
   } catch (error) {
-    console.error("❌ FAILURE DURING BOOTUP:", error.message);
+    console.error("❌ FAILURE:", error.message);
   }
 };
 
