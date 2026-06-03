@@ -18,6 +18,7 @@ import SettingsScreen from '../components/SettingsScreen';
 import BiometricScreen from '../components/BiometricScreen';
 import SearchScreen from './SearchScreen';
 import { ShieldAlert, Clock } from 'lucide-react';
+
 export default function Messenger() {
   const { user, api, socket, currentNode, switchUser } = useAuth();
 
@@ -49,7 +50,89 @@ export default function Messenger() {
     return saved ? JSON.parse(saved) : INITIAL_GROUPS;
   });
 
-  const [messagesHistory, setMessagesHistory] = useState({});
+  const [messagesHistory, setMessagesHistory] = useState(() => {
+    const saved = localStorage.getItem('onyx_messages_history_v2');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const [stories, setStories] = useState(() => {
+    const saved = localStorage.getItem('onyx_stories');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.map(st => {
+            // Auto migrate old stored configurations if they exist
+            if (st.userId && !st.nodeId) {
+              return {
+                id: st.id,
+                nodeId: st.userId,
+                nodeName: st.userName || "Operator",
+                nodeAvatar: st.avatar,
+                timestamp: st.timestamp || "Just now",
+                media: st.slides?.[0]?.url || "bg-gradient-to-tr from-cyan-950 via-zinc-900 to-purple-950",
+                caption: st.slides?.[0]?.caption || "Neural link synchronized"
+              };
+            }
+            return st;
+          });
+        }
+      } catch (e) {
+        localStorage.removeItem('onyx_stories');
+      }
+    }
+    return [
+      {
+        id: "st-1",
+        nodeId: "bot-onyx",
+        nodeName: "Onyx Core",
+        nodeAvatar: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80",
+        timestamp: "5m ago",
+        media: "https://images.unsplash.com/photo-1618055182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80",
+        caption: "✨ Onyx compiler index running at 100% nominal speed."
+      },
+      {
+        id: "st-2",
+        nodeId: "bot-luna",
+        nodeName: "Advisor Luna",
+        nodeAvatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80",
+        timestamp: "1h ago",
+        media: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=600&q=80",
+        caption: "🌱 Morning telemetry check complete. Rest your eyes!"
+      }
+    ];
+  });
+
+  const [broadcastChannels, setBroadcastChannels] = useState(() => {
+    const saved = localStorage.getItem('onyx_channels_list_v2');
+    return saved ? JSON.parse(saved) : [
+      {
+        id: "chan-onyx-news",
+        name: "📢 Onyx Intelligence Bulletin",
+        avatar: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=150&q=80",
+        lastMsg: "New decryption cipher module launched in Citadel Hub.",
+        time: "Just now",
+        isChannel: true,
+        joined: true,
+        subscribers: 1024,
+        description: "Official bulletins and news regarding Core Citadel encryption developments.",
+        role: "owner"
+      },
+      {
+        id: "chan-cyber-weekly",
+        name: "📡 Cyber Weekly Feed",
+        avatar: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80",
+        lastMsg: "Establishing secure multi-party call relays inside WebRTC sub-decks.",
+        time: "09:30 AM",
+        isChannel: true,
+        joined: false,
+        subscribers: 256,
+        description: "Weekly telemetry updates covering cryptographic protocols and deep web links.",
+        role: "guest"
+      }
+    ];
+  });
+
   const [searchedNodes, setSearchedNodes] = useState([]);
   const [unreadChatIds, setUnreadChatIds] = useState([]);
   const [incomingCallSession, setIncomingCallSession] = useState(null);
@@ -121,6 +204,18 @@ export default function Messenger() {
   useEffect(() => {
     localStorage.setItem('onyx_groups_node', JSON.stringify(groupList));
   }, [groupList]);
+
+  useEffect(() => {
+    localStorage.setItem('onyx_messages_history_v2', JSON.stringify(messagesHistory));
+  }, [messagesHistory]);
+
+  useEffect(() => {
+    localStorage.setItem('onyx_stories', JSON.stringify(stories));
+  }, [stories]);
+
+  useEffect(() => {
+    localStorage.setItem('onyx_channels_list_v2', JSON.stringify(broadcastChannels));
+  }, [broadcastChannels]);
 
   useEffect(() => {
     localStorage.setItem('onyx_accent_node', JSON.stringify(activeAccent));
@@ -746,7 +841,12 @@ export default function Messenger() {
 
   const isSecurityLockOpen = isBiometricLocked && !isAppUnlocked;
 
-  const filteredChatList = chatList
+  const combinedChatList = [
+    ...chatList,
+    ...broadcastChannels
+  ];
+
+  const filteredChatList = combinedChatList
     .filter(c => !deletedChatIds.includes(c.id))
     .map(c => ({
       ...c,
@@ -763,8 +863,28 @@ export default function Messenger() {
   const activeMessages = messagesHistory[selectedChatId] || [];
 
   // --- Direct Chat message triggers & AI Core integrations ---
-  const handleSendMessage = async ({ text, file }) => {
+  const handleSendMessage = async ({ text, file, replyTo }) => {
     const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    if (selectedChatDetails?.isChannel) {
+      const newMessage = {
+        id: "chanMsg-" + Date.now(),
+        sender: "me",
+        senderName: userProfile.name,
+        text: text,
+        time: timeString,
+        isCreator: true,
+        replyTo: replyTo || null
+      };
+
+      setMessagesHistory(prev => ({
+        ...prev,
+        [selectedChatId]: [...(prev[selectedChatId] || []), newMessage]
+      }));
+
+      setBroadcastChannels(prev => prev.map(ch => ch.id === selectedChatId ? { ...ch, lastMsg: `Broadcast: ${text}`, time: 'Just now' } : ch));
+      return;
+    }
 
     if (isSelectedChatGroup) {
       const newMessage = {
@@ -772,7 +892,8 @@ export default function Messenger() {
         sender: "me",
         senderName: userProfile.name,
         text: text,
-        time: timeString
+        time: timeString,
+        replyTo: replyTo || null
       };
 
       setMessagesHistory(prev => ({
@@ -806,7 +927,8 @@ export default function Messenger() {
       senderName: userProfile.name,
       text: text,
       file: file,
-      time: timeString
+      time: timeString,
+      replyTo: replyTo || null
     };
 
     setMessagesHistory(prev => ({
@@ -1020,6 +1142,147 @@ export default function Messenger() {
     }
   };
 
+  const handleAddStory = ({ caption, media, bgPreset }) => {
+    const finalMedia = media || bgPreset || "bg-gradient-to-tr from-cyan-950 via-zinc-900 to-purple-950";
+    const newStory = {
+      id: "st-" + Date.now(),
+      nodeId: "me",
+      nodeName: userProfile.name,
+      nodeAvatar: userProfile.avatar,
+      timestamp: "Just now",
+      media: finalMedia,
+      caption: caption || "New neural sequence published +++"
+    };
+
+    setStories(prev => {
+      // Keep only one story from "me" to avoid list bloat, placing the latest first
+      return [
+        newStory,
+        ...prev.filter(s => s.nodeId !== "me")
+      ];
+    });
+
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.1);
+    } catch(e) {}
+  };
+
+  const handleCreateChannel = ({ name, description, avatar }) => {
+    const newChan = {
+      id: "chan-" + Date.now(),
+      name: name || "📢 Private Broadcast Network",
+      avatar: avatar || "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=150&q=80",
+      lastMsg: "Broadcast channel initialized. Ready to transmit bulletin data.",
+      time: "Just now",
+      isChannel: true,
+      joined: true,
+      subscribers: 1,
+      description: description || "No coordinates specified.",
+      role: "owner"
+    };
+
+    setBroadcastChannels(prev => [...prev, newChan]);
+
+    setMessagesHistory(prev => ({
+      ...prev,
+      [newChan.id]: [
+        {
+          id: "m-init-" + Date.now(),
+          sender: "system",
+          senderName: "SYSTEM CORE",
+          text: `📢 Welcome to the Channel Bulletin Hub: "${newChan.name}". Broadcaster logs synced and active. Ready to broadcast.`,
+          time: "Just now"
+        }
+      ]
+    }));
+
+    setSelectedChatId(newChan.id);
+  };
+
+  const handleJoinChannel = (channelId) => {
+    setBroadcastChannels(prev => prev.map(ch => {
+      if (ch.id === channelId) {
+        try {
+          const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); 
+          osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.1); 
+          gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.35);
+        } catch(e) {}
+
+        return {
+          ...ch,
+          joined: true,
+          subscribers: ch.subscribers + 1,
+          lastMsg: `Joined channel Bulletin successfully.`
+        };
+      }
+      return ch;
+    }));
+
+    setMessagesHistory(prev => ({
+      ...prev,
+      [channelId]: [
+        ...(prev[channelId] || []),
+        {
+          id: "m-sys-join" + Date.now(),
+          sender: "system",
+          senderName: "SYSTEM CORE",
+          text: `🔑 Secure client link authenticated successfully. Broadcast streams synchronized at node: ${channelId}. Welcome!`,
+          time: "Just now"
+        }
+      ]
+    }));
+  };
+
+  const handleEditMessage = (chatId, messageId, newText) => {
+    setMessagesHistory(prev => {
+      const msgs = prev[chatId] || [];
+      const updated = msgs.map(m => m.id === messageId ? { ...m, text: newText, isEdited: true } : m);
+      return {
+        ...prev,
+        [chatId]: updated
+      };
+    });
+  };
+
+  const handleForwardMessage = (targetChatId, text) => {
+    const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const forwardPayload = {
+      id: "usr-forward-" + Date.now(),
+      sender: "me",
+      senderName: userProfile.name,
+      text: text,
+      time: timeString
+    };
+
+    setMessagesHistory(prev => ({
+      ...prev,
+      [targetChatId]: [...(prev[targetChatId] || []), forwardPayload]
+    }));
+
+    if (targetChatId.startsWith("group-")) {
+      setGroupList(prev => prev.map(g => g.id === targetChatId ? { ...g, lastMsg: `You: ${text}`, time: 'Just now' } : g));
+    } else if (targetChatId.startsWith("chan-")) {
+      setBroadcastChannels(prev => prev.map(ch => ch.id === targetChatId ? { ...ch, lastMsg: `Broadcast: ${text}`, time: 'Just now' } : ch));
+    } else {
+      setChatList(prev => prev.map(ch => ch.id === targetChatId ? { ...ch, lastMsg: `You: ${text}`, time: 'Just now' } : ch));
+    }
+  };
+
   const handleDeleteMessage = (messageId) => {
     setMessagesHistory(prev => ({
       ...prev,
@@ -1228,6 +1491,11 @@ export default function Messenger() {
           onToggleBlock={handleToggleBlock}
           onDeleteChat={handleDeleteChat}
           switchUser={switchUser}
+          stories={stories}
+          onAddStory={handleAddStory}
+          broadcastChannels={broadcastChannels}
+          onCreateChannel={handleCreateChannel}
+          onJoinChannel={handleJoinChannel}
         />
 
         <div id="viewport-right-frame" className={`flex-1 h-full overflow-hidden flex flex-col bg-zinc-950 ${
@@ -1288,6 +1556,9 @@ export default function Messenger() {
                   onToggleMute={handleToggleMute}
                   onToggleBlock={handleToggleBlock}
                   onDeleteChat={handleDeleteChat}
+                  onJoinChannel={handleJoinChannel}
+                  onEditMessage={handleEditMessage}
+                  onForwardMessage={handleForwardMessage}
                 />
               </div>
 

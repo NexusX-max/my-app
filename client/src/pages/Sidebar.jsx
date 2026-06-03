@@ -1,7 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Search, Shield, Users, MessageSquareCode, Zap, Volume2, 
-  VolumeX, PhoneCall, Video, Settings, Ban, Trash2 
+  VolumeX, PhoneCall, Video, Settings, Ban, Trash2, Radio, Plus, Film, ChevronRight, ChevronLeft, X, Send, Eye, Network
 } from 'lucide-react';
 
 const GROUP_AVATAR_PRESETS = [
@@ -35,7 +35,12 @@ const Sidebar = ({
   onToggleMute,
   onToggleBlock,
   onDeleteChat,
-  switchUser
+  switchUser,
+  stories = [],
+  onAddStory = () => {},
+  channelsList = [],
+  onCreateChannel = () => {},
+  onJoinChannel = () => {}
 }) => {
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
@@ -52,6 +57,11 @@ const Sidebar = ({
   const startTimeRef = useRef(0);
   const hasTriggeredRef = useRef(false);
   const touchStartRef = useRef({ x: 0, y: 0 });
+
+  const [isCreatingChannel, setIsCreatingChannel] = useState(false);
+  const [newChannelName, setNewChannelName] = useState("");
+  const [newChannelDesc, setNewChannelDesc] = useState("");
+  const [selectedChannelAvatar, setSelectedChannelAvatar] = useState("https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80");
 
   const handleStartHold = (e, chat) => {
     // Only target direct primary click or touch actions
@@ -270,28 +280,39 @@ const Sidebar = ({
       </header>
 
       {/* Primary Tab Toggles */}
-      <div className="px-5 mb-2 flex gap-2">
+      <div className="px-5 mb-2 flex gap-1.5 scrollbar-none overflow-x-auto">
         <button
           onClick={() => setActiveTab('chats')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-mono text-xs uppercase tracking-wider transition-all border ${
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl font-mono text-[10px] uppercase tracking-wider transition-all border shrink-0 ${
             activeTab === 'chats' 
               ? `bg-zinc-900 border-cyan-500/20 text-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.08)]` 
               : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300'
           }`}
         >
-          <MessageSquareCode size={13} />
-          Direct Links
+          <MessageSquareCode size={12} />
+          Directs
         </button>
         <button
           onClick={() => setActiveTab('groups')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-mono text-xs uppercase tracking-wider transition-all border ${
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl font-mono text-[10px] uppercase tracking-wider transition-all border shrink-0 ${
             activeTab === 'groups' 
               ? 'bg-zinc-900 border-purple-500/20 text-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.08)]' 
               : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300'
           }`}
         >
-          <Users size={13} />
-          Group Hubs
+          <Users size={12} />
+          Groups
+        </button>
+        <button
+          onClick={() => setActiveTab('channels')}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl font-mono text-[10px] uppercase tracking-wider transition-all border shrink-0 ${
+            activeTab === 'channels' 
+              ? 'bg-zinc-900 border-pink-500/20 text-pink-400 shadow-[0_0_10px_rgba(244,63,94,0.08)]' 
+              : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300'
+          }`}
+        >
+          <Radio size={12} />
+          Channels
         </button>
       </div>
 
@@ -434,7 +455,7 @@ const Sidebar = ({
               <p className="text-zinc-505 font-mono text-xs">No direct neural paths found.</p>
             </div>
           )
-        ) : (
+        ) : activeTab === 'groups' ? (
           <>
             {/* GROUP CREATION PANEL */}
             <div className="mb-4">
@@ -624,6 +645,144 @@ const Sidebar = ({
                 <p className="text-zinc-550 font-mono text-xs">No active group hubs linked.</p>
               </div>
             )}
+          </>
+        ) : (
+          <>
+            {/* CHANNELS PANEL */}
+            <div className="mb-4">
+              {!isCreatingChannel ? (
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingChannel(true)}
+                  className="w-full py-2.5 px-3.5 bg-pink-500/10 border border-pink-500/20 hover:border-pink-500/40 text-pink-400 hover:bg-pink-900/45 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer group"
+                >
+                  <Radio size={12} className="group-hover:scale-110 transition-transform animate-pulse" />
+                  <span>Initialize Broadcast Channel +</span>
+                </button>
+              ) : (
+                <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-pink-500/30 shadow-[0_0_15px_rgba(244,63,94,0.15)] space-y-3.5">
+                  <div className="flex justify-between items-center pb-1.5 border-b border-white/5">
+                    <span className="text-[9px] font-bold text-pink-400 uppercase tracking-widest">Broadcast Core Uplink</span>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setIsCreatingChannel(false);
+                        setNewChannelName("");
+                        setNewChannelDesc("");
+                      }} 
+                      className="text-[9px] text-zinc-500 hover:text-zinc-300 uppercase font-bold"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="block text-[8px] uppercase tracking-widest text-zinc-500 font-bold">Channel Coordinate Name</label>
+                    <input 
+                      type="text"
+                      className="w-full bg-black border border-white/5 text-zinc-200 placeholder-zinc-700 p-2 text-xs font-mono rounded-lg focus:outline-none focus:border-pink-500/50"
+                      placeholder="e.g. CORE SECURE BULLETINS"
+                      value={newChannelName}
+                      onChange={(e) => setNewChannelName(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-[8px] uppercase tracking-widest text-zinc-500 font-bold">Mainframe coordinate details</label>
+                    <input 
+                      type="text"
+                      className="w-full bg-black border border-white/5 text-zinc-200 placeholder-zinc-700 p-2 text-xs font-mono rounded-lg focus:outline-none focus:border-pink-500/50"
+                      placeholder="e.g. Neural updates and reverse proxy payloads"
+                      value={newChannelDesc}
+                      onChange={(e) => setNewChannelDesc(e.target.value)}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!newChannelName.trim()) return;
+                      onCreateChannel({
+                        name: `📢 ${newChannelName}`,
+                        description: newChannelDesc || "Encrypted secure broadcast channel",
+                        avatar: "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?auto=format&fit=crop&w=300&q=80"
+                      });
+                      setIsCreatingChannel(false);
+                      setNewChannelName("");
+                      setNewChannelDesc("");
+                    }}
+                    disabled={!newChannelName.trim()}
+                    className="w-full py-2 bg-pink-500/10 hover:bg-pink-500/20 border border-pink-400/40 text-pink-300 hover:text-white transition-all rounded-xl text-[11px] font-bold uppercase tracking-wider cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Deploy Broadcast Core
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Broadcast lists */}
+            {(() => {
+              const query = (searchQuery || "").toLowerCase();
+              const filteredList = channelsList.filter(ch => ch.name.toLowerCase().includes(query) || ch.description.toLowerCase().includes(query));
+
+              if (filteredList.length === 0) {
+                return (
+                  <div className="text-center py-10">
+                    <Radio size={24} className="mx-auto text-zinc-500 mb-2 animate-pulse" />
+                    <p className="text-zinc-550 font-mono text-xs">No active broadcasts linked.</p>
+                  </div>
+                );
+              }
+
+              return filteredList.map((channel) => (
+                <div
+                  key={channel.id}
+                  onClick={() => setSelectedChatId(channel.id)}
+                  className={`flex items-center gap-3.5 p-3.5 rounded-2xl cursor-pointer border transition-all relative group ${
+                    selectedChatId === channel.id 
+                      ? 'bg-zinc-900 border-pink-500/30 shadow-[0_0_12px_rgba(244,63,94,0.1)]' 
+                      : 'bg-zinc-900/20 border-white/5 hover:border-zinc-800 hover:bg-zinc-900/30'
+                  }`}
+                >
+                  {selectedChatId === channel.id && (
+                    <div className="absolute left-0 top-3 bottom-3 w-[3px] rounded-r bg-pink-500 shadow-[0_0_8px_rgba(244,63,94,1)]" />
+                  )}
+
+                  <div className="relative shrink-0">
+                    <img 
+                      src={channel.avatar} 
+                      className={`w-11 h-11 rounded-xl object-cover border transition-all ${
+                        selectedChatId === channel.id ? 'border-pink-500/40' : 'border-white/10'
+                      }`} 
+                      alt="" 
+                      onError={(e) => { e.target.src = "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?auto=format&fit=crop&w=300&q=80" }}
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-baseline mb-1">
+                      <h3 className="font-bold text-sm text-zinc-100 truncate group-hover:text-white transition-colors flex items-center gap-1.5 font-mono">
+                        {channel.name}
+                      </h3>
+                      <span className="text-[9px] font-mono text-zinc-500 shrink-0">{channel.time}</span>
+                    </div>
+                    <p className="text-[11px] text-zinc-400 truncate leading-relaxed">
+                      {channel.lastMsg}
+                    </p>
+                  </div>
+
+                  <div className="shrink-0 flex flex-col items-end gap-1 font-mono">
+                    <span className="text-[8px] uppercase font-bold text-pink-400 bg-pink-950/40 border border-pink-900/40 px-1 py-0.5 rounded shrink-0">
+                      CORE
+                    </span>
+                    <span className="text-[7.5px] text-zinc-500 font-bold shrink-0">
+                      {channel.membersCount || '1.3k'} SUBS
+                    </span>
+                  </div>
+                </div>
+              ));
+            })()}
           </>
         )}
       </main>

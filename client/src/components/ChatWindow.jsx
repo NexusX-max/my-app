@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Send, Paperclip, Globe, Volume2, VolumeX, Trash2, Terminal, ShieldCheck, 
-  FileText, Phone, Video, X, CheckCheck, ArrowLeft, UserPlus, Users, Ban, ShieldAlert
+  FileText, Phone, Video, X, CheckCheck, ArrowLeft, UserPlus, Users, Ban, ShieldAlert,
+  Pencil, Share, Sparkles
 } from 'lucide-react';
 
 const ChatWindow = ({
@@ -21,7 +22,12 @@ const ChatWindow = ({
   isBlocked = false,
   onToggleMute,
   onToggleBlock,
-  onDeleteChat
+  onDeleteChat,
+  onEditMessage = () => {},
+  onForwardMessage = () => {},
+  onJoinChannel = () => {},
+  groupList = [],
+  channelsList = []
 }) => {
   const [inputText, setInputText] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
@@ -29,6 +35,11 @@ const ChatWindow = ({
   const [isDecodingId, setIsDecodingId] = useState(null);
   const [commandSuccessMsg, setCommandSuccessMsg] = useState(null);
   const [showInvitePopover, setShowInvitePopover] = useState(false);
+  
+  const [replyMessage, setReplyMessage] = useState(null);
+  const [editingMessage, setEditingMessage] = useState(null);
+  const [forwardMessage, setForwardMessage] = useState(null);
+  const [showAIAssistant, setShowAIAssistant] = useState(false);
   
   // States and refs for 2-second hold-press security options
   const [isHolding, setIsHolding] = useState(false);
@@ -120,6 +131,14 @@ const ChatWindow = ({
   const handleSend = () => {
     if (!inputText.trim() && !selectedFile) return;
 
+    if (editingMessage) {
+      onEditMessage(activeChat.id, editingMessage.id, inputText);
+      setEditingMessage(null);
+      setInputText("");
+      setSelectedFile(null);
+      return;
+    }
+
     // Check for special slash commands inside direct or group channels
     if (inputText.startsWith("/")) {
       handleSlashCommand(inputText.trim());
@@ -129,9 +148,15 @@ const ChatWindow = ({
 
     onSendMessage({
       text: inputText,
-      file: selectedFile
+      file: selectedFile,
+      replyTo: replyMessage ? {
+        id: replyMessage.id,
+        senderName: replyMessage.senderName || (replyMessage.sender === 'me' ? 'Operator' : replyMessage.sender),
+        text: replyMessage.text
+      } : null
     });
     
+    setReplyMessage(null);
     setInputText("");
     setSelectedFile(null);
   };
@@ -463,12 +488,39 @@ const ChatWindow = ({
                 isMe ? 'ml-auto items-end' : 'mr-auto items-start'
               }`}
             >
-              {/* Message sender label (only in group setups) */}
-              {!isMe && isGroup && (
-                <span className="text-[10px] font-mono text-purple-400 ml-2">
-                  {msg.senderName || 'Anonymous Operator'}
-                </span>
-              )}
+              {/* Message sender label with precise group roles */}
+              {!isMe && (isGroup || activeChat.isChannel) && (() => {
+                let roleText = "Operator";
+                let roleColor = "bg-zinc-950 border-zinc-900 text-zinc-550";
+                
+                if (msg.sender === 'bot-onyx') {
+                  roleText = "Citadel Admin";
+                  roleColor = "bg-cyan-950/40 border-cyan-800/30 text-cyan-400 font-extrabold";
+                } else if (msg.sender === 'user-kaelen') {
+                  roleText = "Lead Deck Mod";
+                  roleColor = "bg-purple-950/40 border-purple-800/30 text-purple-400";
+                } else if (msg.sender === 'bot-luna') {
+                  roleText = "Core Advisor";
+                  roleColor = "bg-emerald-950/40 border-emerald-800/30 text-emerald-400";
+                } else if (msg.sender === 'system') {
+                  roleText = "Network Hub";
+                  roleColor = "bg-rose-955/40 border-rose-800/30 text-rose-450";
+                } else if (msg.isCreator || activeChat.isChannel) {
+                  roleText = "Broadcaster";
+                  roleColor = "bg-pink-950/40 border-pink-800/30 text-pink-400 font-extrabold";
+                }
+
+                return (
+                  <div className="flex items-center gap-1.5 ml-1 mb-0.5">
+                    <span className="text-[10px] font-bold font-mono text-zinc-300">
+                      {msg.senderName || 'Active Node'}
+                    </span>
+                    <span className={`text-[7.5px] px-1.5 py-0.5 border rounded-md font-mono uppercase tracking-wider font-extrabold ${roleColor}`}>
+                      {roleText}
+                    </span>
+                  </div>
+                );
+              })()}
 
               {/* Chat Bubble Layout */}
               <div 
@@ -478,6 +530,13 @@ const ChatWindow = ({
                     : `bg-zinc-900/50 text-zinc-100 rounded-bl-none border border-white/5`
                 }`}
               >
+                {/* Replying target header preview */}
+                {msg.replyTo && (
+                  <div className="bg-black/50 border-l-[3px] border-cyan-400 p-2.5 rounded-xl mb-3 text-[10px] font-mono opacity-90 select-none">
+                    <span className="text-cyan-400 block font-black text-[7.5px] uppercase tracking-wider mb-0.5">↳ REPLIED TO @{msg.replyTo.senderName}:</span>
+                    <span className="truncate block font-semibold text-zinc-400 italic">"{msg.replyTo.text}"</span>
+                  </div>
+                )}
                 {/* Image Media attachment */}
                 {hasImage && msg.file && (
                   <div className="mb-2.5 rounded-xl overflow-hidden max-h-[220px] max-w-[280px] bg-zinc-950 border border-white/5">
@@ -507,10 +566,42 @@ const ChatWindow = ({
                     isMe ? 'right-full mr-2.5' : 'left-full ml-2.5'
                   }`}
                 >
+                  {/* Reply button */}
+                  <button
+                    onClick={() => setReplyMessage({ id: msg.id, senderName: msg.senderName || (isMe ? 'Operator' : msg.sender), text: msg.text })}
+                    className="p-1.5 rounded-lg bg-zinc-900 border border-white/10 text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800 transition-colors cursor-pointer"
+                    title="Reply to thread"
+                  >
+                    <ArrowLeft size={11} className="scale-x-[-1]" />
+                  </button>
+
+                  {/* Forward button */}
+                  <button
+                    onClick={() => setForwardMessage(msg)}
+                    className="p-1.5 rounded-lg bg-zinc-900 border border-white/10 text-zinc-400 hover:text-pink-400 hover:bg-zinc-800 transition-colors cursor-pointer"
+                    title="Forward node packet"
+                  >
+                    <Share size={11} />
+                  </button>
+
+                  {/* Edit button */}
+                  {isMe && (
+                    <button
+                      onClick={() => {
+                        setEditingMessage(msg);
+                        setInputText(msg.text);
+                      }}
+                      className="p-1.5 rounded-lg bg-zinc-900 border border-white/10 text-zinc-400 hover:text-amber-500 hover:bg-zinc-800 transition-all cursor-pointer"
+                      title="Edit code sequence"
+                    >
+                      <Pencil size={11} />
+                    </button>
+                  )}
+
                   {/* Translator Decrypt Action */}
                   <button
                     onClick={() => startDecryptAnimation(msg.id, msg.text)}
-                    className="p-1.5 rounded-lg bg-zinc-900 border border-white/10 text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800 transition-colors cursor-pointer"
+                    className="p-1.5 rounded-lg bg-zinc-900 border border-white/10 text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800 transition-all cursor-pointer"
                     title="Decrypt Code"
                     disabled={isDecodingId === msg.id}
                   >
@@ -520,7 +611,7 @@ const ChatWindow = ({
                   {/* Speech synthesis speaker Action */}
                   <button
                     onClick={() => triggerSpeak(msg.text)}
-                    className="p-1.5 rounded-lg bg-zinc-900 border border-white/10 text-zinc-400 hover:text-purple-400 hover:bg-zinc-800 transition-colors cursor-pointer"
+                    className="p-1.5 rounded-lg bg-zinc-900 border border-white/10 text-zinc-450 hover:text-purple-400 hover:bg-zinc-805 transition-all cursor-pointer"
                     title="Audio Synthesizer Speech"
                   >
                     <Volume2 size={11} />
@@ -552,6 +643,56 @@ const ChatWindow = ({
       {/* Footer input panel */}
       <footer className="p-3 bg-zinc-950/90 border-t border-white/5 relative z-10 font-mono">
         
+        {/* Reply Message Preview banner */}
+        {replyMessage && (
+          <div className="px-3.5 py-2 mb-2 bg-zinc-900 border border-cyan-500/20 rounded-xl flex items-center justify-between text-[11px] font-mono animate-slide-down">
+            <div className="flex items-center gap-2 text-cyan-400 font-bold truncate">
+              <ArrowLeft size={12} className="scale-x-[-1]" />
+              <span className="truncate">Replying to @{replyMessage.senderName}: <span className="text-zinc-400 font-semibold italic">"{replyMessage.text}"</span></span>
+            </div>
+            <button onClick={() => setReplyMessage(null)} className="text-zinc-500 hover:text-white shrink-0 cursor-pointer">
+              <X size={13} />
+            </button>
+          </div>
+        )}
+
+        {/* Edit Message Preview banner */}
+        {editingMessage && (
+          <div className="px-3.5 py-2 mb-2 bg-zinc-900 border border-amber-500/20 rounded-xl flex items-center justify-between text-[11px] font-mono animate-slide-down">
+            <div className="flex items-center gap-2 text-amber-500 font-bold truncate">
+              <Pencil size={12} />
+              <span className="truncate">Editing: <span className="text-zinc-400 font-semibold italic">"{editingMessage.text}"</span></span>
+            </div>
+            <button onClick={() => { setEditingMessage(null); setInputText(""); }} className="text-zinc-505 hover:text-white shrink-0 cursor-pointer">
+              <X size={13} />
+            </button>
+          </div>
+        )}
+
+        {/* AI Recommendations panel */}
+        {showAIAssistant && (
+          <div className="p-2 mb-2 bg-purple-950/15 border border-purple-500/20 rounded-xl flex items-center gap-1.5 overflow-x-auto no-scrollbar font-mono text-[10px] animate-slide-down">
+            <span className="text-purple-400 font-bold px-1.5 uppercase tracking-wider shrink-0 flex items-center gap-1">
+              <Sparkles size={11} className="animate-pulse" /> SUGGEST:
+            </span>
+            {[
+              { prompt: "💡 [ENCRYPTED SECURE LINK]: Dispatching next transmission...", label: "Secure cipher" },
+              { prompt: "🤖 Onyx core system log coordinates check: Status Nominal.", label: "System update" },
+              { prompt: "👋 Establishing connection handshake. Authenticating peer link.", label: "Greeting handshakes" },
+              { prompt: "/quote Inject secure quotation stream: ", label: "Quote command" }
+            ].map((rec) => (
+              <button
+                key={rec.label}
+                type="button"
+                onClick={() => { setInputText(rec.prompt); setShowAIAssistant(false); }}
+                className="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/5 text-zinc-300 hover:text-white transition-all shrink-0 cursor-pointer font-bold uppercase text-[8.5px]"
+              >
+                {rec.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* File preview dialog */}
         {selectedFile && (
           <div className="px-4 py-2 mb-2 bg-zinc-905 border border-zinc-850 rounded-xl flex items-center justify-between font-mono text-xs text-zinc-300">
@@ -572,7 +713,7 @@ const ChatWindow = ({
               <button
                 key={emoji}
                 onClick={() => setInputText(prev => prev + emoji)}
-                className="hover:scale-125 hover:-translate-y-0.5 transition-transform text-sm px-1.5 py-0.5"
+                className="hover:scale-125 hover:-translate-y-0.5 transition-transform text-sm px-1.5 py-0.5 cursor-pointer"
               >
                 {emoji}
               </button>
@@ -590,8 +731,36 @@ const ChatWindow = ({
             <ShieldAlert size={14} className="text-red-500 shrink-0" />
             <span>⛔ [SECURE COUPLING RESTRICTED] Link blocked. Unblock target node to resume channel communications.</span>
           </div>
+        ) : activeChat && activeChat.isChannel && !activeChat.joined ? (
+          <button
+            type="button"
+            onClick={() => {
+              onJoinChannel(activeChat.id);
+            }}
+            className="w-full py-4 bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-black font-bold font-mono tracking-widest text-[11px] rounded-2xl flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(244,63,94,0.35)] transition-all transform hover:-translate-y-0.5 cursor-pointer"
+          >
+            <Globe className="animate-pulse" size={14} />
+            <span>ESTABLISH SECURE LINK & SUBSCRIBE (JOIN CHANNEL) +</span>
+          </button>
+        ) : activeChat && activeChat.isChannel && activeChat.joined && activeChat.role !== 'owner' ? (
+          <div className="w-full py-3.5 px-4 bg-zinc-900/40 border border-pink-500/15 text-pink-400 font-mono text-center text-[10px] font-bold uppercase tracking-widest rounded-2xl">
+            📢 Connected to Broadcast Hub. Awaiting next core transmission packet...
+          </div>
         ) : (
           <div className="flex gap-2 items-center">
+            {/* Sparkles AI suggest button */}
+            <button
+              onClick={() => setShowAIAssistant(prev => !prev)}
+              className={`p-3 rounded-xl border transition-colors cursor-pointer shrink-0 ${
+                showAIAssistant 
+                  ? 'bg-purple-500/20 border-purple-500/40 text-purple-400 animate-pulse' 
+                  : 'bg-zinc-900 border-white/5 text-zinc-400 hover:text-purple-400'
+              }`}
+              title="AI prompt suggest"
+            >
+              <Sparkles size={14} />
+            </button>
+
             {/* File Link Button */}
             <button
               onClick={() => {
@@ -747,6 +916,79 @@ const ChatWindow = ({
                 DISMISS INTERFACE
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Forwarding Modal Overlay */}
+      {forwardMessage && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 font-mono select-none">
+          <div className="w-full max-w-sm bg-zinc-950 border border-zinc-800 rounded-3xl p-6 shadow-[0_0_50px_rgba(0,0,0,0.85)] relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-pink-500 via-transparent to-cyan-500" />
+            
+            <div className="flex justify-between items-center pb-3 border-b border-white/5 mb-4">
+              <h3 className="text-xs font-bold text-pink-400 uppercase tracking-widest flex items-center gap-1.5 leading-none">
+                <Share size={12} /> FORWARD NEURAL TRANSCRIPTION
+              </h3>
+              <button 
+                onClick={() => setForwardMessage(null)}
+                className="text-[9px] text-zinc-500 hover:text-white uppercase font-bold"
+              >
+                Cancel
+              </button>
+            </div>
+
+            <p className="text-[10px] text-zinc-400 mb-4 bg-zinc-900/60 p-2.5 rounded-xl border border-white/5 italic">
+              Payload: "{forwardMessage.text.slice(0, 80)}{forwardMessage.text.length > 80 ? '...' : ''}"
+            </p>
+
+            <span className="block text-[8px] uppercase tracking-widest text-zinc-500 font-bold mb-2">Select target sync coordinate</span>
+            
+            <div className="space-y-1.5 max-h-[220px] overflow-y-auto no-scrollbar mb-4">
+              {chatList
+                .filter((ch) => ch.id !== activeChat.id)
+                .map((target) => (
+                  <div
+                    key={target.id}
+                    onClick={() => {
+                      onForwardMessage(target.id, forwardMessage.text);
+                      try {
+                        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+                        osc.type = "sine";
+                        gain.gain.setValueAtTime(0.03, audioCtx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.15);
+                        osc.connect(gain);
+                        gain.connect(audioCtx.destination);
+                        osc.start();
+                        osc.stop(audioCtx.currentTime + 0.2);
+                      } catch(e) {}
+                      alert(`Payload forwarded securely to ${target.name}!`);
+                      setForwardMessage(null);
+                    }}
+                    className="flex items-center gap-2.5 p-2.5 bg-zinc-900/40 hover:bg-zinc-800/60 border border-white/5 hover:border-pink-500/30 rounded-xl cursor-pointer transition-all"
+                  >
+                    <img src={target.avatar} className="w-7 h-7 rounded-lg object-cover" alt="" referrerPolicy="no-referrer" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-zinc-200 truncate leading-none">{target.name}</p>
+                      <span className="text-[7.5px] text-zinc-500 font-bold uppercase font-mono tracking-wider">
+                        {target.isChannel ? 'Broadcast' : target.membersCount ? 'Group' : 'Direct Link'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              {chatList.length <= 1 && (
+                <p className="text-[10px] text-zinc-650 text-center py-4">No secondary transit nodes identified.</p>
+              )}
+            </div>
+            
+            <button
+              onClick={() => setForwardMessage(null)}
+              className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border border-white/5"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
