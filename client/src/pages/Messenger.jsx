@@ -18,7 +18,6 @@ import SettingsScreen from '../components/SettingsScreen';
 import BiometricScreen from '../components/BiometricScreen';
 import SearchScreen from './SearchScreen';
 import { ShieldAlert, Clock } from 'lucide-react';
-
 export default function Messenger() {
   const { user, api, socket, currentNode, switchUser } = useAuth();
 
@@ -640,60 +639,48 @@ export default function Messenger() {
   };
 
   // Fetch Message history for direct conversation selection
-  // Fetch Message history for direct conversation selection
-useEffect(() => {
-  if (!selectedChatId) return;
-  if (selectedChatId.startsWith("group-")) return; 
+  useEffect(() => {
+    if (!selectedChatId) return;
+    if (selectedChatId.startsWith("group-")) return; 
 
-  // আইডি থেকে প্রিফিক্স সরিয়ে ক্লিন করা (সার্ভারের লজিকের সাথে মিল রেখে)
-  const cleanId = selectedChatId.replace(/^conv-temp-|^conv-/, '');
+    const historyApi = api ? api.get(`/messages/history/${selectedChatId}`).then(res => res.data) : fetch(`/api/messages/history/${selectedChatId}`).then(res => res.json());
 
-  // ক্লিন করা আইডি দিয়ে এপিআই কল করা
-  const historyApi = api 
-    ? api.get(`/messages/history/${cleanId}`).then(res => res.data) 
-    : fetch(`/api/messages/history/${cleanId}`).then(res => res.json());
+    historyApi
+      .then(data => {
+        if (Array.isArray(data)) {
+          const formattedMsgs = data.map((m) => ({
+            id: m.id || m._id,
+            sender: m.senderId === 'me' ? 'me' : m.senderId,
+            senderName: m.senderId === 'me' ? userProfile.name : (selectedChatDetails?.name || "Grid Operator"),
+            text: m.text,
+            file: m.image,
+            time: m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now"
+          }));
 
-  historyApi
-    .then(data => {
-      if (Array.isArray(data)) {
-        const formattedMsgs = data.map((m) => ({
-          id: m.id || m._id,
-          sender: m.senderId === 'me' ? 'me' : m.senderId,
-          senderName: m.senderId === 'me' ? userProfile.name : (selectedChatDetails?.name || "Grid Operator"),
-          text: m.text,
-          file: m.image,
-          time: m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now"
-        }));
-
+          setMessagesHistory(prev => ({
+            ...prev,
+            [selectedChatId]: formattedMsgs
+          }));
+        } else {
+          throw new Error("Invalid array payload received. Reverting to local store.");
+        }
+      })
+      .catch(err => {
+        console.warn("History API link offline. Reverting local mock messages history.");
+        let fallbackKey = selectedChatId;
+        if (!INITIAL_MESSAGES[fallbackKey]) {
+          if (fallbackKey.includes("onyx")) fallbackKey = "bot-onyx";
+          else if (fallbackKey.includes("luna")) fallbackKey = "bot-luna";
+          else if (fallbackKey.includes("kaelen")) fallbackKey = "user-kaelen";
+          else if (fallbackKey.includes("sasha")) fallbackKey = "user-sasha";
+        }
+        const fallbackMsgs = INITIAL_MESSAGES[fallbackKey] || [];
         setMessagesHistory(prev => ({
           ...prev,
-          [selectedChatId]: formattedMsgs // স্টেট এ চ্যাট আইডি টি অরিজিনাল রাখবেন, রিকোয়েস্ট এ ক্লিন আইডি পাঠাবেন
+          [selectedChatId]: fallbackMsgs
         }));
-      } else {
-        throw new Error("Invalid array payload received.");
-      }
-    })
-    .catch(err => {
-      console.warn("History API link offline. Reverting local mock messages history.");
-      
-      let fallbackKey = selectedChatId;
-      // আইডি ক্লিন করা থাকলে ফলব্যাক কি-এর সাথে ম্যাচ করার জন্য চেক
-      const cleanFallback = selectedChatId.replace(/^conv-temp-|^conv-/, '');
-      
-      if (!INITIAL_MESSAGES[fallbackKey]) {
-        if (cleanFallback.includes("onyx")) fallbackKey = "bot-onyx";
-        else if (cleanFallback.includes("luna")) fallbackKey = "bot-luna";
-        else if (cleanFallback.includes("kaelen")) fallbackKey = "user-kaelen";
-        else if (cleanFallback.includes("sasha")) fallbackKey = "user-sasha";
-      }
-      
-      const fallbackMsgs = INITIAL_MESSAGES[fallbackKey] || [];
-      setMessagesHistory(prev => ({
-        ...prev,
-        [selectedChatId]: fallbackMsgs
-      }));
-    });
-}, [selectedChatId, api, userProfile.name]);
+      });
+  }, [selectedChatId, api]);
 
   // --- Background Ambiance Synthesizer Drone ---
   useEffect(() => {
