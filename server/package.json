@@ -1,16 +1,14 @@
 {
-  "name": "vite-react-express-app",
+  "name": "onyx-drift-app",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
-  "main": "index.js",
+  "main": "server/index.js",
   "scripts": {
-    "frontend": "vite",
-    "server": "nodemon index.js",
-    "dev": "concurrently \"npm run frontend\" \"npm run server\"",
+    "start": "node server/index.js",
+    "dev": "concurrently \"vite\" \"nodemon server/index.js\"",
     "build": "vite build",
-    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "postinstall": "npm run build"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
