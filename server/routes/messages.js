@@ -397,7 +397,7 @@ router.post("/message", protect, async (req, res) => {
     }
 });
 
-// 5. Get Chat History (সুরক্ষিত ঐতিহাসিক রাউট)
+// 5. Get Chat History (সংশোধিত রাউট)
 router.get("/history/:conversationId", protect, async (req, res) => {
     try {
         const { conversationId } = req.params;
