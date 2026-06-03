@@ -41,7 +41,6 @@ const allowedOrigins = [
   "http://localhost:3000",
   "https://onyx-drift.com", 
   "https://www.onyx-drift.com",
-  "https://api.onyx-drift.com",
   "https://onyx-messenger.vercel.app"
 ];
 
@@ -61,14 +60,12 @@ const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 app.use('/uploads', express.static(uploadDir));
 
-// --- 🔐 Neural Link Protection (Refined) ---
 const protect = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer")) {
     try {
       const token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET || "onyx_drift_super_secret_key_2026");
-      // ইউজার আইডি সাব এবং আইডি উভয়ই হ্যান্ডেল করা হলো
       req.user = { _id: decoded.id || decoded.userId || decoded.sub };
       next();
     } catch (err) {
@@ -79,7 +76,7 @@ const protect = async (req, res, next) => {
   }
 };
 
-/* 🚀 API ROUTES */
+/* API ROUTES */
 app.use('/api/auth', authRoutes); 
 app.use("/api/profile", protect, profileRoutes); 
 app.use("/api/users", protect, userRoutes); 
@@ -89,12 +86,11 @@ app.use('/api/ai', protect, aiRoutes);
 app.get("/api/feed", protect, getNeuralFeed);
 app.use("/api/posts", protect, postRoutes); 
 app.use("/api/groups", protect, groupRoutes);
-app.use("/api/messages", protect, messagesRoutes); // এখানে আপনার messages.js রাউটটি কাজ করবে
+app.use("/api/messages", protect, messagesRoutes);
 app.use("/api/market", protect, marketRoutes);
 app.use("/api/admin", protect, adminRoutes);
 app.use('/api/v1/search', protect, searchRoutes); 
 
-/* ⚡ SOCKET.IO (Neural Sync Engine) */
 const io = new Server(server, { 
     cors: { origin: allowedOrigins, credentials: true }, 
     pingTimeout: 60000 
@@ -103,23 +99,29 @@ const io = new Server(server, {
 app.set("io", io);
 
 const setupSocket = async () => {
-  try {
-    const pubClient = createClient({ url: process.env.REDIS_URL || "redis://localhost:6379" });
-    const subClient = pubClient.duplicate();
-    await Promise.all([pubClient.connect(), subClient.connect()]);
-    io.adapter(createAdapter(pubClient, subClient));
-    console.log("💎 Neural Sync: Redis Adapter Linked");
-  } catch (err) {
-    console.warn("⚠️ Redis Failed, using Local Memory Adapter");
+  if (process.env.REDIS_URL) {
+    try {
+      const pubClient = createClient({ url: process.env.REDIS_URL });
+      const subClient = pubClient.duplicate();
+      
+      pubClient.on('error', (err) => console.error('Redis Pub Error:', err));
+      subClient.on('error', (err) => console.error('Redis Sub Error:', err));
+      
+      await Promise.all([pubClient.connect(), subClient.connect()]);
+      io.adapter(createAdapter(pubClient, subClient));
+      console.log("💎 Neural Sync: Redis Adapter Linked");
+    } catch (err) {
+      console.error("❌ Redis Connection Failed:", err.message);
+    }
+  } else {
+    console.log("⚠️ No REDIS_URL found, running in Local Memory mode");
   }
 
   io.on("connection", (socket) => {
     const userId = socket.handshake.query.userId;
     if (userId) socket.join(userId);
 
-    socket.on("join_room", (conversationId) => {
-        socket.join(conversationId);
-    });
+    socket.on("join_room", (conversationId) => socket.join(conversationId));
 
     socket.on('send_group_message', async (payload) => {
       const { groupId, text, mediaUrl, sender } = payload;
@@ -134,9 +136,10 @@ const startApp = async () => {
     await connectAllDB();
     await setupSocket();
     const PORT = process.env.PORT || 5005;
-    server.listen(PORT, '0.0.0.0', () => console.log(`🚀 ONYX CORE ACTIVE: ${PORT}`));
+    server.listen(PORT, '0.0.0.0', () => console.log(`🚀 ONYX CORE ACTIVE on port ${PORT}`));
   } catch (error) {
-    console.error("❌ FAILURE:", error.message);
+    console.error("❌ FAILURE during startup:", error.message);
+    process.exit(1);
   }
 };
 
