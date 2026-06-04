@@ -189,10 +189,42 @@ router.post("/message", protect, async (req, res) => {
             return res.status(400).json({ error: "ইনভ্যালিড কনভারসেশন আইডি" });
         }
 
+        let targetConversationId = conversationId;
+        const cleanId = conversationId.replace(/^conv-temp-|^conv-/, '');
+
+        // If conversationId is a temporary or user-direct ID (not a valid ObjectId of conversation)
+        // Check if cleanId is not one of the bot and preset IDs, and verify if cleanId is a valid ObjectId (user ID)
+        const isBotOrCustom = [
+            'onyx', 'luna', 'kaelen', 'sasha', 
+            'bot-onyx', 'bot-luna', 'user-kaelen', 'user-sasha', 
+            'zephyr', 'oracle'
+        ].includes(cleanId) || 
+        cleanId.startsWith('bot-') || 
+        cleanId.startsWith('user-') ||
+        conversationId.startsWith('conv-temp-') ||
+        !mongoose.Types.ObjectId.isValid(cleanId);
+
+        if (cleanId && !isBotOrCustom && mongoose.Types.ObjectId.isValid(cleanId)) {
+            try {
+                let conv = await Conversation.findOne({
+                    members: { $all: [senderId, cleanId] }
+                });
+                if (!conv) {
+                    conv = await Conversation.create({
+                        members: [senderId, cleanId],
+                        lastMessage: { text: image ? "📷 Image" : (text || "Neural link established."), senderId: senderId },
+                    });
+                }
+                targetConversationId = conv._id.toString();
+            } catch (err) {
+                console.warn("Resolving temp conversation during message send failed:", err.message);
+            }
+        }
+
         let newMessage = null;
         try {
             newMessage = await Message.create({
-                conversationId,
+                conversationId: targetConversationId,
                 senderId,
                 text: text || "",
                 image: image || null,
@@ -201,7 +233,7 @@ router.post("/message", protect, async (req, res) => {
             console.warn("MongoDB write message failed, spawning simulated in-memory packet:", dbErr.message);
             newMessage = {
                 _id: "msg-temp-" + Date.now(),
-                conversationId,
+                conversationId: targetConversationId,
                 senderId,
                 text: text || "",
                 image: image || null,
@@ -211,14 +243,14 @@ router.post("/message", protect, async (req, res) => {
 
         // Update Conversation lastMessage if possible
         try {
-            if (mongoose.Types.ObjectId.isValid(conversationId)) {
-                await Conversation.findByIdAndUpdate(conversationId, {
+            if (mongoose.Types.ObjectId.isValid(targetConversationId)) {
+                await Conversation.findByIdAndUpdate(targetConversationId, {
                     lastMessage: { text: image ? "📷 Image" : text, senderId },
                     updatedAt: Date.now(),
                 });
             } else {
                 await Conversation.findOneAndUpdate(
-                    { _id: conversationId },
+                    { _id: targetConversationId },
                     {
                         lastMessage: { text: image ? "📷 Image" : text, senderId },
                         updatedAt: Date.now(),
@@ -234,22 +266,23 @@ router.post("/message", protect, async (req, res) => {
         const activeUsersMap = req.app.get("activeUsers");
 
         const payload = {
-            conversationId,
+            conversationId: targetConversationId,
             message: newMessage
         };
 
         if (io) {
             // Broadcast payload to targeted rooms
+            io.to(targetConversationId).emit("receiveMessage", payload);
             io.to(conversationId).emit("receiveMessage", payload);
 
             // Redundant: Find other user in conversation and push directly to unique socket
             try {
                 let otherId = null;
                 let conv = null;
-                if (mongoose.Types.ObjectId.isValid(conversationId)) {
-                    conv = await Conversation.findById(conversationId).lean();
+                if (mongoose.Types.ObjectId.isValid(targetConversationId)) {
+                    conv = await Conversation.findById(targetConversationId).lean();
                 } else {
-                    conv = await Conversation.findOne({ _id: conversationId }).lean();
+                    conv = await Conversation.findOne({ _id: targetConversationId }).lean();
                 }
 
                 if (conv && conv.members) {
@@ -257,7 +290,8 @@ router.post("/message", protect, async (req, res) => {
                 }
 
                 if (otherId && activeUsersMap) {
-                    const recipientSocketId = activeUsersMap.get(otherId.toString());
+                    const cleanOtherId = otherId.toString().replace(/^conv-temp-|^conv-/, '');
+                    const recipientSocketId = activeUsersMap.get(cleanOtherId) || activeUsersMap.get(otherId.toString());
                     if (recipientSocketId) {
                         io.to(recipientSocketId).emit("receiveMessage", payload);
                     }
@@ -402,9 +436,16 @@ router.get("/history/:conversationId", protect, async (req, res) => {
     try {
         const { conversationId } = req.params;
         
+        if (!conversationId || conversationId === "null" || conversationId === "undefined") {
+            return res.status(200).json([]);
+        }
+        
+        const senderId = (req.user._id || req.user.id || "me").toString();
+        
         // আইডি প্রিফিক্স ক্লিন করা (যেমন: conv-temp-onyx -> onyx)
         const cleanId = conversationId.replace(/^conv-temp-|^conv-/, '');
 
+        let queryConvId = conversationId;
         // বোট আইডি বা কাস্টম আইডি চেক (যেগুলো মঙ্গোডিবি আইডি নয়)
         const isBotOrCustom = [
             'onyx', 'luna', 'kaelen', 'sasha', 
@@ -416,11 +457,25 @@ router.get("/history/:conversationId", protect, async (req, res) => {
         conversationId.startsWith('conv-temp-') ||
         !mongoose.Types.ObjectId.isValid(cleanId);
 
+        if (cleanId && !isBotOrCustom && mongoose.Types.ObjectId.isValid(cleanId)) {
+            try {
+                const conv = await Conversation.findOne({
+                    members: { $all: [senderId, cleanId] }
+                });
+                if (conv) {
+                    queryConvId = conv._id.toString();
+                }
+            } catch (err) {
+                console.warn("Resolving conversation history redirection failed:", err.message);
+            }
+        }
+
         // Search messages from MongoDB matching either cleanId or raw conversationId
         let messages = [];
         try {
             messages = await Message.find({
                 $or: [
+                    { conversationId: queryConvId },
                     { conversationId: cleanId },
                     { conversationId: conversationId }
                 ]

@@ -46,13 +46,23 @@ export default function Messenger() {
 
   const [chatList, setChatList] = useState([]);
   const [groupList, setGroupList] = useState(() => {
-    const saved = localStorage.getItem('onyx_groups_node');
-    return saved ? JSON.parse(saved) : INITIAL_GROUPS;
+    try {
+      const saved = localStorage.getItem('onyx_groups_node');
+      return saved ? JSON.parse(saved) : INITIAL_GROUPS;
+    } catch (e) {
+      console.error("Local group state corrupted, resetting.", e);
+      return INITIAL_GROUPS;
+    }
   });
 
   const [messagesHistory, setMessagesHistory] = useState(() => {
-    const saved = localStorage.getItem('onyx_messages_history_v2');
-    return saved ? JSON.parse(saved) : {};
+    try {
+      const saved = localStorage.getItem('onyx_messages_history_v2');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      console.error("LocalStorage Corrupted, resetting history", e);
+      return {};
+    }
   });
 
   const [stories, setStories] = useState(() => {
@@ -948,14 +958,16 @@ export default function Messenger() {
     }
 
     try {
+      let responseData;
       if (api) {
-        await api.post("/messages/message", {
+        const res = await api.post("/messages/message", {
           conversationId: selectedChatId,
           text: text,
           image: file || null
         });
+        responseData = res.data;
       } else {
-        await fetch("/api/messages/message", {
+        responseData = await fetch("/api/messages/message", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -966,12 +978,29 @@ export default function Messenger() {
         }).then(r => r.json());
       }
 
+      // Dynamic conversion sync if backend maps to real Mongo conversation ID
+      const activeChatId = responseData && responseData.conversationId ? responseData.conversationId : selectedChatId;
+      if (responseData && responseData.conversationId && responseData.conversationId !== selectedChatId) {
+        const realConvId = responseData.conversationId;
+        console.log(`🔄 Swapping raw/temp selectedChatId: ${selectedChatId} for real mapped conversationId: ${realConvId}`);
+        
+        setMessagesHistory(prev => {
+          const updated = { ...prev };
+          const oldList = updated[selectedChatId] || [];
+          updated[realConvId] = [...(updated[realConvId] || []), ...oldList].filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
+          delete updated[selectedChatId];
+          return updated;
+        });
+
+        setSelectedChatId(realConvId);
+      }
+
       loadAllConversations();
 
       setTimeout(() => {
         const historyApi = api 
-          ? api.get(`/messages/history/${selectedChatId}`).then(res => res.data) 
-          : fetch(`/api/messages/history/${selectedChatId}`).then(res => res.json());
+          ? api.get(`/messages/history/${activeChatId}`).then(res => res.data) 
+          : fetch(`/api/messages/history/${activeChatId}`).then(res => res.json());
 
         historyApi
           .then(data => {
@@ -987,7 +1016,7 @@ export default function Messenger() {
 
               setMessagesHistory(prev => ({
                 ...prev,
-                [selectedChatId]: formattedMsgs
+                [activeChatId]: formattedMsgs
               }));
 
               // Auto delete incoming bot response if self destruct active
@@ -997,7 +1026,7 @@ export default function Messenger() {
                     setTimeout(() => {
                       setMessagesHistory(prev => ({
                         ...prev,
-                        [selectedChatId]: (prev[selectedChatId] || []).filter(item => item.id !== m.id)
+                        [activeChatId]: (prev[activeChatId] || []).filter(item => item.id !== m.id)
                       }));
                     }, selfDestructDuration * 1000);
                   }
