@@ -1,5 +1,3 @@
-console.log("Current Directory:", process.cwd());
-console.log("Looking for routes at:", path.join(process.cwd(), 'routes'));
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -14,6 +12,15 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 
+// পাথ এবং ডিরেক্টরি সেটআপ
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ডিবাগিংয়ের জন্য পাথ লগ (রেন্ডার লগে চেক করবেন)
+console.log("Current Directory:", process.cwd());
+console.log("Routes directory path:", path.resolve(__dirname, 'routes'));
+
+// ডাটাবেস এবং রাউটস ইমপোর্ট
 import connectAllDB from "./config/db.js"; 
 import Message from "./models/Message.js"; 
 import authRoutes from './routes/authRoutes.js';
@@ -29,9 +36,6 @@ import aiRoutes from './routes/aiRoutes.js';
 import { getNeuralFeed } from "./controllers/feedController.js";
 import notificationRoutes from './routes/notificationRoutes.js';
 import searchRoutes from './routes/searchRoutes.js'; 
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 const server = http.createServer(app);
@@ -58,10 +62,12 @@ app.use(cors({
 app.use(express.json({ limit: "150mb" }));
 app.use(express.urlencoded({ limit: "150mb", extended: true }));
 
-const uploadDir = path.join(__dirname, 'uploads');
+// ফাইল আপলোড ডিরেক্টরি নিশ্চিত করা
+const uploadDir = path.resolve(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 app.use('/uploads', express.static(uploadDir));
 
+// অথেন্টিকেশন মিডলওয়্যার
 const protect = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer")) {
@@ -115,16 +121,12 @@ const setupSocket = async () => {
     } catch (err) {
       console.error("❌ Redis Connection Failed:", err.message);
     }
-  } else {
-    console.log("⚠️ No REDIS_URL found, running in Local Memory mode");
   }
 
   io.on("connection", (socket) => {
     const userId = socket.handshake.query.userId;
     if (userId) socket.join(userId);
-
     socket.on("join_room", (conversationId) => socket.join(conversationId));
-
     socket.on('send_group_message', async (payload) => {
       const { groupId, text, mediaUrl, sender } = payload;
       const msg = await Message.create({ conversationId: `group_${groupId}`, senderId: sender._id, text, media: mediaUrl });
@@ -137,8 +139,12 @@ const startApp = async () => {
   try {
     await connectAllDB();
     await setupSocket();
+    
+    // পোর্ট বাইন্ডিং রেন্ডারের জন্য নিশ্চিত করা
     const PORT = process.env.PORT || 5005;
-    server.listen(PORT, '0.0.0.0', () => console.log(`🚀 ONYX CORE ACTIVE on port ${PORT}`));
+    server.listen(PORT, '0.0.0.0', () => {
+        console.log(`🚀 ONYX CORE ACTIVE on port ${PORT}`);
+    });
   } catch (error) {
     console.error("❌ FAILURE during startup:", error.message);
     process.exit(1);
