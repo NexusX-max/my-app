@@ -1,3 +1,5 @@
+console.log("Current Directory:", process.cwd());
+console.log("Looking for routes at:", path.join(process.cwd(), 'routes'));
 import dotenv from "dotenv";
 dotenv.config();
 
