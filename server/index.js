@@ -26,7 +26,7 @@ try {
   __filename = path.join(__dirname, 'messenger.js');
 }
 
-// ডিবাগিংয়ের জন্য পাথ লগ
+// ডিবাগিংয়ের জন্য পাথ লগ
 console.log("Current Directory:", process.cwd());
 console.log("Root directory path:", __dirname);
 
@@ -90,7 +90,7 @@ const uploadDir = path.resolve(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 app.use('/uploads', express.static(uploadDir));
 
-// অথেন্টিকেশন মিডলওয়্যার (🔐 Neural Link Protection)
+// অথেন্টিকেশন মিডলওয়্যার (🔐 Neural Link Protection)
 const protect = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer")) {
@@ -304,36 +304,29 @@ const setupSocket = async () => {
 
     socket.on("initiateCall", (data) => {
       const cleanTo = data.to ? data.to.toString().replace(/^conv-temp-|^conv-/, '') : '';
-      const recipientSocketId = activeUsers.get(cleanTo) || activeUsers.get(data.to);
-      console.log(`📞 Call signal routing from ${data.name} to ${data.to} (clean: ${cleanTo}) (socket: ${recipientSocketId})`);
-      if (recipientSocketId) {
-        io.to(recipientSocketId).emit("incomingCall", {
-          from: data.from ? data.from.toString().replace(/^conv-temp-|^conv-/, '') : '',
-          name: data.name,
-          avatar: data.avatar,
-          type: data.type
-        });
-      }
+      console.log(`📞 Call signal routing from ${data.name} to ${data.to} (clean: ${cleanTo})`);
+      
+      // Emit to BOTH the clean target room and raw target room to ensure seamless multi-device, multi-server receipt
+      io.to(cleanTo).to(data.to.toString()).emit("incomingCall", {
+        from: data.from ? data.from.toString().replace(/^conv-temp-|^conv-/, '') : '',
+        name: data.name,
+        avatar: data.avatar,
+        type: data.type
+      });
     });
 
     socket.on("declineCall", (data) => {
       const cleanTo = data.to ? data.to.toString().replace(/^conv-temp-|^conv-/, '') : '';
-      const recipientSocketId = activeUsers.get(cleanTo) || activeUsers.get(data.to);
-      if (recipientSocketId) {
-        io.to(recipientSocketId).emit("callCancelled", {
-          from: data.from ? data.from.toString().replace(/^conv-temp-|^conv-/, '') : ''
-        });
-      }
+      io.to(cleanTo).to(data.to.toString()).emit("callCancelled", {
+        from: data.from ? data.from.toString().replace(/^conv-temp-|^conv-/, '') : ''
+      });
     });
 
     socket.on("acceptCall", (data) => {
       const cleanTo = data.to ? data.to.toString().replace(/^conv-temp-|^conv-/, '') : '';
-      const recipientSocketId = activeUsers.get(cleanTo) || activeUsers.get(data.to);
-      if (recipientSocketId) {
-        io.to(recipientSocketId).emit("callConnected", {
-          from: data.from ? data.from.toString().replace(/^conv-temp-|^conv-/, '') : ''
-        });
-      }
+      io.to(cleanTo).to(data.to.toString()).emit("callConnected", {
+        from: data.from ? data.from.toString().replace(/^conv-temp-|^conv-/, '') : ''
+      });
     });
 
     socket.on('send_group_message', async (payload) => {
@@ -365,6 +358,53 @@ const setupSocket = async () => {
       }
     });
 
+    // ⚡ সাধারণ মেসেজের জন্য লিসেনার (এটি সকেট কানেকশনে ব্যাকআপ নিশ্চিত করে)
+    const handleSendMessageEvent = async (payload) => {
+      const { receiverId, to, text, senderId, conversationId, image } = payload;
+      const targetId = receiverId || to;
+      if (!targetId) return;
+
+      const cleanTargetId = targetId.toString().replace(/^conv-temp-|^conv-/, '');
+      let savedMsg = null;
+
+      if (MessageSelectedModel) {
+        try {
+          savedMsg = await MessageSelectedModel.create({
+            conversationId: conversationId || `conv-${cleanTargetId}`,
+            senderId: senderId || "me",
+            text: text || "",
+            image: image || null
+          });
+        } catch (err) {
+          console.error("Message Save Error during socket transfer:", err.message);
+        }
+      }
+
+      if (!savedMsg) {
+        savedMsg = {
+          _id: "msg-socket-" + Date.now(),
+          conversationId: conversationId || `conv-${cleanTargetId}`,
+          senderId: senderId || "me",
+          text: text || "",
+          image: image || null,
+          createdAt: new Date()
+        };
+      }
+
+      const formattedPayload = {
+        conversationId: conversationId || `conv-${cleanTargetId}`,
+        message: savedMsg
+      };
+
+      // Emit to both with-underscores custom event and standard camelCase events
+      io.to(cleanTargetId).to(targetId.toString()).emit("receive_message", savedMsg);
+      io.to(cleanTargetId).to(targetId.toString()).emit("receiveMessage", formattedPayload);
+      console.log(`📡 [SOCKET DIRECT MESSAGE] Forwarded to ${cleanTargetId} & ${targetId}`);
+    };
+
+    socket.on("send_message", handleSendMessageEvent);
+    socket.on("sendMessage", handleSendMessageEvent);
+
     socket.on("disconnect", () => {
       onlineUsers = onlineUsers.filter(u => u.socketId !== socket.id);
       io.emit("getOnlineUsers", onlineUsers);
@@ -381,7 +421,7 @@ const setupSocket = async () => {
 
 const startApp = async () => {
   try {
-    // ১. প্রথমে মডেলসমুহ ডাইনামিকালি লোড করুন
+    // ১. প্রথমে মডেলসমুহ ডাইনামিকালি লোড করুন যাতে কম্পাইল এরর না আসে
     UserSelectedModel = await loadModelSafely("User");
     ConversationSelectedModel = await loadModelSafely("Conversation");
     MessageSelectedModel = await loadModelSafely("Message");
@@ -469,7 +509,7 @@ const startApp = async () => {
     } else {
       const distPath = path.join(process.cwd(), "dist");
       app.use(express.static(distPath));
-      // FIX: রেজেক্স ব্যবহার করে পাথ হ্যান্ডলিং যা এপিআই রাউটগুলোকে বাধা দিবে না
+      // এখানে Regex ব্যবহার করুন যাতে API কল বাধাগ্রস্ত না হয়
       app.get(/^(?!\/api).*/, (req, res) => {
         res.sendFile(path.join(distPath, "index.html"));
       });
