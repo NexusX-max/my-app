@@ -4,11 +4,11 @@
   "type": "module",
   "main": "server/index.js",
   "scripts": {
-    "start": "node --max-http-header-size=16384 server/index.js",
-    "server": "nodemon server/index.js",
-    "build": "npm install --legacy-peer-deps && cd client && npm install --legacy-peer-deps && npm run build",
-    "dev": "concurrently \"npm run server\" \"cd client && npm run dev\""
-  },
+  "start": "node --max-http-header-size=16384 server/index.js",
+  "build": "npm install && cd client && npm install && npx vite build",
+  "server": "nodemon server/index.js",
+  "dev": "concurrently \"npm run server\" \"cd client && npm run dev\""
+},
   "engines": {
     "node": "22.12.0"
   },
