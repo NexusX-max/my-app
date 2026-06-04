@@ -201,7 +201,6 @@ router.post("/message", protect, async (req, res) => {
         ].includes(cleanId) || 
         cleanId.startsWith('bot-') || 
         cleanId.startsWith('user-') ||
-        conversationId.startsWith('conv-temp-') ||
         !mongoose.Types.ObjectId.isValid(cleanId);
 
         if (cleanId && !isBotOrCustom && mongoose.Types.ObjectId.isValid(cleanId)) {
@@ -275,7 +274,7 @@ router.post("/message", protect, async (req, res) => {
             io.to(targetConversationId).emit("receiveMessage", payload);
             io.to(conversationId).emit("receiveMessage", payload);
 
-            // Redundant: Find other user in conversation and push directly to unique socket
+            // Emit directly to other user's personal rooms to ensure reliable multi-user and multi-server delivery
             try {
                 let otherId = null;
                 let conv = null;
@@ -289,12 +288,11 @@ router.post("/message", protect, async (req, res) => {
                     otherId = conv.members.find(m => m.toString() !== senderId);
                 }
 
-                if (otherId && activeUsersMap) {
+                if (otherId) {
                     const cleanOtherId = otherId.toString().replace(/^conv-temp-|^conv-/, '');
-                    const recipientSocketId = activeUsersMap.get(cleanOtherId) || activeUsersMap.get(otherId.toString());
-                    if (recipientSocketId) {
-                        io.to(recipientSocketId).emit("receiveMessage", payload);
-                    }
+                    // Dispatches directly to the recipient user's rooms. Every connected device for that user joins these rooms.
+                    io.to(cleanOtherId).to(otherId.toString()).emit("receiveMessage", payload);
+                    console.log(`📡 [EMIT] Sockets dispatched receiveMessage directly to rooms: ${cleanOtherId}, ${otherId.toString()}`);
                 }
             } catch (socketErr) {
                 console.warn("Socket opponent lookup failed: ", socketErr.message);
@@ -407,16 +405,17 @@ router.post("/message", protect, async (req, res) => {
                         } catch (e) {}
 
                         if (io) {
-                            const senderSocketId = activeUsersMap ? activeUsersMap.get(senderId) : null;
                             const botPayload = {
                                 conversationId,
                                 message: botMessage
                             };
 
                             io.to(conversationId).emit("receiveMessage", botPayload);
-                            if (senderSocketId) {
-                                io.to(senderSocketId).emit("receiveMessage", botPayload);
-                            }
+                            
+                            // Emit directly to the user's personal rooms to ensure they receive it immediately
+                            const cleanSenderId = senderId.replace(/^conv-temp-|^conv-/, '');
+                            io.to(cleanSenderId).to(senderId).emit("receiveMessage", botPayload);
+                            console.log(`🤖 [BOT EMIT] Dispatched response directly to rooms: ${cleanSenderId}, ${senderId}`);
                         }
                     }, 1200);
                 }
@@ -454,7 +453,6 @@ router.get("/history/:conversationId", protect, async (req, res) => {
         ].includes(cleanId) || 
         cleanId.startsWith('bot-') || 
         cleanId.startsWith('user-') ||
-        conversationId.startsWith('conv-temp-') ||
         !mongoose.Types.ObjectId.isValid(cleanId);
 
         if (cleanId && !isBotOrCustom && mongoose.Types.ObjectId.isValid(cleanId)) {
