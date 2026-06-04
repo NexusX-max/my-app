@@ -26,7 +26,7 @@ try {
   __filename = path.join(__dirname, 'messenger.js');
 }
 
-// ডিবাগিংয়ের জন্য পাথ লগ
+// ডিবাগিংয়ের জন্য পাথ লগ
 console.log("Current Directory:", process.cwd());
 console.log("Root directory path:", __dirname);
 
@@ -90,7 +90,7 @@ const uploadDir = path.resolve(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 app.use('/uploads', express.static(uploadDir));
 
-// অথেন্টিকেশন মিডলওয়্যার (🔐 Neural Link Protection)
+// অথেন্টিকেশন মিডলওয়্যার (🔐 Neural Link Protection)
 const protect = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer")) {
@@ -381,7 +381,7 @@ const setupSocket = async () => {
 
 const startApp = async () => {
   try {
-    // ১. প্রথমে মডেলসমুহ ডাইনামিকালি লোড করুন যাতে কম্পাইল এরর না আসে
+    // ১. প্রথমে মডেলসমুহ ডাইনামিকালি লোড করুন
     UserSelectedModel = await loadModelSafely("User");
     ConversationSelectedModel = await loadModelSafely("Conversation");
     MessageSelectedModel = await loadModelSafely("Message");
@@ -469,7 +469,8 @@ const startApp = async () => {
     } else {
       const distPath = path.join(process.cwd(), "dist");
       app.use(express.static(distPath));
-      app.get("*", (req, res) => {
+      // FIX: রেজেক্স ব্যবহার করে পাথ হ্যান্ডলিং যা এপিআই রাউটগুলোকে বাধা দিবে না
+      app.get(/^(?!\/api).*/, (req, res) => {
         res.sendFile(path.join(distPath, "index.html"));
       });
     }
