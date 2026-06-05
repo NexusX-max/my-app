@@ -18,6 +18,32 @@ import SettingsScreen from '../components/SettingsScreen';
 import BiometricScreen from '../components/BiometricScreen';
 import SearchScreen from './SearchScreen';
 import { ShieldAlert, Clock } from 'lucide-react';
+const showToast = {
+  success: (msg) => {
+    try {
+      if (toast && typeof toast.success === 'function') {
+        toast.success(msg);
+      } else {
+        console.log("SUCCESS TOAST fallback:", msg);
+      }
+    } catch (err) {
+      console.log("SUCCESS TOAST fallback:", msg);
+    }
+  },
+  error: (msg) => {
+    try {
+      if (toast && typeof toast.error === 'function') {
+        toast.error(msg);
+      } else {
+        console.error("ERROR TOAST fallback:", msg);
+      }
+    } catch (err) {
+      console.error("ERROR TOAST fallback:", msg);
+    }
+  }
+};
+
+import { useAuth } from '../context/AuthContext';
 
 export default function Messenger() {
   const { user, api, socket, currentNode, switchUser } = useAuth();
@@ -538,14 +564,14 @@ export default function Messenger() {
 
     socket.on("callCancelled", (data) => {
       console.log("🛑 [SOCKET] Incoming call aborted by remote peer.");
-      toast.error("Onyx connection link disconnected or declined.");
+      showToast.error("Onyx connection link disconnected or declined.");
       setIncomingCallSession(null);
       setActiveCallSession(null);
     });
 
     socket.on("callConnected", (data) => {
       console.log("🔗 [SOCKET] Incoming call accepted by remote agent.");
-      toast.success("Onyx secure connection link established!");
+      showToast.success("Onyx secure connection link established!");
     });
 
     return () => {
