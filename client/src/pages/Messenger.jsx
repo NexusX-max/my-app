@@ -1,15 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  INITIAL_CHATS, 
-  INITIAL_MESSAGES, 
-  GLOW_PRESETS, 
-  SOUND_MSG, 
-  SOUND_CALL, 
-  SOUND_DANGER, 
-  AMBIENT_SOUNDSCAPES, 
-  INITIAL_GROUPS, 
-  MOCK_TRANSCRIPTS 
-} from "../data";
+  INITIAL_GROUPS, INITIAL_MESSAGES, GLOW_PRESETS 
+} from '../data';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from "./Sidebar";
 import ChatWindow from '../components/ChatWindow';
@@ -17,7 +9,8 @@ import CallScreen from '../components/CallScreen';
 import SettingsScreen from '../components/SettingsScreen';
 import BiometricScreen from '../components/BiometricScreen';
 import SearchScreen from './SearchScreen';
-import { ShieldAlert, Clock } from 'lucide-react';
+import { ShieldAlert, Clock, PhoneOff, Mic } from 'lucide-react';
+import toast from 'react-hot-toast';
 const showToast = {
   success: (msg) => {
     try {
@@ -42,8 +35,6 @@ const showToast = {
     }
   }
 };
-
-import { useAuth } from '../context/AuthContext';
 
 export default function Messenger() {
   const { user, api, socket, currentNode, switchUser } = useAuth();

@@ -1,7 +1,7 @@
 import React, { Suspense, useContext, useState, useEffect, useRef } from "react";
-import { Routes, Route, useLocation, Navigate, useParams, useNavigate } from "react-router-dom";
-import { Toaster, toast } from 'react-hot-toast';
-import { AuthContext } from './context/AuthContext';
+import { BrowserRouter, Routes, Route, useLocation, Navigate, useParams, useNavigate } from "react-router-dom";
+import toast, { Toaster } from 'react-hot-toast';
+import { AuthContext, AuthProvider } from './context/AuthContext';
 
 // UI Components
 import Sidebar from "./components/Sidebar";
@@ -161,15 +161,17 @@ function AppContent() {
         toast.dismiss();
       };
 
-      // সকেট ইভেন্ট বাইন্ডিং
+      // সকেট ইভেন্ট বাইন্ডিং (সার্ভার যদি "incomingCall" বা "$incomingCall" যেটাই পাঠাক ডিফেন্সিভলি ব্যাকআপ রাখা হয়েছে)
       socket.on("connect", onConnect);
       socket.on("getNotification", onNotification);
+      socket.on("incomingCall", onIncomingCall);
       socket.on("$incomingCall", onIncomingCall);
       socket.on("callEnded", onCallEnded);
 
       return () => {
         socket.off("connect", onConnect);
         socket.off("getNotification", onNotification);
+        socket.off("incomingCall", onIncomingCall);
         socket.off("$incomingCall", onIncomingCall);
         socket.off("callEnded", onCallEnded);
       };
@@ -212,7 +214,6 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-[#020617] text-gray-200 selection:bg-cyan-500/30 overflow-x-hidden relative">
-      <Toaster position="top-right" />
       <CustomCursor />
 
       {!isMessenger && !isReels && (
@@ -275,4 +276,25 @@ function AppContent() {
   );
 }
 
-export default AppContent;
+// গ্লোবাল এন্ট্রি র‍্যাপার যা Auth এবং Router কনটেক্সট নিশ্চিত করে ২য় ধাপে ক্র্যাশ হওয়া থেকে বাঁচাবে
+export default function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <AppContent />
+        <Toaster 
+          position="top-right" 
+          toastOptions={{
+            className: 'border border-cyan-500/20 bg-zinc-950 text-white font-mono text-xs shadow-2xl py-3 px-4',
+            duration: 4000,
+            style: {
+              background: '#09090b',
+              color: '#fff',
+              border: '1px solid rgba(6, 182, 212, 0.25)',
+            }
+          }}
+        />
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}
