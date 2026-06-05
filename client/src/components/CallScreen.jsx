@@ -1359,7 +1359,7 @@ const CallScreen = ({
             className="p-4 bg-rose-600 hover:bg-rose-500 rounded-2xl text-white font-bold transition-all transform active:scale-95 shadow-[0_0_20px_rgba(244,63,94,0.4)] cursor-pointer"
             title="Disconnect Connection Link"
           >
-           
+            <PhoneOff size={20} />
           </button>
         </div>
 

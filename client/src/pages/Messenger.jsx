@@ -252,18 +252,40 @@ export default function Messenger() {
   // Format backend conversation list to client interface
   const formatBackendConversation = (conv) => {
     const isBot = conv.userDetails?.isBot || false;
+    const currentUserId = user?._id || userProfile?._id || 'me';
+    let opponentId = conv.userDetails?._id || conv.userDetails?.id;
+    if (!opponentId && conv.members) {
+      opponentId = conv.members.find(m => m.toString() !== currentUserId.toString());
+    }
+    
+    // Fallback info if userDetails can't be fetched
+    let defaultName = "Operator Node";
+    let defaultAvatar = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80";
+    if (opponentId === "bot-onyx") {
+      defaultName = "Onyx Core Intelligence";
+      defaultAvatar = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80";
+    } else if (opponentId === "bot-luna") {
+      defaultName = "Advisor Luna";
+      defaultAvatar = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80";
+    } else if (opponentId === "user-kaelen") {
+      defaultName = "Kaelen Vex";
+      defaultAvatar = "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&q=80";
+    }
+
+    const resolvedIsBot = isBot || (opponentId?.startsWith("bot-") || false);
+
     return {
       id: conv._id,
-      name: conv.userDetails ? `${conv.userDetails.firstName} ${conv.userDetails.lastName}` : "Operator Node",
-      avatar: conv.userDetails?.avatar || "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80",
+      name: conv.userDetails ? `${conv.userDetails.firstName} ${conv.userDetails.lastName}` : defaultName,
+      avatar: conv.userDetails?.avatar || defaultAvatar,
       lastMsg: conv.lastMessage?.text || "Neural connection established. Ready.",
       time: conv.updatedAt ? new Date(conv.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now",
-      online: conv.userDetails?.online || false,
-      isBot: isBot,
+      online: conv.userDetails?.online || resolvedIsBot || false,
+      isBot: resolvedIsBot,
       bio: conv.userDetails?.bio || "Zero-Knowledge Terminal Node",
-      encryptionKey: isBot ? (conv.userDetails?._id === 'bot-onyx' ? 'AES-512-NX' : 'RSA-4096-LUNA') : 'PGP-LINK-SECURE',
-      latency: isBot ? '0.04ms' : '15ms',
-      otherId: conv.userDetails?._id || conv.userDetails?.id
+      encryptionKey: resolvedIsBot ? (opponentId === 'bot-onyx' ? 'AES-512-NX' : 'RSA-4096-LUNA') : 'PGP-LINK-SECURE',
+      latency: resolvedIsBot ? '0.04ms' : '15ms',
+      otherId: opponentId
     };
   };
 
@@ -419,18 +441,71 @@ export default function Messenger() {
       loadAllConversations();
 
       const msgId = data.message?.id || data.message?._id;
-      const originId = data.conversationId;
+      let originId = data.conversationId;
+      const currentUserId = user?._id || userProfile?._id || 'me';
+
+      // Dynamically resolve target chat ID based on members to align sender and recipient views
+      if (data.conversation && data.conversation.members) {
+        const members = data.conversation.members.map(m => m.toString());
+        const partnerId = members.find(m => m !== currentUserId.toString());
+        if (partnerId) {
+          const matchedChat = chatList.find(c => 
+            c.id === partnerId || 
+            c.otherId === partnerId || 
+            c.id === `conv-temp-${partnerId}` ||
+            c.id === `conv-${partnerId}` ||
+            c.id === originId
+          );
+          if (matchedChat) {
+            originId = matchedChat.id;
+          } else {
+            originId = partnerId;
+          }
+        }
+      }
+
+      let activeId = selectedChatId;
+
+      // Automatically swap our selected chat from temp ID to real DB ID if this received message belongs to it
+      if (selectedChatId && selectedChatId.startsWith("conv-temp-")) {
+        const tempTargetUserId = selectedChatId.replace("conv-temp-", "");
+        let isMatch = (data.message?.senderId === tempTargetUserId);
+
+        if (!isMatch && data.conversation && data.conversation.members) {
+          const membersStr = data.conversation.members.map(m => m.toString());
+          if (membersStr.includes(currentUserId.toString()) && membersStr.includes(tempTargetUserId)) {
+            isMatch = true;
+          }
+        }
+
+        if (isMatch) {
+          const realConvId = data.conversationId;
+          console.log(`🔄 [SOCKET SWAP] Automatically switching selectedChatId from temp ${selectedChatId} to real ${realConvId}`);
+          
+          setMessagesHistory(prev => {
+            const updated = { ...prev };
+            const oldList = updated[selectedChatId] || [];
+            updated[realConvId] = [...(updated[realConvId] || []), ...oldList].filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
+            delete updated[selectedChatId];
+            return updated;
+          });
+          
+          setSelectedChatId(realConvId);
+          activeId = realConvId;
+        }
+      }
 
       // Update current history list if in active chat
-      if (originId === selectedChatId) {
+      if (originId === activeId) {
         setMessagesHistory(prev => {
           const currentList = prev[originId] || [];
           if (currentList.some(m => m.id === msgId)) return prev;
           
+          const isSenderMe = data.message.senderId === 'me' || data.message.senderId === currentUserId.toString();
           const newMsgFormatted = {
             id: msgId,
-            sender: data.message.senderId,
-            senderName: data.message.senderId === 'me' ? userProfile.name : "Remote Operator",
+            sender: isSenderMe ? 'me' : data.message.senderId,
+            senderName: isSenderMe ? userProfile.name : "Remote Operator",
             text: data.message.text,
             file: data.message.image,
             time: new Date(data.message.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -463,12 +538,14 @@ export default function Messenger() {
 
     socket.on("callCancelled", (data) => {
       console.log("🛑 [SOCKET] Incoming call aborted by remote peer.");
+      toast.error("Onyx connection link disconnected or declined.");
       setIncomingCallSession(null);
       setActiveCallSession(null);
     });
 
     socket.on("callConnected", (data) => {
       console.log("🔗 [SOCKET] Incoming call accepted by remote agent.");
+      toast.success("Onyx secure connection link established!");
     });
 
     return () => {
@@ -477,7 +554,7 @@ export default function Messenger() {
       socket.off("callCancelled");
       socket.off("callConnected");
     };
-  }, [socket, selectedChatId, userProfile.name]);
+  }, [socket, selectedChatId, userProfile.name, user, chatList]);
 
   // If a chat is selected, clear its unread status
   useEffect(() => {
@@ -753,14 +830,17 @@ export default function Messenger() {
     historyApi
       .then(data => {
         if (Array.isArray(data)) {
-          const formattedMsgs = data.map((m) => ({
-            id: m.id || m._id,
-            sender: m.senderId === 'me' ? 'me' : m.senderId,
-            senderName: m.senderId === 'me' ? userProfile.name : (selectedChatDetails?.name || "Grid Operator"),
-            text: m.text,
-            file: m.image,
-            time: m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now"
-          }));
+          const formattedMsgs = data.map((m) => {
+            const isMsgMe = m.senderId === 'me' || m.senderId === (userProfile?._id || 'me');
+            return {
+              id: m.id || m._id,
+              sender: isMsgMe ? 'me' : m.senderId,
+              senderName: isMsgMe ? userProfile.name : (selectedChatDetails?.name || "Grid Operator"),
+              text: m.text,
+              file: m.image,
+              time: m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now"
+            };
+          });
 
           setMessagesHistory(prev => ({
             ...prev,
@@ -1005,14 +1085,17 @@ export default function Messenger() {
         historyApi
           .then(data => {
             if (Array.isArray(data)) {
-              const formattedMsgs = data.map((m) => ({
-                id: m.id || m._id,
-                sender: m.senderId === 'me' ? 'me' : m.senderId,
-                senderName: m.senderId === 'me' ? userProfile.name : (selectedChatDetails?.name || "Onyx Node"),
-                text: m.text,
-                file: m.image,
-                time: m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now"
-              }));
+              const formattedMsgs = data.map((m) => {
+                const isMsgMe = m.senderId === 'me' || m.senderId === (userProfile?._id || 'me');
+                return {
+                  id: m.id || m._id,
+                  sender: isMsgMe ? 'me' : m.senderId,
+                  senderName: isMsgMe ? userProfile.name : (selectedChatDetails?.name || "Onyx Node"),
+                  text: m.text,
+                  file: m.image,
+                  time: m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now"
+                };
+              });
 
               setMessagesHistory(prev => ({
                 ...prev,

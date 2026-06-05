@@ -290,13 +290,21 @@ router.post("/message", protect, async (req, res) => {
             const fallbackConvs = [
                 { _id: "conv-onyx", members: ["me", "bot-onyx"] },
                 { _id: "conv-luna", members: ["me", "bot-luna"] },
-                { _id: "conv-kaelen", members: ["me", "user-kaelen"] }
+                { _id: "conv-kaelen", members: ["me", "user-kaelen"] },
+                { _id: "user-kaelen", members: ["me", "user-kaelen"] },
+                { _id: "conv-sasha", members: ["me", "user-sasha"] },
+                { _id: "user-sasha", members: ["me", "user-sasha"] }
             ];
             conv = fallbackConvs.find(c => c._id === targetConversationId);
             
-            // If still not resolved, and conversationId is formatted like conv-temp-{userId}
-            if (!conv && targetConversationId && targetConversationId.startsWith("conv-temp-")) {
-                const partnerId = targetConversationId.replace("conv-temp-", "");
+            // Generate clean dynamic pairing support for cross-session switching 
+            if (!conv && targetConversationId) {
+                let partnerId = targetConversationId.replace(/^conv-temp-|^conv-/, '');
+                if (partnerId === 'kaelen' || partnerId === 'user-kaelen') partnerId = 'user-kaelen';
+                if (partnerId === 'sasha' || partnerId === 'user-sasha') partnerId = 'user-sasha';
+                if (partnerId === 'onyx' || partnerId === 'bot-onyx') partnerId = 'bot-onyx';
+                if (partnerId === 'luna' || partnerId === 'bot-luna') partnerId = 'bot-luna';
+
                 conv = {
                     _id: targetConversationId,
                     members: [senderId, partnerId]
