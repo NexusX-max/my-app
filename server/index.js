@@ -12,6 +12,8 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import mongoose from "mongoose";
+// Disable global mongoose command buffering so operations fail fast if mongo is offline
+mongoose.set('bufferCommands', false);
 import { GoogleGenAI } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 
@@ -326,6 +328,14 @@ const setupSocket = async () => {
       const cleanTo = data.to ? data.to.toString().replace(/^conv-temp-|^conv-/, '') : '';
       io.to(cleanTo).to(data.to.toString()).emit("callConnected", {
         from: data.from ? data.from.toString().replace(/^conv-temp-|^conv-/, '') : ''
+      });
+    });
+
+    socket.on("webrtcSignal", (data) => {
+      const cleanTo = data.to ? data.to.toString().replace(/^conv-temp-|^conv-/, '') : '';
+      io.to(cleanTo).to(data.to.toString()).emit("webrtcSignal", {
+        from: data.from ? data.from.toString().replace(/^conv-temp-|^conv-/, '') : '',
+        signal: data.signal
       });
     });
 

@@ -247,7 +247,8 @@ const CallScreen = ({
   callTarget = { name: "Onyx Core Agent", avatar: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80" },
   callType = "video",
   onEndCall,
-  userProfile
+  userProfile,
+  socket
 }) => {
   // Device & browser detection indicators
   const [devicePlatform, setDevicePlatform] = useState("");
@@ -296,9 +297,12 @@ const CallScreen = ({
 
   // WebRTC Live Stream References
   const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
   const screenVideoRef = useRef(null);
   const [localStream, setLocalStream] = useState(null);
+  const [remoteStream, setRemoteStream] = useState(null);
   const [screenStream, setScreenStream] = useState(null);
+  const peerConnectionRef = useRef(null);
 
   // Group Members list
   const [addedMembers, setAddedMembers] = useState([]);
@@ -386,11 +390,14 @@ const CallScreen = ({
   // 1b. Ringtone simulation & auto-connect
   useEffect(() => {
     if (callStatus === "ringing") {
-      // Auto connection timer
-      const autoPickUp = setTimeout(() => {
-        setCallStatus("connected");
-        triggerBeepTone(880, 'sine');
-      }, 4000);
+      let autoPickUp;
+      const targetId = callTarget.otherId || callTarget.id;
+      if (!socket || !targetId) {
+        autoPickUp = setTimeout(() => {
+          setCallStatus("connected");
+          triggerBeepTone(880, 'sine');
+        }, 4000);
+      }
 
       const toneInterval = setInterval(() => {
         // High fidelity dual dial beep tones
@@ -398,12 +405,25 @@ const CallScreen = ({
         setTimeout(() => triggerBeepTone(440, 'sine'), 150);
       }, 1800);
 
+      const handleCallConnected = () => {
+        console.log("🔗 Secure line synchronised via Socket.io!");
+        setCallStatus("connected");
+        triggerBeepTone(880, 'sine');
+      };
+
+      if (socket) {
+        socket.on("callConnected", handleCallConnected);
+      }
+
       return () => {
-        clearTimeout(autoPickUp);
+        if (autoPickUp) clearTimeout(autoPickUp);
         clearInterval(toneInterval);
+        if (socket) {
+          socket.off("callConnected", handleCallConnected);
+        }
       };
     }
-  }, [callStatus]);
+  }, [callStatus, socket, callTarget]);
 
   // 2. Rolling Transcripts Loop
   useEffect(() => {
@@ -510,6 +530,168 @@ const CallScreen = ({
       }
     };
   }, [isVideoOff, selectedQuality]);
+
+  // 4b. WebRTC Real Sync Connection Logic
+  useEffect(() => {
+    if (callStatus !== "connected") return;
+
+    console.log("🚀 Establishing WebRTC secure sync channel.");
+    
+    // Create new RTCPeerConnection with public Google STUN servers
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" }
+      ]
+    });
+
+    peerConnectionRef.current = pc;
+
+    // Handle ICE Candidates
+    pc.onicecandidate = (event) => {
+      if (event.candidate && socket) {
+        const targetId = callTarget.otherId || callTarget.id;
+        socket.emit("webrtcSignal", {
+          to: targetId,
+          from: userProfile?._id || "me",
+          signal: {
+            type: "candidate",
+            candidate: event.candidate
+          }
+        });
+      }
+    };
+
+    // Handle remote media track arrival
+    pc.ontrack = (event) => {
+      console.log("🟢 Incoming Webrtc Track established!", event.streams);
+      if (event.streams && event.streams[0]) {
+        setRemoteStream(event.streams[0]);
+      }
+    };
+
+    // Listen to signal packets inside the call
+    const handleSignal = async (data) => {
+      const { from, signal } = data;
+      const partnerId = callTarget.otherId || callTarget.id;
+      // Ensure the signal comes from our talking partner ID
+      if (from !== partnerId) return;
+
+      console.log(`📡 Inbound WebRTC Signal Packet: ${signal.type}`);
+
+      try {
+        if (signal.type === "offer") {
+          await pc.setRemoteDescription(new RTCSessionDescription(signal));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          
+          socket.emit("webrtcSignal", {
+            to: partnerId,
+            from: userProfile?._id || "me",
+            signal: answer
+          });
+        } else if (signal.type === "answer") {
+          await pc.setRemoteDescription(new RTCSessionDescription(signal));
+        } else if (signal.type === "candidate" && signal.candidate) {
+          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+        }
+      } catch (err) {
+        console.error("Signal transaction error:", err);
+      }
+    };
+
+    if (socket) {
+      socket.on("webrtcSignal", handleSignal);
+    }
+
+    return () => {
+      console.log("🧹 Tearing down active WebRTC handlers.");
+      if (socket) {
+        socket.off("webrtcSignal", handleSignal);
+      }
+      pc.close();
+      peerConnectionRef.current = null;
+    };
+  }, [callStatus, socket, callTarget.id, callTarget.otherId, userProfile?._id]);
+
+  // 4c. Map Local Stream tracks to the Peer Connection pipeline dynamically
+  useEffect(() => {
+    const pc = peerConnectionRef.current;
+    if (!pc || !localStream) return;
+
+    console.log("📤 Distributing local media tracks into PeerConnection.");
+
+    // Avoid duplicating senders
+    const senders = pc.getSenders();
+    senders.forEach(sender => {
+      try {
+        pc.removeTrack(sender);
+      } catch (e) {}
+    });
+
+    localStream.getTracks().forEach(track => {
+      try {
+        pc.addTrack(track, localStream);
+      } catch (e) {
+        console.warn("Track addition exception:", e);
+      }
+    });
+
+    // Caller initiates WebRTC SDP offer
+    if (!callTarget?.isIncoming) {
+      const createOfferAsync = async () => {
+        try {
+          console.log("📣 Caller initiating WebRTC handshake offer.");
+          const offer = await pc.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: true
+          });
+          await pc.setLocalDescription(offer);
+          const partnerId = callTarget.otherId || callTarget.id;
+          socket.emit("webrtcSignal", {
+            to: partnerId,
+            from: userProfile?._id || "me",
+            signal: offer
+          });
+        } catch (err) {
+          console.error("SDP handshaking offer failure:", err);
+        }
+      };
+
+      const delayOffer = setTimeout(createOfferAsync, 600);
+      return () => clearTimeout(delayOffer);
+    }
+  }, [localStream, callTarget?.isIncoming, callTarget.id, callTarget.otherId, socket, userProfile?._id]);
+
+  // 4d. Mute & Video-off control togglers synchronization over WebRTC
+  useEffect(() => {
+    if (localStream) {
+      localStream.getAudioTracks().forEach(track => {
+        track.enabled = !isMuted;
+      });
+    }
+  }, [isMuted, localStream]);
+
+  useEffect(() => {
+    if (localStream) {
+      localStream.getVideoTracks().forEach(track => {
+        track.enabled = !isVideoOff;
+      });
+    }
+  }, [isVideoOff, localStream]);
+
+  // 4e. Bind newly connected remote video stream to ref source
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStream) {
+      try {
+        console.log("📺 Connecting inbound high fidelity remote peer stream to video view!");
+        remoteVideoRef.current.srcObject = remoteStream;
+      } catch (e) {
+        console.warn("Failed to set video feed srcObject:", e);
+      }
+    }
+  }, [remoteStream]);
 
   // 5. WebRTC Screen Sharing Service
   const startScreenShare = async () => {
@@ -1177,26 +1359,36 @@ const CallScreen = ({
             }`}>
               <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/[0.01] via-transparent to-cyan-500/[0.01] pointer-events-none" />
               
-              {/* Loop video simulating live 1-to-1 video stream / remote face */}
-              {videoErrors.partner ? (
-                <HolographicFaceVisualizer 
-                  name={callTarget.name} 
-                  avatar={callTarget.avatar} 
-                  isMe={false} 
-                  active={true} 
-                  isSpeaking={callStatus === 'connected'} 
+              {/* Remote WebRTC video stream if active, otherwise static loops / holograms */}
+              {remoteStream && !videoErrors.partner ? (
+                <video 
+                  ref={remoteVideoRef}
+                  autoPlay 
+                  playsInline 
+                  muted={isPartnerMuted} 
+                  className="absolute inset-0 w-full h-full object-cover z-0"
                 />
               ) : (
-                <video 
-                  src="https://assets.mixkit.co/videos/preview/mixkit-young-woman-with-glasses-talking-to-camera-40156-large.mp4"
-                  autoPlay 
-                  loop 
-                  muted={isPartnerMuted} 
-                  playsInline 
-                  referrerPolicy="no-referrer"
-                  onError={() => setVideoErrors(prev => ({ ...prev, partner: true }))}
-                  className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-80 z-0"
-                />
+                videoErrors.partner ? (
+                  <HolographicFaceVisualizer 
+                    name={callTarget.name} 
+                    avatar={callTarget.avatar} 
+                    isMe={false} 
+                    active={true} 
+                    isSpeaking={callStatus === 'connected'} 
+                  />
+                ) : (
+                  <video 
+                    src="https://assets.mixkit.co/videos/preview/mixkit-young-woman-with-glasses-talking-to-camera-40156-large.mp4"
+                    autoPlay 
+                    loop 
+                    muted={isPartnerMuted} 
+                    playsInline 
+                    referrerPolicy="no-referrer"
+                    onError={() => setVideoErrors(prev => ({ ...prev, partner: true }))}
+                    className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-80 z-0"
+                  />
+                )
               )}
 
               <div className="absolute inset-0 bg-slate-950/20 mix-blend-multiply border-2 border-purple-500/20 rounded-2xl pointer-events-none" />

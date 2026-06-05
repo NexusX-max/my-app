@@ -1472,6 +1472,7 @@ export default function Messenger() {
 
       {activeCallSession && (
         <CallScreen 
+          socket={socket}
           callTarget={activeCallSession.target}
           callType={activeCallSession.type}
           onEndCall={(duration, status) => {
