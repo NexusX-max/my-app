@@ -276,7 +276,7 @@ const CallScreen = ({
   const [selectedQuality, setSelectedQuality] = useState("1080p_hd"); // 1080p, 720p, Adaptive, Low
   const [virtualBackground, setVirtualBackground] = useState("none"); // none, blur, matrix, space
   const [faceTracking, setFaceTracking] = useState(false);
-  const [isPartnerMuted, setIsPartnerMuted] = useState(true);
+  const [isPartnerMuted, setIsPartnerMuted] = useState(false);
   const [showAudioConsent, setShowAudioConsent] = useState(true);
   
   // UI Panels
@@ -1278,7 +1278,11 @@ const CallScreen = ({
               {!isVideoOff && (
                 localStream ? (
                   <video 
-                    ref={localVideoRef} 
+                    ref={(el) => {
+                      if (el && localStream && el.srcObject !== localStream) {
+                        el.srcObject = localStream;
+                      }
+                    }} 
                     autoPlay 
                     playsInline 
                     muted 
@@ -1360,9 +1364,13 @@ const CallScreen = ({
               <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/[0.01] via-transparent to-cyan-500/[0.01] pointer-events-none" />
               
               {/* Remote WebRTC video stream if active, otherwise static loops / holograms */}
-              {remoteStream && !videoErrors.partner ? (
+              {remoteStream ? (
                 <video 
-                  ref={remoteVideoRef}
+                  ref={(el) => {
+                    if (el && remoteStream && el.srcObject !== remoteStream) {
+                      el.srcObject = remoteStream;
+                    }
+                  }}
                   autoPlay 
                   playsInline 
                   muted={isPartnerMuted} 
