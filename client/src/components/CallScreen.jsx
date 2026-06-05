@@ -275,6 +275,8 @@ const CallScreen = ({
   const [selectedQuality, setSelectedQuality] = useState("1080p_hd"); // 1080p, 720p, Adaptive, Low
   const [virtualBackground, setVirtualBackground] = useState("none"); // none, blur, matrix, space
   const [faceTracking, setFaceTracking] = useState(false);
+  const [isPartnerMuted, setIsPartnerMuted] = useState(true);
+  const [showAudioConsent, setShowAudioConsent] = useState(true);
   
   // UI Panels
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -421,7 +423,7 @@ const CallScreen = ({
 
   // 2b. High-Fidelity Speech Synthesis of subtitles (Voice output!)
   useEffect(() => {
-    if (callStatus === "connected" && currentTranscript) {
+    if (callStatus === "connected" && currentTranscript && !isPartnerMuted) {
       try {
         if ('speechSynthesis' in window) {
           window.speechSynthesis.cancel();
@@ -430,6 +432,20 @@ const CallScreen = ({
           const utterance = new SpeechSynthesisUtterance(targetText);
           utterance.rate = 1.05;
           utterance.pitch = callTarget.name.includes("Agent") || callTarget.name.includes("Onyx") ? 0.85 : 1.1;
+          
+          // Match selected translation language code
+          if (translateLang === 'bn') {
+            utterance.lang = 'bn-BD';
+          } else if (translateLang === 'ja') {
+            utterance.lang = 'ja-JP';
+          } else if (translateLang === 'es') {
+            utterance.lang = 'es-ES';
+          } else if (translateLang === 'de') {
+            utterance.lang = 'de-DE';
+          } else {
+            utterance.lang = 'en-US';
+          }
+          
           window.speechSynthesis.speak(utterance);
         }
       } catch (err) {
@@ -441,7 +457,7 @@ const CallScreen = ({
         window.speechSynthesis.cancel();
       }
     };
-  }, [currentTranscript, callStatus, translateLang]);
+  }, [currentTranscript, callStatus, translateLang, isPartnerMuted]);
 
   // 3. Cryptographic simulation countdown progress
   useEffect(() => {
@@ -950,6 +966,41 @@ const CallScreen = ({
         </div>
       </header>
 
+      {/* 🔊 Audio Consent Warning Banner */}
+      {showAudioConsent && (
+        <div className="bg-gradient-to-r from-cyan-500 to-purple-500 text-slate-950 px-4 py-3 text-xs flex flex-col md:flex-row items-center justify-between font-mono font-bold uppercase tracking-wider relative z-20 shadow-[0_4px_25px_rgba(6,182,212,0.35)] gap-3 border-b border-cyan-400 select-none">
+          <div className="flex items-center gap-2.5">
+            <Volume2 size={18} className="animate-bounce shrink-0" />
+            <span className="text-center md:text-left">
+              🔊 Click "UNMUTE AUDIO" to enable high-fidelity voice output and sync speakers with {callTarget.name}!
+            </span>
+          </div>
+          <button 
+            onClick={() => {
+              setShowAudioConsent(false);
+              setIsPartnerMuted(false); // Unmute partner on click
+              try {
+                if ('speechSynthesis' in window) {
+                  window.speechSynthesis.cancel();
+                  const dict = TRANSLATIONS[translateLang] || {};
+                  const targetText = dict[currentTranscript] || currentTranscript;
+                  const welcome = new SpeechSynthesisUtterance("Biometric voice uplink synchronized. " + targetText);
+                  welcome.rate = 1.05;
+                  welcome.pitch = callTarget.name.includes("Agent") || callTarget.name.includes("Onyx") ? 0.85 : 1.1;
+                  window.speechSynthesis.speak(welcome);
+                }
+              } catch(e) {
+                console.warn(e);
+              }
+              triggerBeepTone(880, 'sine');
+            }}
+            className="bg-slate-950 text-cyan-400 border-2 border-cyan-400 px-4 py-1.5 rounded-xl text-[10px] hover:bg-cyan-400 hover:text-slate-950 transition-all font-black shrink-0 cursor-pointer shadow-[0_0_10px_rgba(0,0,0,0.5)] animate-pulse"
+          >
+            UNMUTE AUDIO & SIGNALS
+          </button>
+        </div>
+      )}
+
       {/* 🤝 Drifter Entry Notification (Waiting Room banner) */}
       {waitingParticipant.active && (
         <div className="bg-amber-500/10 border-b border-amber-500/25 px-4 py-2.5 flex items-center justify-between text-xs z-20">
@@ -1128,13 +1179,19 @@ const CallScreen = ({
               
               {/* Loop video simulating live 1-to-1 video stream / remote face */}
               {videoErrors.partner ? (
-                renderVideoFallback(callTarget.name, callTarget.avatar, "Inbound Telemetry Feed Safe")
+                <HolographicFaceVisualizer 
+                  name={callTarget.name} 
+                  avatar={callTarget.avatar} 
+                  isMe={false} 
+                  active={true} 
+                  isSpeaking={callStatus === 'connected'} 
+                />
               ) : (
                 <video 
                   src="https://assets.mixkit.co/videos/preview/mixkit-young-woman-with-glasses-talking-to-camera-40156-large.mp4"
                   autoPlay 
                   loop 
-                  muted 
+                  muted={isPartnerMuted} 
                   playsInline 
                   referrerPolicy="no-referrer"
                   onError={() => setVideoErrors(prev => ({ ...prev, partner: true }))}
@@ -1142,21 +1199,60 @@ const CallScreen = ({
                 />
               )}
 
-              <div className="absolute inset-0 bg-slate-950/20 mix-blend-multiply" />
-              <div className="absolute inset-0 border border-purple-500/10 pointer-events-none rounded-2xl" />
+              <div className="absolute inset-0 bg-slate-950/20 mix-blend-multiply border-2 border-purple-500/20 rounded-2xl pointer-events-none" />
 
-              <div className="relative z-10 flex justify-between">
-                <span className="text-[9px] bg-black/60 border border-white/5 px-2 py-1 rounded text-purple-400 font-bold uppercase tracking-widest">
-                  LINK FEED: INBOUND
-                </span>
-                <span className="text-zinc-400 font-mono text-[9px] bg-black/60 px-1.5 py-0.5 rounded border border-white/5 uppercase font-bold">Latency: {callTarget.latency || '0.12ms'}</span>
+              <div className="relative z-10 flex justify-between items-start">
+                <div className="flex flex-col gap-1">
+                  <span className="text-[9px] bg-black/70 border border-purple-500/20 px-2 py-1 rounded text-purple-400 font-bold uppercase tracking-widest block w-fit">
+                    LINK FEED: INBOUND
+                  </span>
+                  <span className="text-[8px] bg-black/50 text-purple-300 font-mono px-1.5 py-0.5 rounded border border-white/5 w-fit">
+                    {videoErrors.partner ? "🛡️ CYBER-HOLOGRAM MODE" : "🎥 SECURE LIVE FEED"}
+                  </span>
+                </div>
+                <div className="flex gap-1.5">
+                  <button 
+                    onClick={() => {
+                      triggerBeepTone(400, 'sine');
+                      setVideoErrors(prev => ({ ...prev, partner: !prev.partner }));
+                    }}
+                    className="px-2 py-1 bg-black/80 hover:bg-zinc-800 text-purple-400 hover:text-white rounded border border-purple-500/30 font-mono text-[8px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-md"
+                    title="Switch camera/hologram source"
+                  >
+                    {videoErrors.partner ? "🎥 Web Stream" : "🤖 Hologram"}
+                  </button>
+                  <span className="text-zinc-400 font-mono text-[9px] bg-black/60 px-1.5 py-1 rounded border border-white/5 uppercase font-bold">
+                    Latency: {callTarget.latency || '0.12ms'}
+                  </span>
+                </div>
               </div>
 
-              <div className="relative z-10 flex items-center justify-between mt-auto bg-slate-950/80 p-2 rounded-lg text-[10px]">
+              <div className="relative z-10 flex items-center justify-between mt-auto bg-slate-950/85 p-2 rounded-lg text-[10px] border border-white/5">
                 <span className="font-bold flex items-center gap-1.5 uppercase text-white font-mono">
                   <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" /> {callTarget.name}
                 </span>
-                <span className="text-[8px] bg-cyan-950 border border-cyan-900 px-1.5 py-0.5 rounded text-cyan-400 font-black">ACTIVE</span>
+                
+                {/* Partner specific audio unmuter controls */}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => {
+                      triggerBeepTone(isPartnerMuted ? 650 : 350, 'sine');
+                      setIsPartnerMuted(!isPartnerMuted);
+                    }}
+                    className={`px-2 py-1 rounded-md text-[9px] font-sans font-bold flex items-center gap-1 border transition-all cursor-pointer ${
+                      isPartnerMuted 
+                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20' 
+                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+                    }`}
+                    title={isPartnerMuted ? "Click to unmute partner audio" : "Click to mute partner audio"}
+                  >
+                    {isPartnerMuted ? <VolumeX size={10} /> : <Volume2 size={10} />}
+                    <span className="text-[8px] uppercase tracking-wider">
+                      {isPartnerMuted ? "MUTED" : "UNMUTED / VOICE ON"}
+                    </span>
+                  </button>
+                  <span className="text-[8px] bg-cyan-950 border border-cyan-900 px-1.5 py-0.5 rounded text-cyan-400 font-black">ACTIVE</span>
+                </div>
               </div>
             </div>
 
