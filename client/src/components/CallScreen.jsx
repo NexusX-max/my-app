@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Phone, Mic, MicOff, Video, VideoOff, Shield, 
+  PhoneOff, Mic, MicOff, Video, VideoOff, Shield, 
   Layers, Radio, Zap, Users, Monitor, MessageSquare, 
   Sparkles, Sliders, X, Send, Lock, Eye, Check, Edit2, 
   Plus, Download, HelpCircle, Laptop, Tablet, Smartphone, 
@@ -60,7 +60,8 @@ const TRANSLATIONS = {
 const CallScreen = ({
   callTarget = { name: "Onyx Core Agent", avatar: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80" },
   callType = "video",
-  onEndCall
+  onEndCall,
+  userProfile
 }) => {
   // Device & browser detection indicators
   const [devicePlatform, setDevicePlatform] = useState("");
@@ -142,6 +143,40 @@ const CallScreen = ({
 
   // Track faces visual matrix frames
   const [faceBbox, setFaceBbox] = useState({ x: 25, y: 20, w: 50, h: 50 });
+
+  const [videoErrors, setVideoErrors] = useState({});
+
+  const renderVideoFallback = (name, avatar, details = "Bypassing standard video stream") => (
+    <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-4 z-0">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(6,182,212,0.06)_0%,transparent_60%)] pointer-events-none" />
+      <div className="relative flex flex-col items-center">
+        <div className="absolute w-24 h-24 rounded-full border border-cyan-500/20 animate-ping opacity-20" />
+        <div className="absolute w-16 h-16 rounded-full border border-purple-500/30 animate-pulse opacity-40 [animation-duration:2s]" />
+        
+        <div className="relative w-16 h-16 rounded-full bg-slate-900 border border-cyan-500/30 p-0.5 shadow-[0_0_15px_rgba(6,182,212,0.15)] flex items-center justify-center overflow-hidden">
+          {avatar ? (
+            <img 
+              src={avatar} 
+              alt={name} 
+              className="w-full h-full object-cover rounded-full opacity-60 filter grayscale brightness-110 contrast-120" 
+              referrerPolicy="no-referrer"
+              onError={(e) => { e.target.src = ''; }}
+            />
+          ) : (
+            <div className="text-xl font-bold text-cyan-400 select-none">{name ? name.slice(0, 2).toUpperCase() : 'OX'}</div>
+          )}
+        </div>
+
+        <span className="text-[9px] text-cyan-400 font-bold tracking-[0.25em] uppercase mt-4 block flex items-center gap-1 font-mono">
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse inline-block" />
+          SECURE CHANNEL SYNAPSE
+        </span>
+        <span className="text-[8px] text-zinc-500 uppercase mt-1 font-mono">
+          {details}
+        </span>
+      </div>
+    </div>
+  );
 
   // 1. Time ticker and telemetrics updater
   useEffect(() => {
@@ -695,17 +730,23 @@ const CallScreen = ({
                     autoPlay 
                     playsInline 
                     muted 
-                    className="absolute inset-0 w-full h-full object-cover"
+                    className="absolute inset-0 w-full h-full object-cover z-0"
                   />
                 ) : (
-                  <video 
-                    src="https://assets.mixkit.co/videos/preview/mixkit-young-man-with-headphones-talking-40193-large.mp4"
-                    autoPlay 
-                    loop 
-                    muted 
-                    playsInline 
-                    className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-85"
-                  />
+                  videoErrors.local ? (
+                    renderVideoFallback("Operator", userProfile?.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80", "Local Telemetry Feed Ready")
+                  ) : (
+                    <video 
+                      src="https://assets.mixkit.co/videos/preview/mixkit-young-man-with-headphones-talking-40193-large.mp4"
+                      autoPlay 
+                      loop 
+                      muted 
+                      playsInline 
+                      referrerPolicy="no-referrer"
+                      onError={() => setVideoErrors(prev => ({ ...prev, local: true }))}
+                      className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-85 z-0"
+                    />
+                  )
                 )
               )}
 
@@ -774,14 +815,20 @@ const CallScreen = ({
               <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/[0.01] via-transparent to-cyan-500/[0.01] pointer-events-none" />
               
               {/* Loop video simulating live 1-to-1 video stream / remote face */}
-              <video 
-                src="https://assets.mixkit.co/videos/preview/mixkit-young-woman-with-glasses-talking-to-camera-40156-large.mp4"
-                autoPlay 
-                loop 
-                muted 
-                playsInline 
-                className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-80"
-              />
+              {videoErrors.partner ? (
+                renderVideoFallback(callTarget.name, callTarget.avatar, "Inbound Telemetry Feed Safe")
+              ) : (
+                <video 
+                  src="https://assets.mixkit.co/videos/preview/mixkit-young-woman-with-glasses-talking-to-camera-40156-large.mp4"
+                  autoPlay 
+                  loop 
+                  muted 
+                  playsInline 
+                  referrerPolicy="no-referrer"
+                  onError={() => setVideoErrors(prev => ({ ...prev, partner: true }))}
+                  className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-80 z-0"
+                />
+              )}
 
               <div className="absolute inset-0 bg-slate-950/20 mix-blend-multiply" />
               <div className="absolute inset-0 border border-purple-500/10 pointer-events-none rounded-2xl" />
@@ -806,14 +853,20 @@ const CallScreen = ({
               <>
                 <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/5 bg-slate-900 flex flex-col justify-between p-3 col-span-1 shadow-xl">
                   {/* Participant 3 loop video */}
-                  <video 
-                    src="https://assets.mixkit.co/videos/preview/mixkit-woman-talking-on-video-call-40011-large.mp4"
-                    autoPlay 
-                    loop 
-                    muted 
-                    playsInline 
-                    className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-85"
-                  />
+                  {videoErrors.luna ? (
+                    renderVideoFallback("Dr. Luna Vane", "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80", "Inbound Advisor Node Active")
+                  ) : (
+                    <video 
+                      src="https://assets.mixkit.co/videos/preview/mixkit-woman-talking-on-video-call-40011-large.mp4"
+                      autoPlay 
+                      loop 
+                      muted 
+                      playsInline 
+                      referrerPolicy="no-referrer"
+                      onError={() => setVideoErrors(prev => ({ ...prev, luna: true }))}
+                      className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-85 z-0"
+                    />
+                  )}
                   <div className="absolute inset-0 bg-slate-950/20 mix-blend-multiply" />
 
                   <div className="relative z-10 flex justify-between">
@@ -831,14 +884,20 @@ const CallScreen = ({
 
                 <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/5 bg-slate-900 flex flex-col justify-between p-3 col-span-1 shadow-xl">
                   {/* Participant 4 loop video */}
-                  <video 
-                    src="https://assets.mixkit.co/videos/preview/mixkit-man-working-on-his-laptop-at-home-41585-large.mp4"
-                    autoPlay 
-                    loop 
-                    muted 
-                    playsInline 
-                    className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-85"
-                  />
+                  {videoErrors.kaelen ? (
+                    renderVideoFallback("Kaelen Vex", "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&q=80", "Inbound Decker Node Active")
+                  ) : (
+                    <video 
+                      src="https://assets.mixkit.co/videos/preview/mixkit-man-working-on-his-laptop-at-home-41585-large.mp4"
+                      autoPlay 
+                      loop 
+                      muted 
+                      playsInline 
+                      referrerPolicy="no-referrer"
+                      onError={() => setVideoErrors(prev => ({ ...prev, kaelen: true }))}
+                      className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-85 z-0"
+                    />
+                  )}
                   <div className="absolute inset-0 bg-slate-950/20 mix-blend-multiply" />
 
                   <div className="relative z-10 flex justify-between">
@@ -860,14 +919,20 @@ const CallScreen = ({
             {addedMembers.map(member => (
               <div key={member.id} className="relative aspect-video rounded-2xl overflow-hidden border border-white/5 bg-slate-900 flex flex-col justify-between p-3 col-span-1 shadow-xl">
                 {/* Participant 5 loop video */}
-                <video 
-                  src="https://assets.mixkit.co/videos/preview/mixkit-business-professional-working-on-a-laptop-42352-large.mp4"
-                  autoPlay 
-                  loop 
-                  muted 
-                  playsInline 
-                  className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-85"
-                />
+                {videoErrors[member.id] ? (
+                  renderVideoFallback(member.name, member.avatar, "Approved Node Feed Secure")
+                ) : (
+                  <video 
+                    src="https://assets.mixkit.co/videos/preview/mixkit-business-professional-working-on-a-laptop-42352-large.mp4"
+                    autoPlay 
+                    loop 
+                    muted 
+                    playsInline 
+                    referrerPolicy="no-referrer"
+                    onError={() => setVideoErrors(prev => ({ ...prev, [member.id]: true }))}
+                    className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-85 z-0"
+                  />
+                )}
                 <div className="absolute inset-0 bg-slate-950/20 mix-blend-multiply" />
 
                 <div className="relative z-10 flex justify-between">
@@ -1359,7 +1424,7 @@ const CallScreen = ({
             className="p-4 bg-rose-600 hover:bg-rose-500 rounded-2xl text-white font-bold transition-all transform active:scale-95 shadow-[0_0_20px_rgba(244,63,94,0.4)] cursor-pointer"
             title="Disconnect Connection Link"
           >
-            <Phone size={20} />
+            <PhoneOff size={20} />
           </button>
         </div>
 
