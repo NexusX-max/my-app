@@ -1,7 +1,7 @@
 import React, { Suspense, useContext, useState, useEffect, useRef } from "react";
-import { BrowserRouter, Routes, Route, useLocation, Navigate, useParams, useNavigate } from "react-router-dom";
+import { Routes, Route, useLocation, Navigate, useParams, useNavigate } from "react-router-dom";
 import { Toaster, toast } from 'react-hot-toast';
-import { AuthContext, AuthProvider } from './context/AuthContext';
+import { AuthContext } from './context/AuthContext';
 
 // UI Components
 import Sidebar from "./components/Sidebar";
@@ -275,13 +275,4 @@ function AppContent() {
   );
 }
 
-// 🛡️ Wrapper component: সঠিকভাবে Providers দিয়ে র‍্যাপ করে ডিফল্ট এক্সপোর্ট করা হলো
-export default function App() {
-  return (
-    <BrowserRouter>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-    </BrowserRouter>
-  );
-}
+export default AppContent;
