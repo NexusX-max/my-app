@@ -1258,6 +1258,27 @@ export default function Messenger() {
       type: type || 'video'
     });
 
+    const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const callInitLog = {
+      id: "callInit-" + Date.now(),
+      sender: "system-log",
+      senderName: "System Logger",
+      text: `📡 Dialing Outgoing Secure ${type === 'video' ? 'Video' : 'Voice'} Call...`,
+      time: timeString,
+      isCallLog: true,
+      callStatus: 'ringing',
+      callType: type || 'video'
+    };
+
+    const targetChatId = target.id || selectedChatId;
+    if (targetChatId) {
+      setMessagesHistory(prev => ({
+        ...prev,
+        [targetChatId]: [...(prev[targetChatId] || []), callInitLog]
+      }));
+      setChatList(prev => prev.map(ch => ch.id === targetChatId ? { ...ch, lastMsg: `Dialing secure line...`, time: 'Just now' } : ch));
+    }
+
     if (socket && target) {
       const otherId = target.otherId || target.id;
       console.log(`📞 Emitting initiateCall on socket to otherId: ${otherId}`);
@@ -1453,7 +1474,42 @@ export default function Messenger() {
         <CallScreen 
           callTarget={activeCallSession.target}
           callType={activeCallSession.type}
-          onEndCall={() => {
+          onEndCall={(duration, status) => {
+            const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            let logMsgText = "";
+
+            if (status === 'missed') {
+              logMsgText = `❌ Missed Call (${activeCallSession.type === 'video' ? 'Video' : 'Voice'})`;
+            } else {
+              const minutes = Math.floor(duration / 60);
+              const seconds = duration % 60;
+              const durationStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+              logMsgText = `📞 Call Completed (${activeCallSession.type === 'video' ? 'Video' : 'Voice'}) — Duration: ${durationStr}`;
+            }
+
+            const callResultLog = {
+              id: "callResult-" + Date.now(),
+              sender: "system-log",
+              senderName: "System Logger",
+              text: logMsgText,
+              time: timeString,
+              isCallLog: true,
+              callStatus: status,
+              callDuration: duration,
+              callType: activeCallSession.type
+            };
+
+            const targetChatId = activeCallSession.target.id || selectedChatId;
+            if (targetChatId) {
+              setMessagesHistory(prev => ({
+                ...prev,
+                [targetChatId]: [...(prev[targetChatId] || []), callResultLog]
+              }));
+
+              // Update the sidebar chat list
+              setChatList(prev => prev.map(ch => ch.id === targetChatId ? { ...ch, lastMsg: logMsgText, time: 'Just now' } : ch));
+            }
+
             if (socket && activeCallSession?.target) {
               const otherId = activeCallSession.target.otherId || activeCallSession.target.id;
               socket.emit("declineCall", {
@@ -1517,6 +1573,28 @@ export default function Messenger() {
                     osc.stop(audioCtx.currentTime + 0.3);
                   } catch (e) {}
 
+                  // Save missed call to chat bar
+                  const targetChatId = incomingCallSession.from;
+                  const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  const logMsgText = `❌ Missed Call (${incomingCallSession.type === 'video' ? 'Video' : 'Voice'})`;
+                  const missedLog = {
+                    id: "callResult-" + Date.now(),
+                    sender: "system-log",
+                    senderName: "System Logger",
+                    text: logMsgText,
+                    time: timeString,
+                    isCallLog: true,
+                    callStatus: 'missed',
+                    callType: incomingCallSession.type
+                  };
+                  if (targetChatId) {
+                    setMessagesHistory(prev => ({
+                      ...prev,
+                      [targetChatId]: [...(prev[targetChatId] || []), missedLog]
+                    }));
+                    setChatList(prev => prev.map(ch => ch.id === targetChatId ? { ...ch, lastMsg: logMsgText, time: 'Just now' } : ch));
+                  }
+
                   if (socket) {
                     socket.emit("declineCall", {
                       to: incomingCallSession.from,
@@ -1561,7 +1639,8 @@ export default function Messenger() {
                       id: incomingCallSession.from,
                       name: incomingCallSession.name,
                       avatar: incomingCallSession.avatar,
-                      otherId: incomingCallSession.from
+                      otherId: incomingCallSession.from,
+                      isIncoming: true
                     },
                     type: incomingCallSession.type
                   });

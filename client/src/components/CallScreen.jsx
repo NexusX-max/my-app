@@ -57,6 +57,192 @@ const TRANSLATIONS = {
   }
 };
 
+const HolographicFaceVisualizer = ({ name, avatar, isMe, active, isSpeaking }) => {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    let animId;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let frame = 0;
+    const draw = () => {
+      frame++;
+      
+      // Dynamic canvas sizing
+      if (canvas.clientWidth !== canvas.width || canvas.clientHeight !== canvas.height) {
+        canvas.width = canvas.clientWidth;
+        canvas.height = canvas.clientHeight;
+      }
+
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 1. Grid background
+      ctx.strokeStyle = isMe ? "rgba(6, 182, 212, 0.05)" : "rgba(168, 85, 247, 0.05)";
+      ctx.lineWidth = 1;
+      const gridSize = 25;
+      for (let x = 0; x < canvas.width; x += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y < canvas.height; y += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+
+      // 2. Outer Biometric Ring
+      const radius = Math.min(cx, cy) * 0.65;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = isMe ? "rgba(6, 182, 212, 0.15)" : "rgba(168, 85, 247, 0.15)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Dashed Ring
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius + 11 + Math.sin(frame * 0.05) * 3, 0, Math.PI * 2);
+      ctx.strokeStyle = isMe ? "rgba(6, 182, 212, 0.2)" : "rgba(168, 85, 247, 0.2)";
+      ctx.setLineDash([4, 12]);
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Rotate indicator cursor
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(frame * 0.006);
+      ctx.beginPath();
+      ctx.moveTo(radius - 12, 0);
+      ctx.lineTo(radius + 6, 0);
+      ctx.strokeStyle = isMe ? "#06b6d4" : "#a855f7";
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.restore();
+
+      // 3. Cybernetic Robotic Face Contour representation
+      ctx.beginPath();
+      ctx.moveTo(cx - 45, cy - radius * 0.5);
+      ctx.quadraticCurveTo(cx - 55, cy + radius * 0.25, cx - 30, cy + radius * 0.65);
+      ctx.lineTo(cx, cy + radius * 0.85);
+      ctx.lineTo(cx + 30, cy + radius * 0.65);
+      ctx.quadraticCurveTo(cx + 55, cy + radius * 0.25, cx + 45, cy - radius * 0.5);
+      ctx.quadraticCurveTo(cx, cy - radius * 0.65, cx - 45, cy - radius * 0.5);
+      ctx.strokeStyle = isMe ? "rgba(6, 182, 212, 0.25)" : "rgba(168, 85, 247, 0.25)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // 4. Eyes (with blink simulation)
+      const blinking = frame % 150 < 10;
+      ctx.fillStyle = isMe ? "#22d3ee" : "#c084fc";
+      ctx.shadowColor = isMe ? "#06b6d4" : "#a855f7";
+      ctx.shadowBlur = 8;
+
+      if (!blinking) {
+        ctx.beginPath();
+        ctx.arc(cx - 18, cy - radius * 0.12, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(cx + 18, cy - radius * 0.12, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Eye circular outlines
+        ctx.beginPath();
+        ctx.arc(cx - 18, cy - radius * 0.12, 8, 0, Math.PI * 2);
+        ctx.strokeStyle = isMe ? "rgba(6, 182, 212, 0.3)" : "rgba(168, 85, 247, 0.3)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(cx + 18, cy - radius * 0.12, 8, 0, Math.PI * 2);
+        ctx.strokeStyle = isMe ? "rgba(6, 182, 212, 0.3)" : "rgba(168, 85, 247, 0.3)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(cx - 23, cy - radius * 0.12);
+        ctx.lineTo(cx - 13, cy - radius * 0.12);
+        ctx.strokeStyle = isMe ? "#22d3ee" : "#c084fc";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(cx + 13, cy - radius * 0.12);
+        ctx.lineTo(cx + 23, cy - radius * 0.12);
+        ctx.strokeStyle = isMe ? "#22d3ee" : "#c084fc";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+
+      // 5. Sound-reactive Lips & Talking Mouth Wave
+      const talkingAmp = isSpeaking ? (6 + Math.sin(frame * 0.3) * 5) : (1.5 + Math.sin(frame * 0.05) * 0.5);
+      ctx.beginPath();
+      ctx.moveTo(cx - 15, cy + radius * 0.25);
+      ctx.quadraticCurveTo(cx, cy + radius * 0.25 - talkingAmp, cx + 15, cy + radius * 0.25);
+      ctx.quadraticCurveTo(cx, cy + radius * 0.25 + talkingAmp * 1.4, cx - 15, cy + radius * 0.25);
+      ctx.fillStyle = isMe ? "rgba(6, 182, 212, 0.2)" : "rgba(168, 85, 247, 0.2)";
+      ctx.fill();
+      ctx.strokeStyle = isMe ? "#22d3ee" : "#c084fc";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Facial grid lines
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - radius * 0.65);
+      ctx.lineTo(cx, cy - radius * 0.3);
+      ctx.lineTo(cx - 6, cy + radius * 0.05);
+      ctx.lineTo(cx + 6, cy + radius * 0.05);
+      ctx.lineTo(cx, cy - radius * 0.3);
+      ctx.strokeStyle = isMe ? "rgba(6, 182, 212, 0.12)" : "rgba(168, 85, 247, 0.12)";
+      ctx.stroke();
+
+      // Telemetry metadata text
+      ctx.fillStyle = "rgba(255,255,255,0.3)";
+      ctx.font = "8px monospace";
+      ctx.fillText(`${name.toUpperCase()}`, cx - 40, cy + radius * 0.95);
+
+      // Scanning bar
+      const scanY = cy - radius + ((frame * 2.2) % (radius * 2));
+      ctx.beginPath();
+      ctx.moveTo(cx - radius * 0.75, scanY);
+      ctx.lineTo(cx + radius * 0.75, scanY);
+      ctx.strokeStyle = isMe ? "rgba(34, 211, 238, 0.2)" : "rgba(192, 132, 252, 0.2)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      animId = requestAnimationFrame(draw);
+    };
+
+    draw();
+    return () => cancelAnimationFrame(animId);
+  }, [name, isMe, isSpeaking]);
+
+  return (
+    <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-4 z-0">
+      <div className={`absolute inset-0 bg-gradient-to-b from-transparent ${isMe ? 'via-cyan-950/5' : 'via-purple-950/5'} to-transparent opacity-40 pointer-events-none`} />
+      {avatar && (
+        <div className="absolute inset-0 overflow-hidden opacity-[0.06] pointer-events-none filter blur-xl">
+          <img src={avatar} alt="" className="w-full h-full object-cover scale-150" />
+        </div>
+      )}
+      <canvas ref={canvasRef} className="w-full h-full max-w-[245px] max-h-[245px] relative z-10" />
+      <div className="absolute top-3 left-3 flex flex-col font-mono text-[8px] text-zinc-500 uppercase select-none pointer-events-none gap-0.5 mt-6 z-20">
+        <div>SYS_STATUS: LOCK_STABLE</div>
+        <div>SCAN_HZ: 60.00</div>
+        {isSpeaking && <div className={isMe ? "text-cyan-400 font-bold" : "text-purple-400 font-bold animate-pulse"}>AUDIO SIG ACTIVE</div>}
+      </div>
+    </div>
+  );
+};
+
 const CallScreen = ({
   callTarget = { name: "Onyx Core Agent", avatar: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80" },
   callType = "video",
@@ -98,6 +284,7 @@ const CallScreen = ({
 
   // Core Telemetrics
   const [callActiveTime, setCallActiveTime] = useState(0);
+  const [callStatus, setCallStatus] = useState(callTarget?.isIncoming ? "connected" : "ringing"); // ringing, connected
   const [currentTranscript, setCurrentTranscript] = useState("Establishing quantum uplink. Syncing biometric signals...");
   const [translateLang, setTranslateLang] = useState("none"); // none, es, ja, bn, de
   const [encryptionProgress, setEncryptionProgress] = useState(0);
@@ -180,39 +367,100 @@ const CallScreen = ({
 
   // 1. Time ticker and telemetrics updater
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCallActiveTime(prev => prev + 1);
-      // Simulate changing rates
-      setBitrateValue(prev => Math.floor(4800 + Math.random() * 950));
-      setFpsRate(prev => Math.random() > 0.85 ? Math.floor(58 + Math.random() * 3) : 60);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+    let timer;
+    if (callStatus === "connected") {
+      timer = setInterval(() => {
+        setCallActiveTime(prev => prev + 1);
+        // Simulate changing rates
+        setBitrateValue(prev => Math.floor(4800 + Math.random() * 950));
+        setFpsRate(prev => Math.random() > 0.85 ? Math.floor(58 + Math.random() * 3) : 60);
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [callStatus]);
+
+  // 1b. Ringtone simulation & auto-connect
+  useEffect(() => {
+    if (callStatus === "ringing") {
+      // Auto connection timer
+      const autoPickUp = setTimeout(() => {
+        setCallStatus("connected");
+        triggerBeepTone(880, 'sine');
+      }, 4000);
+
+      const toneInterval = setInterval(() => {
+        // High fidelity dual dial beep tones
+        triggerBeepTone(440, 'sine');
+        setTimeout(() => triggerBeepTone(440, 'sine'), 150);
+      }, 1800);
+
+      return () => {
+        clearTimeout(autoPickUp);
+        clearInterval(toneInterval);
+      };
+    }
+  }, [callStatus]);
 
   // 2. Rolling Transcripts Loop
   useEffect(() => {
-    let index = 0;
-    const interval = setInterval(() => {
-      setCurrentTranscript(MOCK_TRANSCRIPTS[index % MOCK_TRANSCRIPTS.length]);
-      index++;
-      setNoiseFilterLevel(+(98 + Math.random() * 1.8).toFixed(2));
-    }, 4500);
-    return () => clearInterval(interval);
-  }, []);
+    let interval;
+    if (callStatus === "connected") {
+      let index = 0;
+      interval = setInterval(() => {
+        setCurrentTranscript(MOCK_TRANSCRIPTS[index % MOCK_TRANSCRIPTS.length]);
+        index++;
+        setNoiseFilterLevel(+(98 + Math.random() * 1.8).toFixed(2));
+      }, 4500);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [callStatus]);
+
+  // 2b. High-Fidelity Speech Synthesis of subtitles (Voice output!)
+  useEffect(() => {
+    if (callStatus === "connected" && currentTranscript) {
+      try {
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const dict = TRANSLATIONS[translateLang] || {};
+          const targetText = dict[currentTranscript] || currentTranscript;
+          const utterance = new SpeechSynthesisUtterance(targetText);
+          utterance.rate = 1.05;
+          utterance.pitch = callTarget.name.includes("Agent") || callTarget.name.includes("Onyx") ? 0.85 : 1.1;
+          window.speechSynthesis.speak(utterance);
+        }
+      } catch (err) {
+        console.warn("Speech Synthesis error:", err);
+      }
+    }
+    return () => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, [currentTranscript, callStatus, translateLang]);
 
   // 3. Cryptographic simulation countdown progress
   useEffect(() => {
-    const timer = setInterval(() => {
-      setEncryptionProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(timer);
-          return 100;
-        }
-        return prev + Math.floor(Math.random() * 15) + 8;
-      });
-    }, 280);
-    return () => clearInterval(timer);
-  }, []);
+    let timer;
+    if (callStatus === "connected") {
+      timer = setInterval(() => {
+        setEncryptionProgress(prev => {
+          if (prev >= 100) {
+            clearInterval(timer);
+            return 100;
+          }
+          return prev + Math.floor(Math.random() * 15) + 8;
+        });
+      }, 280);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [callStatus]);
 
   // 4. WebRTC Actual Camera Capture Link
   useEffect(() => {
@@ -522,6 +770,77 @@ const CallScreen = ({
     return dictionary[currentTranscript] || currentTranscript;
   };
 
+  if (callStatus === "ringing") {
+    return (
+      <div id="ringing-screen" className="fixed inset-0 z-[6500] bg-zinc-950 text-white flex flex-col items-center justify-center overflow-hidden font-mono select-none">
+        {/* Decorative Grid backing */}
+        <div className="absolute inset-0 bg-gradient-to-tr from-cyan-950/15 via-transparent to-purple-950/20 pointer-events-none" />
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.012)_1px,_transparent_1px),_linear-gradient(90deg,_rgba(255,255,255,0.012)_1px,_transparent_1px)] bg-[size:30px_30px] pointer-events-none" />
+        
+        {/* Glowing visual pulse ring */}
+        <div className="relative mb-10 flex items-center justify-center animate-pulse">
+          <div className="absolute w-44 h-44 rounded-full border border-cyan-500/10 animate-ping opacity-30" />
+          <div className="absolute w-32 h-32 rounded-full border border-cyan-400/20 animate-pulse opacity-50" />
+          <img 
+            src={callTarget.avatar} 
+            className="w-24 h-24 rounded-full object-cover border-4 border-cyan-400 p-1 relative z-10 shadow-[0_0_30px_rgba(6,182,212,0.3)] animate-pulse" 
+            alt="Calling Partner" 
+          />
+        </div>
+
+        <span className="text-cyan-400 text-xs font-black tracking-[0.3em] uppercase mb-1 animate-pulse">
+          INITIALIZING SECURE ONYX LINK
+        </span>
+        <h2 className="text-2xl font-bold uppercase tracking-widest text-white mb-2">
+          {callTarget.name}
+        </h2>
+        <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-10 font-mono">
+          DIALING SECURE TELEMETRY ADDR // RATE MATCH ...
+        </p>
+
+        {/* Ringing waves */}
+        <div className="flex gap-2 mb-12 items-center justify-center">
+          <span className="w-2 h-4 bg-cyan-400 rounded-full animate-bounce [animation-duration:1s]" />
+          <span className="w-2 h-8 bg-cyan-500 rounded-full animate-bounce [animation-duration:1.2s] [animation-delay:0.1s]" />
+          <span className="w-2 h-12 bg-cyan-600 rounded-full animate-bounce [animation-duration:1.4s] [animation-delay:0.2s]" />
+          <span className="w-2 h-8 bg-cyan-500 rounded-full animate-bounce [animation-duration:1.2s] [animation-delay:0.3s]" />
+          <span className="w-2 h-4 bg-cyan-400 rounded-full animate-bounce [animation-duration:1s] [animation-delay:0.4s]" />
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-10 relative z-20">
+          {/* Cancel/Disconnect button */}
+          <button
+            onClick={() => {
+              triggerBeepTone(150, 'sawtooth');
+              onEndCall(0, 'missed'); // End call with 0 duration and missed status
+            }}
+            className="w-16 h-16 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center cursor-pointer transition-all active:scale-95 shadow-[0_0_25px_rgba(244,63,94,0.3)] hover:shadow-[0_0_35px_rgba(244,63,94,0.5)]"
+            title="Cancel Call Connection"
+          >
+            <PhoneOff size={24} />
+          </button>
+
+          {/* Simulate Pick Up button */}
+          <button
+            onClick={() => {
+              triggerBeepTone(880, 'sine');
+              setCallStatus("connected"); // Immediately connect
+            }}
+            className="px-6 h-16 rounded-3xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold uppercase tracking-widest text-xs flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-[0_0_25px_rgba(6,182,212,0.3)] hover:shadow-[0_0_35px_rgba(6,182,212,0.5)] animate-pulse"
+            title="Bypass Tunnel Handshake"
+          >
+            <span>Instant Connect</span>
+          </button>
+        </div>
+
+        <p className="text-[9px] text-zinc-600 mt-16 uppercase tracking-widest font-mono">
+          AUTOCONNECT PROTOCOL WILL INGRESS IN 4 SECONDS...
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div id="meeting-canvas-portal" className="fixed inset-0 z-[6000] bg-slate-950 text-white flex flex-col overflow-hidden font-mono select-none">
       
@@ -733,20 +1052,13 @@ const CallScreen = ({
                     className="absolute inset-0 w-full h-full object-cover z-0"
                   />
                 ) : (
-                  videoErrors.local ? (
-                    renderVideoFallback("Operator", userProfile?.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80", "Local Telemetry Feed Ready")
-                  ) : (
-                    <video 
-                      src="https://assets.mixkit.co/videos/preview/mixkit-young-man-with-headphones-talking-40193-large.mp4"
-                      autoPlay 
-                      loop 
-                      muted 
-                      playsInline 
-                      referrerPolicy="no-referrer"
-                      onError={() => setVideoErrors(prev => ({ ...prev, local: true }))}
-                      className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-85 z-0"
-                    />
-                  )
+                  <HolographicFaceVisualizer 
+                    name="Operator" 
+                    avatar={userProfile?.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"} 
+                    isMe={true} 
+                    active={true} 
+                    isSpeaking={!isMuted} 
+                  />
                 )
               )}
 
@@ -1419,7 +1731,7 @@ const CallScreen = ({
               if (screenStream) {
                 screenStream.getTracks().forEach(t => t.stop());
               }
-              onEndCall();
+              onEndCall(callActiveTime, 'connected');
             }}
             className="p-4 bg-rose-600 hover:bg-rose-500 rounded-2xl text-white font-bold transition-all transform active:scale-95 shadow-[0_0_20px_rgba(244,63,94,0.4)] cursor-pointer"
             title="Disconnect Connection Link"

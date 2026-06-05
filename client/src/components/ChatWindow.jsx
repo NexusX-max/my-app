@@ -476,6 +476,41 @@ const ChatWindow = ({
         </div>
 
         {messages.map((msg) => {
+          if (msg.sender === 'system-log') {
+            const isMiss = msg.callStatus === 'missed';
+            return (
+              <div 
+                key={msg.id}
+                className="w-full flex justify-center my-4 animate-fade-in font-mono"
+              >
+                <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-center gap-4 max-w-[90%] sm:max-w-[70%] w-full shadow-lg ${
+                  isMiss 
+                    ? 'bg-rose-950/20 border-rose-500/20 text-rose-400' 
+                    : 'bg-emerald-950/20 border-emerald-500/20 text-emerald-400'
+                }`}>
+                  <div className={`p-3 rounded-xl flex items-center justify-center ${
+                    isMiss ? 'bg-rose-900/30' : 'bg-emerald-900/30'
+                  }`}>
+                    {msg.callType === 'video' ? <Video size={18} /> : <Phone size={18} />}
+                  </div>
+                  <div className="flex-1 text-center sm:text-left">
+                    <p className={`text-xs font-black uppercase tracking-widest ${
+                      isMiss ? 'text-rose-400' : 'text-emerald-400'
+                    }`}>
+                      {isMiss ? 'Missed Call Log' : 'Secure Call Completed'}
+                    </p>
+                    <p className="text-[11px] text-zinc-300 mt-1">
+                      {msg.text}
+                    </p>
+                  </div>
+                  <div className="text-[10px] text-zinc-500 uppercase shrink-0 font-bold">
+                    {msg.time}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
           const isMe = msg.sender === 'me';
           const decryptionText = decryptionStates[msg.id];
           const hasImage = msg.file && msg.file.type?.startsWith('image/');
