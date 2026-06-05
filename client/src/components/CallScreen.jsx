@@ -4,9 +4,12 @@ import {
   Layers, Radio, Zap, Users, Monitor, MessageSquare, 
   Sparkles, Sliders, X, Send, Lock, Eye, Check, Edit2, 
   Plus, Download, HelpCircle, Laptop, Tablet, Smartphone, 
-  Volume2, VolumeX, BarChart2, Share2, HelpCircle as InfoIcon,
-  Minimize2, Maximize2, RefreshCw, Palette, Trash2, HelpCircle as QIcon, Award
+  Volume2, VolumeX, BarChart2, Share2,
+  Minimize2, Maximize2, RefreshCw, Palette, Trash2, Award
 } from 'lucide-react';
+
+const InfoIcon = HelpCircle;
+const QIcon = HelpCircle;
 import { MOCK_TRANSCRIPTS } from '../data';
 
 // Custom Translation matrices for live demonstration mapping

@@ -1,5 +1,7 @@
 import express from "express";
 import mongoose from "mongoose";
+// Disable Mongoose schema / query buffering so offline simulated fallbacks trigger immediately
+mongoose.set('bufferCommands', false);
 import { protect } from "../middleware/authMiddleware.js";
 import { GoogleGenAI } from "@google/genai";
 import User from "../models/User.js";
@@ -119,12 +121,14 @@ router.get("/conversations", protect, async (req, res) => {
         const currentUserId = (req.user._id || req.user.id || "me").toString();
         
         let conversations = [];
-        try {
-            conversations = await Conversation.find({
-                members: { $in: [currentUserId] },
-            }).sort({ updatedAt: -1 }).lean();
-        } catch (dbErr) {
-            console.warn("MongoDB read conversations failed:", dbErr.message);
+        if (mongoose.connection.readyState === 1) {
+            try {
+                conversations = await Conversation.find({
+                    members: { $in: [currentUserId] },
+                }).sort({ updatedAt: -1 }).lean();
+            } catch (dbErr) {
+                console.warn("MongoDB read conversations failed:", dbErr.message);
+            }
         }
 
         // Standard seed users to populate offline list or resolve usernames easily
@@ -203,7 +207,7 @@ router.post("/message", protect, async (req, res) => {
         cleanId.startsWith('user-') ||
         !mongoose.Types.ObjectId.isValid(cleanId);
 
-        if (cleanId && !isBotOrCustom && mongoose.Types.ObjectId.isValid(cleanId)) {
+        if (mongoose.connection.readyState === 1 && cleanId && !isBotOrCustom && mongoose.Types.ObjectId.isValid(cleanId)) {
             try {
                 let conv = await Conversation.findOne({
                     members: { $all: [senderId, cleanId] }
@@ -221,15 +225,20 @@ router.post("/message", protect, async (req, res) => {
         }
 
         let newMessage = null;
-        try {
-            newMessage = await Message.create({
-                conversationId: targetConversationId,
-                senderId,
-                text: text || "",
-                image: image || null,
-            });
-        } catch (dbErr) {
-            console.warn("MongoDB write message failed, spawning simulated in-memory packet:", dbErr.message);
+        if (mongoose.connection.readyState === 1) {
+            try {
+                newMessage = await Message.create({
+                    conversationId: targetConversationId,
+                    senderId,
+                    text: text || "",
+                    image: image || null,
+                });
+            } catch (dbErr) {
+                console.warn("MongoDB write message failed, spawning simulated in-memory packet:", dbErr.message);
+            }
+        }
+
+        if (!newMessage) {
             newMessage = {
                 _id: "msg-temp-" + Date.now(),
                 conversationId: targetConversationId,
@@ -241,24 +250,58 @@ router.post("/message", protect, async (req, res) => {
         }
 
         // Update Conversation lastMessage if possible
-        try {
-            if (mongoose.Types.ObjectId.isValid(targetConversationId)) {
-                await Conversation.findByIdAndUpdate(targetConversationId, {
-                    lastMessage: { text: image ? "📷 Image" : text, senderId },
-                    updatedAt: Date.now(),
-                });
-            } else {
-                await Conversation.findOneAndUpdate(
-                    { _id: targetConversationId },
-                    {
+        if (mongoose.connection.readyState === 1) {
+            try {
+                if (mongoose.Types.ObjectId.isValid(targetConversationId)) {
+                    await Conversation.findByIdAndUpdate(targetConversationId, {
                         lastMessage: { text: image ? "📷 Image" : text, senderId },
                         updatedAt: Date.now(),
-                    },
-                    { upsert: false }
-                );
+                    });
+                } else {
+                    await Conversation.findOneAndUpdate(
+                        { _id: targetConversationId },
+                        {
+                            lastMessage: { text: image ? "📷 Image" : text, senderId },
+                            updatedAt: Date.now(),
+                        },
+                        { upsert: false }
+                    );
+                }
+            } catch (convErr) {
+                console.warn("Could not update lastMessage for conversation:", convErr.message);
             }
-        } catch (convErr) {
-            console.warn("Could not update lastMessage for conversation:", convErr.message);
+        }
+
+        let conv = null;
+        if (mongoose.connection.readyState === 1) {
+            try {
+                if (mongoose.Types.ObjectId.isValid(targetConversationId)) {
+                    conv = await Conversation.findById(targetConversationId).lean();
+                } else {
+                    conv = await Conversation.findOne({ _id: targetConversationId }).lean();
+                }
+            } catch (err) {
+                console.warn("Could not find conversation for payload enrichment, checking mock memory fallback:", err.message);
+            }
+        }
+
+        // --- Mock Memory & Temporary Format Fallback ---
+        if (!conv) {
+            const fallbackConvs = [
+                { _id: "conv-onyx", members: ["me", "bot-onyx"] },
+                { _id: "conv-luna", members: ["me", "bot-luna"] },
+                { _id: "conv-kaelen", members: ["me", "user-kaelen"] }
+            ];
+            conv = fallbackConvs.find(c => c._id === targetConversationId);
+            
+            // If still not resolved, and conversationId is formatted like conv-temp-{userId}
+            if (!conv && targetConversationId && targetConversationId.startsWith("conv-temp-")) {
+                const partnerId = targetConversationId.replace("conv-temp-", "");
+                conv = {
+                    _id: targetConversationId,
+                    members: [senderId, partnerId]
+                };
+            }
         }
 
         const io = req.app.get("io");
@@ -266,7 +309,8 @@ router.post("/message", protect, async (req, res) => {
 
         const payload = {
             conversationId: targetConversationId,
-            message: newMessage
+            message: newMessage,
+            conversation: conv
         };
 
         if (io) {
@@ -274,25 +318,23 @@ router.post("/message", protect, async (req, res) => {
             io.to(targetConversationId).emit("receiveMessage", payload);
             io.to(conversationId).emit("receiveMessage", payload);
 
-            // Emit directly to other user's personal rooms to ensure reliable multi-user and multi-server delivery
+            // Emit directly to other user's and sender's personal rooms to ensure reliable multi-user and multi-device delivery
             try {
                 let otherId = null;
-                let conv = null;
-                if (mongoose.Types.ObjectId.isValid(targetConversationId)) {
-                    conv = await Conversation.findById(targetConversationId).lean();
-                } else {
-                    conv = await Conversation.findOne({ _id: targetConversationId }).lean();
-                }
-
                 if (conv && conv.members) {
                     otherId = conv.members.find(m => m.toString() !== senderId);
                 }
 
                 if (otherId) {
                     const cleanOtherId = otherId.toString().replace(/^conv-temp-|^conv-/, '');
-                    // Dispatches directly to the recipient user's rooms. Every connected device for that user joins these rooms.
+                    const cleanSenderId = senderId.replace(/^conv-temp-|^conv-/, '');
+                    
+                    // Dispatch to recipient rooms
                     io.to(cleanOtherId).to(otherId.toString()).emit("receiveMessage", payload);
-                    console.log(`📡 [EMIT] Sockets dispatched receiveMessage directly to rooms: ${cleanOtherId}, ${otherId.toString()}`);
+                    // Dispatch to sender rooms for multi-device sync (e.g. phone to laptop)
+                    io.to(cleanSenderId).to(senderId).emit("receiveMessage", payload);
+                    
+                    console.log(`📡 [EMIT] Sockets dispatched receiveMessage directly to rooms: destination[${cleanOtherId}, ${otherId.toString()}], source[${cleanSenderId}, ${senderId}]`);
                 }
             } catch (socketErr) {
                 console.warn("Socket opponent lookup failed: ", socketErr.message);
@@ -305,10 +347,33 @@ router.post("/message", protect, async (req, res) => {
         try {
             let otherId = null;
             let conv = null;
-            if (mongoose.Types.ObjectId.isValid(conversationId)) {
-                conv = await Conversation.findById(conversationId).lean();
-            } else {
-                conv = await Conversation.findOne({ _id: conversationId }).lean();
+            if (mongoose.connection.readyState === 1) {
+                try {
+                    if (mongoose.Types.ObjectId.isValid(conversationId)) {
+                        conv = await Conversation.findById(conversationId).lean();
+                    } else {
+                        conv = await Conversation.findOne({ _id: conversationId }).lean();
+                    }
+                } catch (convErr) {}
+            }
+
+            // Fallback lookup if DB is unready or conversation is not found in DB
+            if (!conv) {
+                const fallbackConvs = [
+                    { _id: "conv-onyx", members: ["me", "bot-onyx"] },
+                    { _id: "conv-luna", members: ["me", "bot-luna"] },
+                    { _id: "conv-kaelen", members: ["me", "user-kaelen"] }
+                ];
+                conv = fallbackConvs.find(c => c._id === conversationId);
+                
+                // If still not resolved, and conversationId is formatted like conv-temp-{userId}
+                if (!conv && conversationId && conversationId.startsWith("conv-temp-")) {
+                    const partnerId = conversationId.replace("conv-temp-", "");
+                    conv = {
+                        _id: conversationId,
+                        members: [senderId, partnerId]
+                    };
+                }
             }
 
             if (conv && conv.members) {
@@ -335,12 +400,14 @@ router.post("/message", protect, async (req, res) => {
                             if (ai) {
                                 try {
                                     let dbMsgs = [];
-                                    try {
-                                        dbMsgs = await Message.find({ conversationId })
-                                            .sort({ createdAt: -1 })
-                                            .limit(6)
-                                            .lean();
-                                    } catch (e) {}
+                                    if (mongoose.connection.readyState === 1) {
+                                        try {
+                                            dbMsgs = await Message.find({ conversationId })
+                                                .sort({ createdAt: -1 })
+                                                .limit(6)
+                                                .lean();
+                                        } catch (e) {}
+                                    }
 
                                     const sorted = dbMsgs.reverse();
                                     const contents = sorted.map(m => ({
@@ -370,13 +437,17 @@ router.post("/message", protect, async (req, res) => {
                         }
 
                         let botMessage = null;
-                        try {
-                            botMessage = await Message.create({
-                                conversationId,
-                                senderId: otherId,
-                                text: aiResponseText,
-                            });
-                        } catch (e) {
+                        if (mongoose.connection.readyState === 1) {
+                            try {
+                                botMessage = await Message.create({
+                                    conversationId,
+                                    senderId: otherId,
+                                    text: aiResponseText,
+                                });
+                            } catch (e) {}
+                        }
+
+                        if (!botMessage) {
                             botMessage = {
                                 _id: "msg-bot-temp-" + Date.now(),
                                 conversationId,
@@ -386,23 +457,25 @@ router.post("/message", protect, async (req, res) => {
                             };
                         }
 
-                        try {
-                            if (mongoose.Types.ObjectId.isValid(conversationId)) {
-                                await Conversation.findByIdAndUpdate(conversationId, {
-                                    lastMessage: { text: aiResponseText, senderId: otherId },
-                                    updatedAt: new Date()
-                                });
-                            } else {
-                                await Conversation.findOneAndUpdate(
-                                    { _id: conversationId },
-                                    {
+                        if (mongoose.connection.readyState === 1) {
+                            try {
+                                if (mongoose.Types.ObjectId.isValid(conversationId)) {
+                                    await Conversation.findByIdAndUpdate(conversationId, {
                                         lastMessage: { text: aiResponseText, senderId: otherId },
                                         updatedAt: new Date()
-                                    },
-                                    { upsert: false }
-                                );
-                            }
-                        } catch (e) {}
+                                    });
+                                } else {
+                                    await Conversation.findOneAndUpdate(
+                                        { _id: conversationId },
+                                        {
+                                            lastMessage: { text: aiResponseText, senderId: otherId },
+                                            updatedAt: new Date()
+                                        },
+                                        { upsert: false }
+                                    );
+                                }
+                            } catch (e) {}
+                        }
 
                         if (io) {
                             const botPayload = {
@@ -455,7 +528,7 @@ router.get("/history/:conversationId", protect, async (req, res) => {
         cleanId.startsWith('user-') ||
         !mongoose.Types.ObjectId.isValid(cleanId);
 
-        if (cleanId && !isBotOrCustom && mongoose.Types.ObjectId.isValid(cleanId)) {
+        if (mongoose.connection.readyState === 1 && cleanId && !isBotOrCustom && mongoose.Types.ObjectId.isValid(cleanId)) {
             try {
                 const conv = await Conversation.findOne({
                     members: { $all: [senderId, cleanId] }
@@ -470,16 +543,18 @@ router.get("/history/:conversationId", protect, async (req, res) => {
 
         // Search messages from MongoDB matching either cleanId or raw conversationId
         let messages = [];
-        try {
-            messages = await Message.find({
-                $or: [
-                    { conversationId: queryConvId },
-                    { conversationId: cleanId },
-                    { conversationId: conversationId }
-                ]
-            }).sort({ createdAt: 1 }).lean();
-        } catch (dbErr) {
-            console.warn("MongoDB fetch history failed, using fallback:", dbErr.message);
+        if (mongoose.connection.readyState === 1) {
+            try {
+                messages = await Message.find({
+                    $or: [
+                        { conversationId: queryConvId },
+                        { conversationId: cleanId },
+                        { conversationId: conversationId }
+                    ]
+                }).sort({ createdAt: 1 }).lean();
+            } catch (dbErr) {
+                console.warn("MongoDB fetch history failed, using fallback:", dbErr.message);
+            }
         }
 
         // If no messages found in database and it is a bot/custom sandbox ID, return mock history fallback
