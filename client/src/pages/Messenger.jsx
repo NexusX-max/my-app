@@ -1510,7 +1510,7 @@ export default function Messenger() {
                 className="w-16 h-16 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center transition-all cursor-pointer shadow-[0_0_20px_rgba(239,68,68,0.4)] active:scale-95 animate-pulse"
                 title="Decline Secure Connection"
               >
-                <PhoneOff size={24} />
+                <Phone size={24} />
               </button>
 
               {/* Accept Call Button */}
