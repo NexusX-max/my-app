@@ -7,12 +7,6 @@ import {
   Volume2, VolumeX, BarChart2, Share2,
   Minimize2, Maximize2, RefreshCw, Palette, Trash2, Award
 } from 'lucide-react';
-// একটি সেফটি চেক
-if (typeof Phone === 'undefined') {
-  console.error("Critical Error: Phone icon not defined in bundle.");
-  var Phone = () => <span style={{color: 'red'}}>!</span>;
-  var PhoneOff = () => <span style={{color: 'red'}}>X</span>;
-}
 const PhoneOffIcon = PhoneOff;
 const InfoIcon = HelpCircle;
 const QIcon = HelpCircle;
@@ -62,9 +56,7 @@ const TRANSLATIONS = {
     "Voice pattern verified. Security handshake accepted.": "Stimmabdruck verifiziert. Sicherheits-Handshake akzeptiert."
   }
 };
-console.log("CallScreen Rendering - Checking Icons...");
-  console.log("Is 'Phone' defined?", typeof Phone !== 'undefined');
-  console.log("Is 'PhoneOff' defined?", typeof PhoneOff !== 'undefined');
+
 const CallScreen = ({
   callTarget = { name: "Onyx Core Agent", avatar: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80" },
   callType = "video",
