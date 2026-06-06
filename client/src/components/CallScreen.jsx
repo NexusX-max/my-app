@@ -263,7 +263,7 @@ const CallScreen = ({
   }, []);
 
   // Control Toggles
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [isVideoOff, setIsVideoOff] = useState(callType === 'audio');
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isGroupMode, setIsGroupMode] = useState(false);
@@ -479,6 +479,34 @@ const CallScreen = ({
     };
   }, [currentTranscript, callStatus, translateLang, isPartnerMuted]);
 
+  // Live Simulated Network Bitrate and FPS updates based on Selected Quality
+  useEffect(() => {
+    let interval;
+    if (callStatus === "connected") {
+      interval = setInterval(() => {
+        let baseBitrate;
+        let baseFps;
+        if (selectedQuality === "low") {
+          baseBitrate = 280 + Math.floor(Math.random() * 40);
+          baseFps = 15 + Math.floor(Math.random() * 3);
+        } else if (selectedQuality === "adaptive") {
+          baseBitrate = 850 + Math.floor(Math.random() * 150);
+          baseFps = 24 + Math.floor(Math.random() * 4);
+        } else if (selectedQuality === "720p") {
+          baseBitrate = 1450 + Math.floor(Math.random() * 250);
+          baseFps = 30 + Math.floor(Math.random() * 2);
+        } else {
+          // 1080p_hd
+          baseBitrate = 4800 + Math.floor(Math.random() * 600);
+          baseFps = 58 + Math.floor(Math.random() * 3);
+        }
+        setBitrateValue(baseBitrate);
+        setFpsRate(baseFps);
+      }, 2000);
+    }
+    return () => clearInterval(interval);
+  }, [callStatus, selectedQuality]);
+
   // 3. Cryptographic simulation countdown progress
   useEffect(() => {
     let timer;
@@ -498,16 +526,41 @@ const CallScreen = ({
     };
   }, [callStatus]);
 
-  // 4. WebRTC Actual Camera Capture Link
+  // 4. WebRTC Actual Camera Capture Link with high-fidelity DSP constraints
   useEffect(() => {
     if (!isVideoOff) {
+      // Choose optimal capture constraints based on selected performance profile
+      let videoConstraints = {
+        frameRate: { ideal: 30, max: 60 },
+        facingMode: "user"
+      };
+
+      if (selectedQuality === '1080p_hd') {
+        videoConstraints.width = { min: 1280, ideal: 1920, max: 1920 };
+        videoConstraints.height = { min: 720, ideal: 1080, max: 1080 };
+      } else if (selectedQuality === '720p') {
+        videoConstraints.width = { min: 640, ideal: 1280, max: 1280 };
+        videoConstraints.height = { min: 480, ideal: 720, max: 720 };
+      } else if (selectedQuality === 'adaptive') {
+        videoConstraints.width = { ideal: 854 };
+        videoConstraints.height = { ideal: 480 };
+      } else {
+        // Low bandwidth scanline profile
+        videoConstraints.width = { ideal: 426 };
+        videoConstraints.height = { ideal: 240 };
+        videoConstraints.frameRate = { ideal: 15, max: 20 };
+      }
+
       navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          width: selectedQuality === '1080p_hd' ? 1920 : 1280, 
-          height: selectedQuality === '1080p_hd' ? 1080 : 720,
-          frameRate: 60
-        }, 
-        audio: true 
+        video: videoConstraints, 
+        audio: {
+          echoCancellation: echoCancellation,
+          noiseSuppression: noiseSuppression,
+          autoGainControl: autoGainControl,
+          channelCount: 2, // Enable stereoscopic channels to transmit immersive stereo sound
+          sampleRate: 48000, // High-definition 48KHz sampling frequency
+          latency: { ideal: 0.005 } // Request lowest possible target delay
+        }
       })
       .then(stream => {
         setLocalStream(stream);
@@ -516,7 +569,8 @@ const CallScreen = ({
         }
       })
       .catch(err => {
-        console.warn("No camera device accessible, using glowing matrix mock.", err);
+        console.warn("No camera device accessible or permission rejected, using glowing matrix mock.", err);
+        setVideoErrors(prev => ({ ...prev, local: true }));
       });
     } else {
       if (localStream) {
@@ -529,21 +583,52 @@ const CallScreen = ({
         localStream.getTracks().forEach(track => track.stop());
       }
     };
-  }, [isVideoOff, selectedQuality]);
+  }, [isVideoOff, selectedQuality, echoCancellation, noiseSuppression, autoGainControl]);
 
-  // 4b. WebRTC Real Sync Connection Logic
+  // Helper function to modify SDP to prefer Opus codec with stereo and high-fidelity attributes
+  const preferOpusInSDP = (sdp) => {
+    if (!sdp) return sdp;
+    let lines = sdp.split('\r\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].indexOf('a=fmtp:') === 0 && lines[i].indexOf('opus') !== -1) {
+        // Enforce high bitrate, stereoscopic sound, and forward error correction (FEC)
+        lines[i] = lines[i] + ';stereo=1;sprop-stereo=1;maxaveragebitrate=510000;useinbandfec=1;cbr=1';
+      }
+    }
+    return lines.join('\r\n');
+  };
+
+  // 4b. WebRTC Real Sync Connection Logic with Multiple STUN/TURN fallback servers
   useEffect(() => {
     if (callStatus !== "connected") return;
 
-    console.log("🚀 Establishing WebRTC secure sync channel.");
+    console.log("🚀 Establishing robust WebRTC secure connect channel.");
     
-    // Create new RTCPeerConnection with public Google STUN servers
+    // Create new RTCPeerConnection with a distributed list of Google, Twilio, and public STUN/TURN servers
     const pc = new RTCPeerConnection({
       iceServers: [
+        // Public STUN servers
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
-        { urls: "stun:stun2.l.google.com:19302" }
-      ]
+        { urls: "stun:stun2.l.google.com:19302" },
+        { urls: "stun:stun3.l.google.com:19302" },
+        { urls: "stun:stun4.l.google.com:19302" },
+        { urls: "stun:global.stun.twilio.com:3478" },
+        { urls: "stun:stun.services.mozilla.com" },
+        // Public/Standard test TURN servers fallback for complex corporate firewalls or symmetric NATs
+        { 
+          urls: "turn:openrelay.metered.ca:80", 
+          username: "openrelayproject", 
+          credential: "openrelayproject" 
+        },
+        { 
+          urls: "turn:openrelay.metered.ca:443", 
+          username: "openrelayproject", 
+          credential: "openrelayproject" 
+        }
+      ],
+      bundlePolicy: "max-bundle",
+      rtcpMuxPolicy: "require"
     });
 
     peerConnectionRef.current = pc;
@@ -565,7 +650,7 @@ const CallScreen = ({
 
     // Handle remote media track arrival
     pc.ontrack = (event) => {
-      console.log("🟢 Incoming Webrtc Track established!", event.streams);
+      console.log("🟢 Incoming Webrtc Track established successfully!", event.streams);
       if (event.streams && event.streams[0]) {
         setRemoteStream(event.streams[0]);
       }
@@ -582,17 +667,30 @@ const CallScreen = ({
 
       try {
         if (signal.type === "offer") {
-          await pc.setRemoteDescription(new RTCSessionDescription(signal));
+          // Wrap SDP to apply high fidelity configurations
+          const configuredSdp = preferOpusInSDP(signal.sdp);
+          await pc.setRemoteDescription(new RTCSessionDescription({
+            type: "offer",
+            sdp: configuredSdp
+          }));
+
           const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
+          const configuredAnswerSdp = preferOpusInSDP(answer.sdp);
+          const finalAnswer = { type: "answer", sdp: configuredAnswerSdp };
+          
+          await pc.setLocalDescription(finalAnswer);
           
           socket.emit("webrtcSignal", {
             to: partnerId,
             from: userProfile?._id || "me",
-            signal: answer
+            signal: finalAnswer
           });
         } else if (signal.type === "answer") {
-          await pc.setRemoteDescription(new RTCSessionDescription(signal));
+          const configuredSdp = preferOpusInSDP(signal.sdp);
+          await pc.setRemoteDescription(new RTCSessionDescription({
+            type: "answer",
+            sdp: configuredSdp
+          }));
         } else if (signal.type === "candidate" && signal.candidate) {
           await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
         }
@@ -647,12 +745,16 @@ const CallScreen = ({
             offerToReceiveAudio: true,
             offerToReceiveVideo: true
           });
-          await pc.setLocalDescription(offer);
+          
+          const configuredSdp = preferOpusInSDP(offer.sdp);
+          const finalOffer = { type: "offer", sdp: configuredSdp };
+          
+          await pc.setLocalDescription(finalOffer);
           const partnerId = callTarget.otherId || callTarget.id;
           socket.emit("webrtcSignal", {
             to: partnerId,
             from: userProfile?._id || "me",
-            signal: offer
+            signal: finalOffer
           });
         } catch (err) {
           console.error("SDP handshaking offer failure:", err);
@@ -663,6 +765,41 @@ const CallScreen = ({
       return () => clearTimeout(delayOffer);
     }
   }, [localStream, callTarget?.isIncoming, callTarget.id, callTarget.otherId, socket, userProfile?._id]);
+
+  // 4f. WebRTC Adaptive Quality Bitrate Controller
+  useEffect(() => {
+    const pc = peerConnectionRef.current;
+    if (!pc) return;
+    const senders = pc.getSenders();
+    const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+    if (videoSender) {
+      try {
+        const params = videoSender.getParameters();
+        if (!params.encodings) params.encodings = [{}];
+        
+        // Adapt bandwidth constraints based on active selectedQuality profile
+        if (selectedQuality === 'low') {
+          params.encodings[0].maxBitrate = 300000; // 300 kbps max
+          params.encodings[0].scaleResolutionDownBy = 4.0; // scale down heavily
+        } else if (selectedQuality === 'adaptive') {
+          params.encodings[0].maxBitrate = 900000; // 900 kbps max
+          params.encodings[0].scaleResolutionDownBy = 2.0; 
+        } else if (selectedQuality === '720p') {
+          params.encodings[0].maxBitrate = 1500000; // 1.5 Mbps max
+          params.encodings[0].scaleResolutionDownBy = 1.5;
+        } else {
+          params.encodings[0].maxBitrate = 4000000; // 4 Mbps high-definition 1080p
+          params.encodings[0].scaleResolutionDownBy = 1.0;
+        }
+        
+        videoSender.setParameters(params)
+          .then(() => console.log(`⚡ [WebRTC] Adapted encoders dynamically for: ${selectedQuality}`))
+          .catch(err => console.debug("Adapting parameters pending or unsupported by platform", err));
+      } catch (e) {
+        console.debug("WebRTC setParameters not fully synchronized yet.", e);
+      }
+    }
+  }, [selectedQuality, localStream]);
 
   // 4d. Mute & Video-off control togglers synchronization over WebRTC
   useEffect(() => {
@@ -1405,6 +1542,24 @@ const CallScreen = ({
                 <div className="flex flex-col gap-1">
                   <span className="text-[9px] bg-black/70 border border-purple-500/20 px-2 py-1 rounded text-purple-400 font-bold uppercase tracking-widest block w-fit">
                     LINK FEED: INBOUND
+                  </span>
+                  {/* Dynamic Bitrate & Connection Indicator */}
+                  <span className={`text-[8.5px] px-1.5 py-0.5 mt-0.5 rounded font-black tracking-wider uppercase inline-flex items-center gap-1.5 border leading-none w-fit ${
+                    bitrateValue > 3000 
+                      ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400' 
+                      : bitrateValue > 1000 
+                        ? 'bg-amber-500/15 border-amber-500/30 text-amber-300' 
+                        : 'bg-rose-500/15 border-rose-500/30 text-rose-400'
+                  }`}>
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                        bitrateValue > 3000 ? 'bg-emerald-400' : bitrateValue > 1000 ? 'bg-amber-400' : 'bg-rose-400'
+                      }`}></span>
+                      <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${
+                        bitrateValue > 3000 ? 'bg-emerald-500' : bitrateValue > 1000 ? 'bg-amber-500' : 'bg-rose-500'
+                      }`}></span>
+                    </span>
+                    📶 {bitrateValue > 3000 ? "EXCELLENT" : bitrateValue > 1000 ? "SATISFACTORY" : "POOR BANDWIDTH"} ({bitrateValue} kbps)
                   </span>
                   <span className="text-[8px] bg-black/50 text-purple-300 font-mono px-1.5 py-0.5 rounded border border-white/5 w-fit">
                     {videoErrors.partner ? "🛡️ CYBER-HOLOGRAM MODE" : "🎥 SECURE LIVE FEED"}
