@@ -41,143 +41,78 @@ const EXTENDED_TRANSLATIONS = {
   }
 };
 
-const HolographicFaceVisualizer = ({ name, avatar, isMe, active, isSpeaking }) => {
-  const canvasRef = useRef(null);
-
-  useEffect(() => {
-    let animId;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let frame = 0;
-    const draw = () => {
-      frame++;
-      
-      if (canvas.clientWidth !== canvas.width || canvas.clientHeight !== canvas.height) {
-        canvas.width = canvas.clientWidth;
-        canvas.height = canvas.clientHeight;
-      }
-
-      const cx = canvas.width / 2;
-      const cy = canvas.height / 2;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Draw standard green/teal technical styling matching WhatsApp
-      const themeColorAccent = isMe ? "rgba(37, 211, 102, 0.4)" : "rgba(9, 210, 219, 0.4)";
-      const dotColor = isMe ? "#128C7E" : "#25D366";
-
-      // 1. Grid lines
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.03)";
-      ctx.lineWidth = 1;
-      const gridSize = 30;
-      for (let x = 0; x < canvas.width; x += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, canvas.height);
-        ctx.stroke();
-      }
-      for (let y = 0; y < canvas.height; y += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(canvas.width, y);
-        ctx.stroke();
-      }
-
-      // 2. Outer biometric circle
-      const radius = Math.min(cx, cy) * 0.7;
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-      ctx.strokeStyle = themeColorAccent;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      // Pulsing rings
-      const pulseRadius = radius + Math.sin(frame * 0.06) * 12;
-      ctx.beginPath();
-      ctx.arc(cx, cy, pulseRadius, 0, Math.PI * 2);
-      ctx.strokeStyle = isMe ? "rgba(37, 211, 102, 0.15)" : "rgba(18, 140, 126, 0.15)";
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      // Rotating dashed ring
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(frame * 0.015);
-      ctx.beginPath();
-      ctx.arc(0, 0, radius - 8, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
-      ctx.setLineDash([6, 15]);
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
-
-      // Standard Avatar Icon Drawing fallback if real image fails
-      ctx.fillStyle = "rgba(42, 57, 66, 0.85)";
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius - 15, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = dotColor;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      // Simple voice reactive bar representing audio signals
-      if (isSpeaking) {
-        const barCount = 12;
-        ctx.fillStyle = dotColor;
-        for (let i = 0; i < barCount; i++) {
-          const angle = (i / barCount) * Math.PI * 2;
-          const barHeight = 8 + Math.abs(Math.sin(frame * 0.2 + i)) * 14;
-          const startX = cx + Math.cos(angle) * (radius - 12);
-          const startY = cy + Math.sin(angle) * (radius - 12);
-          const endX = cx + Math.cos(angle) * (radius - 12 + barHeight);
-          const endY = cy + Math.sin(angle) * (radius - 12 + barHeight);
-
-          ctx.beginPath();
-          ctx.moveTo(startX, startY);
-          ctx.lineTo(endX, endY);
-          ctx.strokeStyle = dotColor;
-          ctx.lineWidth = 3;
-          ctx.stroke();
-        }
-      }
-
-      animId = requestAnimationFrame(draw);
-    };
-
-    draw();
-    return () => cancelAnimationFrame(animId);
-  }, [name, isMe, isSpeaking]);
-
+const WhatsAppFaceVisualizer = ({ name, avatar, isMe, active, isSpeaking }) => {
   return (
-    <div className="absolute inset-0 bg-[#0b141a] flex flex-col items-center justify-center p-4 z-0">
-      <div className="absolute inset-0 bg-radial-gradient from-transparent to-black opacity-80 pointer-events-none" />
+    <div className="absolute inset-0 bg-[#0b141a] flex flex-col items-center justify-center p-4 z-0 overflow-hidden">
+      {/* 1. Full-bleed beautiful ambient background blur of contact's avatar */}
       {avatar && (
-        <div className="absolute inset-0 overflow-hidden opacity-[0.12] pointer-events-none">
-          <img src={avatar} alt="" className="w-full h-full object-cover scale-150 blur-2xl" referrerPolicy="no-referrer" />
+        <div className="absolute inset-0 overflow-hidden opacity-25 scale-125 blur-3xl pointer-events-none select-none">
+          <img src={avatar} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
         </div>
       )}
-      <div className="relative w-56 h-56 flex items-center justify-center">
-        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full z-10" />
-        {avatar && (
+
+      {/* Radial shade overlays */}
+      <div className="absolute inset-0 bg-radial-gradient from-transparent to-black/80 opacity-90 pointer-events-none" />
+
+      {/* 2. Central Portrait Avatar Frame */}
+      <div className="relative w-56 h-56 flex items-center justify-center z-10 select-none">
+        {/* Soft emerald sound-wave ripples when active */}
+        {active && (
+          <>
+            <div className={`absolute w-36 h-36 rounded-full bg-[#25D366]/5 border border-[#25D366]/20 transition-all duration-1000 ${
+              isSpeaking ? 'animate-ping opacity-60' : 'animate-pulse opacity-10'
+            }`} />
+            <div className={`absolute w-44 h-44 rounded-full border border-emerald-500/10 transition-all duration-700 ${
+              isSpeaking ? 'scale-105 opacity-55 border-emerald-500/20' : 'opacity-5'
+            }`} />
+          </>
+        )}
+
+        <div className="relative">
           <img 
             src={avatar} 
             alt={name}
-            className={`w-[110px] h-[110px] rounded-full object-cover border-4 border-[#128C7E] z-20 shadow-[0_0_25px_rgba(37,211,102,0.35)] transition-all duration-300 ${
-              isSpeaking ? 'scale-105 border-[#25D366]' : ''
+            className={`w-[125px] h-[125px] rounded-full object-cover border-4 border-[#128C7E] shadow-[0_5px_30px_rgba(0,0,0,0.6)] transition-all duration-300 ${
+              isSpeaking ? 'scale-105 border-[#25D366] shadow-[0_0_25px_rgba(37,211,102,0.3)]' : ''
             }`}
             referrerPolicy="no-referrer"
             onError={(e) => { e.target.src = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80"; }}
           />
-        )}
+          {active && (
+            <span className={`absolute bottom-1 right-1 flex h-4.5 w-4.5 items-center justify-center rounded-full ring-2 ring-[#0b141a] shadow-md ${
+              isSpeaking ? 'bg-[#25D366]' : 'bg-[#128C7E]'
+            }`}>
+              <span className={`h-2.5 w-2.5 rounded-full bg-white ${isSpeaking ? 'animate-pulse' : ''}`} />
+            </span>
+          )}
+        </div>
       </div>
-      <div className="absolute bottom-5 text-center font-sans z-30">
-        <p className="text-sm font-semibold text-zinc-300">{name}</p>
-        <span className="text-[10px] text-[#25D366] font-mono tracking-widest uppercase block mt-1">
-          {isSpeaking ? "🗣️ SPEAKING ACTIVE" : "VOICE SECURE"}
+
+      {/* 3. Underbody humanized voice connection state indicators */}
+      <div className="text-center font-sans z-30 mt-6 select-none">
+        <p className="text-base font-semibold text-zinc-100 tracking-wide">{name}</p>
+        <span className="text-[10px] text-[#25D366] font-mono tracking-widest uppercase block mt-1 font-bold">
+          {isSpeaking ? "🗣️ SPEAKING ACTIVE" : "🎙️ CONNECTION OK"}
         </span>
+
+        {/* Beautiful CSS voice waveform wave bars */}
+        <div className="flex items-center justify-center gap-1 mt-3.5 h-6">
+          {[1, 2, 3, 4, 5, 6, 7].map((barIndex) => {
+            const animDelay = (barIndex * 0.1).toFixed(2);
+            return (
+              <div 
+                key={barIndex} 
+                className="w-1 rounded-full bg-[#25D366] transition-all duration-300"
+                style={{ 
+                  animationDelay: `${animDelay}s`,
+                  height: active && isSpeaking ? '100%' : '15%',
+                  animation: active && isSpeaking ? 'bounce 0.8s infinite ease-in-out' : 'none',
+                  minHeight: '3px'
+                }}
+              />
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -207,9 +142,9 @@ const CallScreen = ({
 
   // Secure and highly-reliable public HTML5 video fallback streams
   const SECURE_FALLBACK_VIDEOS = [
-    "https://www.w3schools.com/html/mov_bbb.mp4",
-    "https://vjs.zencdn.net/v/oceans.mp4",
-    "https://www.w3schools.com/html/movie.mp4"
+    "https://assets.mixkit.co/videos/preview/mixkit-girl-having-a-video-call-on-her-laptop-34252-large.mp4",
+    "https://assets.mixkit.co/videos/preview/mixkit-woman-talking-on-video-call-on-laptop-42173-large.mp4",
+    "https://assets.mixkit.co/videos/preview/mixkit-man-talking-on-a-video-call-42186-large.mp4"
   ];
 
   // Resolve source video URL with seamless robust fallbacks
@@ -641,7 +576,7 @@ const CallScreen = ({
         {/* VIEW A: VOICE CALL STYLE */}
         {callType === "voice" ? (
           <div className="relative w-full h-full flex flex-col items-center justify-center p-6 z-[2]">
-            <HolographicFaceVisualizer 
+            <WhatsAppFaceVisualizer 
               name={callTarget.name} 
               avatar={callTarget.avatar} 
               isMe={false} 
@@ -656,7 +591,7 @@ const CallScreen = ({
             {/* 1. Large Partner Feed block */}
             <div className="absolute inset-0 z-0 bg-[#0d171d] flex flex-col items-center justify-center">
               {feedStyle === "hologram" || partVideoError ? (
-                <HolographicFaceVisualizer 
+                <WhatsAppFaceVisualizer 
                   name={callTarget.name} 
                   avatar={callTarget.avatar} 
                   isMe={false} 
