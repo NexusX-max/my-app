@@ -155,14 +155,27 @@ const HolographicFaceVisualizer = ({ name, avatar, isMe, active, isSpeaking }) =
     <div className="absolute inset-0 bg-[#0b141a] flex flex-col items-center justify-center p-4 z-0">
       <div className="absolute inset-0 bg-radial-gradient from-transparent to-black opacity-80 pointer-events-none" />
       {avatar && (
-        <div className="absolute inset-0 overflow-hidden opacity-[0.05] pointer-events-none">
-          <img src={avatar} alt="" className="w-full h-full object-cover scale-150 blur-xl" referrerPolicy="no-referrer" />
+        <div className="absolute inset-0 overflow-hidden opacity-[0.12] pointer-events-none">
+          <img src={avatar} alt="" className="w-full h-full object-cover scale-150 blur-2xl" referrerPolicy="no-referrer" />
         </div>
       )}
-      <canvas ref={canvasRef} className="w-full h-full max-w-[220px] max-h-[220px] relative z-10" />
-      <div className="absolute bottom-5 text-center font-sans">
+      <div className="relative w-56 h-56 flex items-center justify-center">
+        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full z-10" />
+        {avatar && (
+          <img 
+            src={avatar} 
+            alt={name}
+            className={`w-[110px] h-[110px] rounded-full object-cover border-4 border-[#128C7E] z-20 shadow-[0_0_25px_rgba(37,211,102,0.35)] transition-all duration-300 ${
+              isSpeaking ? 'scale-105 border-[#25D366]' : ''
+            }`}
+            referrerPolicy="no-referrer"
+            onError={(e) => { e.target.src = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80"; }}
+          />
+        )}
+      </div>
+      <div className="absolute bottom-5 text-center font-sans z-30">
         <p className="text-sm font-semibold text-zinc-300">{name}</p>
-        <span className="text-[10px] text-[#25D366] font-mono tracking-widest uppercase">
+        <span className="text-[10px] text-[#25D366] font-mono tracking-widest uppercase block mt-1">
           {isSpeaking ? "🗣️ SPEAKING ACTIVE" : "VOICE SECURE"}
         </span>
       </div>
@@ -193,6 +206,7 @@ const CallScreen = ({
 
   // WebRTC streams refs
   const localVideoRef = useRef(null);
+  const partnerVideoRef = useRef(null);
   const [localStream, setLocalStream] = useState(null);
   const [cameraPermissionError, setCameraPermissionError] = useState(false);
   const [isPartnerSpeaking, setIsPartnerSpeaking] = useState(false);
@@ -358,10 +372,38 @@ const CallScreen = ({
     }
   }, [callStatus]);
 
-  const handleAcceptCall = () => {
+  // Sync partner video muted state with isSpeakerBoost
+  useEffect(() => {
+    if (partnerVideoRef.current) {
+      partnerVideoRef.current.muted = !isSpeakerBoost;
+      if (isSpeakerBoost) {
+        partnerVideoRef.current.play().catch(err => {
+          console.debug("Partner video playback failed or blocked during sync:", err);
+        });
+      }
+    }
+  }, [isSpeakerBoost]);
+
+  const handleUnmuteAll = () => {
+    setIsSpeakerBoost(true);
+    
+    // Explicitly initialize/resume Web Audio Context
     initAudioCtx();
-    setCallStatus("connected");
+    
+    // Explicitly unmute video reference
+    if (partnerVideoRef.current) {
+      partnerVideoRef.current.muted = false;
+      partnerVideoRef.current.play().catch(e => {
+        console.debug("Video playback failed during manual unmute:", e);
+      });
+    }
+    
     playSynthesizedBeep(880, 880, 0.4);
+  };
+
+  const handleAcceptCall = () => {
+    setCallStatus("connected");
+    handleUnmuteAll();
   };
 
   const handleRejectCall = () => {
@@ -593,12 +635,13 @@ const CallScreen = ({
                     </div>
                   </div>
 
-                  {/* 1.3 Companion camera loop video (mounted unless error, muted based on Speaker Boost) */}
+                  {/* 1.3 Companion camera loop video (mounted unless error, muted based on Speaker Boost state) */}
                   <video 
+                    ref={partnerVideoRef}
                     src={callTarget.videoUrl || "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4"}
                     autoPlay 
                     loop 
-                    muted={!isSpeakerBoost} // Unmute video based on Speaker Boost state so voice actually plays!
+                    muted={!isSpeakerBoost} // Dynamically control muted status based on Speaker Boost state
                     playsInline 
                     referrerPolicy="no-referrer"
                     className={`absolute inset-0 w-full h-full object-cover z-20 transition-opacity duration-500 ${getFilterClass()} brightness-[0.85] contrast-[1.05]`}
@@ -607,6 +650,27 @@ const CallScreen = ({
                       setFeedStyle("hologram");
                     }}
                   />
+
+                  {/* Floating tap-to-unmute overlay to meet browser autoplay interaction requirements */}
+                  {!isSpeakerBoost && (
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-40 bg-[#121b22]/95 border border-[#25D366]/40 p-5 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] max-w-[280px] text-center flex flex-col items-center gap-3 animate-pulse">
+                      <div className="p-3 bg-[#25D366]/15 text-[#25D366] rounded-full">
+                        <VolumeX size={24} className="animate-bounce" />
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="text-xs font-bold text-[#25D366] uppercase tracking-wider">Unmute Companion Voice</h4>
+                        <p className="text-[10px] text-zinc-300 leading-normal">
+                          Browser requirements block automatic sound autoplay. Click below to un-mute video and voice check audio.
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleUnmuteAll}
+                        className="bg-[#25D366] text-[#0b141a] font-mono text-[10px] font-black tracking-wider px-4 py-2 rounded-lg hover:bg-[#20bd5a] transition-all cursor-pointer w-full uppercase shadow-[#25D366]/20 shadow-md"
+                      >
+                        🔊 ACTIVATE AUDIO FEED
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -762,7 +826,7 @@ const CallScreen = ({
 
         {/* Speaker Booster Output */}
         <button
-          onClick={() => setIsSpeakerBoost(!isSpeakerBoost)}
+          onClick={isSpeakerBoost ? () => setIsSpeakerBoost(false) : handleUnmuteAll}
           className={`p-3.5 rounded-full border transition-all cursor-pointer ${
             !isSpeakerBoost 
               ? 'bg-[#202c33]/40 border-white/5 text-zinc-500 hover:bg-[#202c33]' 
