@@ -279,39 +279,73 @@ const CallScreen = ({
 
   // Hook up WebRTC camera capture for local video rendering
   useEffect(() => {
-    if (!isVideoOff && callStatus === "connected") {
-      navigator.mediaDevices.getUserMedia({
-        video: {
-          width: selectedQuality === "1080p" ? 1920 : selectedQuality === "720p" ? 1280 : 640,
-          height: selectedQuality === "1080p" ? 1080 : selectedQuality === "720p" ? 720 : 480,
-          facingMode: "user"
-        },
-        audio: true
-      })
-      .then(stream => {
+    let streamRef = null;
+
+    const startCamera = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width:
+              selectedQuality === "1080p"
+                ? 1920
+                : selectedQuality === "720p"
+                ? 1280
+                : 640,
+            height:
+              selectedQuality === "1080p"
+                ? 1080
+                : selectedQuality === "720p"
+                ? 720
+                : 480,
+            facingMode: "user",
+          },
+          audio: true,
+        });
+
+        streamRef = stream;
         setLocalStream(stream);
         setCameraPermissionError(false);
+
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream;
+
+          try {
+            await localVideoRef.current.play();
+          } catch (err) {
+            console.error("Video play failed:", err);
+          }
         }
-      })
-      .catch(err => {
-        console.warn("Could not capture real camera device. Falling back to clean WhatsApp vector avatar.", err);
+      } catch (err) {
+        console.error("Camera Error:", err);
         setCameraPermissionError(true);
-      });
-    } else {
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        setLocalStream(null);
       }
+    };
+
+    if (!isVideoOff && callStatus === "connected") {
+      startCamera();
     }
 
     return () => {
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
+      if (streamRef) {
+        streamRef.getTracks().forEach(track => track.stop());
       }
     };
   }, [isVideoOff, callStatus, selectedQuality]);
+
+  useEffect(() => {
+    if (localStream && localVideoRef.current) {
+      localVideoRef.current.srcObject = localStream;
+
+      localVideoRef.current
+        .play()
+        .then(() => {
+          console.log("Local Camera Playing");
+        })
+        .catch(err => {
+          console.error("Camera Play Error:", err);
+        });
+    }
+  }, [localStream]);
 
   // Automatically connect dialing call or keep connection
   useEffect(() => {
@@ -387,6 +421,7 @@ const CallScreen = ({
     // Explicitly unmute video reference
     if (partnerVideoRef.current) {
       partnerVideoRef.current.muted = false;
+      partnerVideoRef.current.play().catch(e => console.log("Video Play Error:", e));
       partnerVideoRef.current.play().catch(e => {
         console.debug("Video playback failed during manual unmute:", e);
       });
@@ -685,12 +720,17 @@ const CallScreen = ({
                     <span className="text-[8px] text-zinc-500 mt-1 uppercase">Avatar lock</span>
                   </div>
                 ) : (
-                  <video 
-                    ref={localVideoRef} 
-                    autoPlay 
-                    playsInline 
-                    muted 
-                    className="w-full h-full object-cover scale-x-[-1]" // mirror local camera feed
+                  <video
+                    ref={localVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    controls={false}
+                    disablePictureInPicture
+                    className="w-full h-full object-cover scale-x-[-1]"
+                    onLoadedMetadata={(e) => {
+                      e.target.play().catch(console.error);
+                    }}
                   />
                 )
               ) : (
