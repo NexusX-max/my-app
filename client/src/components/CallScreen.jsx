@@ -181,13 +181,15 @@ const CallScreen = ({
   const [callActiveTime, setCallActiveTime] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(callType === "voice");
-  const [isSpeakerBoost, setIsSpeakerBoost] = useState(true);
+  const [isSpeakerBoost, setIsSpeakerBoost] = useState(false); // Default to false (muted initial) to permit browser autoplay in sandboxed frames
   const [translateLang, setTranslateLang] = useState("none"); // "none", "bn", "es", "ja"
   const [currentCaptionIndex, setCurrentCaptionIndex] = useState(0);
   const [noiseSuppression, setNoiseSuppression] = useState(true);
   const [selectedQuality, setSelectedQuality] = useState("720p"); // "1080p", "720p", "low"
   const [videoFilter, setVideoFilter] = useState("none"); // "none", "sepia", "grayscale", "monochrome"
   const [showFilters, setShowFilters] = useState(false);
+  const [partVideoError, setPartVideoError] = useState(false);
+  const [feedStyle, setFeedStyle] = useState("video"); // "video" | "hologram"
 
   // WebRTC streams refs
   const localVideoRef = useRef(null);
@@ -225,53 +227,20 @@ const CallScreen = ({
     return () => clearInterval(timer);
   }, [callStatus]);
 
-  // Rolling WhatsApp subtitling indexing & live Speech Synthesis TTS Output (voice checks)
+  // Rolling WhatsApp subtitling indexing (voice reading disabled as requested)
   useEffect(() => {
     let subInterval;
     if (callStatus === "connected") {
       subInterval = setInterval(() => {
         setCurrentCaptionIndex(prev => {
-          const nextIndex = (prev + 1) % activeCaptions.length;
-          
-          // Synthesize/Speak voice output so voice works correctly!
-          try {
-            if ('speechSynthesis' in window) {
-              window.speechSynthesis.cancel();
-              const captionText = activeCaptions[nextIndex];
-              const dict = EXTENDED_TRANSLATIONS[translateLang] || {};
-              const outputText = dict[captionText] || captionText;
-              
-              const utterance = new SpeechSynthesisUtterance(outputText);
-              utterance.rate = 1.0;
-              utterance.pitch = 1.05;
-              
-              // Set appropriate speech language configurations
-              if (translateLang === "bn") {
-                utterance.lang = "bn-BD";
-              } else if (translateLang === "es") {
-                utterance.lang = "es-ES";
-              } else if (translateLang === "ja") {
-                utterance.lang = "ja-JP";
-              } else {
-                utterance.lang = "en-US";
-              }
-              window.speechSynthesis.speak(utterance);
-            }
-          } catch (e) {
-            console.debug("TTS Speech Synthesis blocked or unsupported.", e);
-          }
-          
-          return nextIndex;
+          return (prev + 1) % activeCaptions.length;
         });
       }, 5000);
     }
     return () => {
       clearInterval(subInterval);
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
     };
-  }, [callStatus, translateLang]);
+  }, [callStatus]);
 
   // Handle dial tone generation or simulated ringing tones using Web Audio synthesis
   const initAudioCtx = () => {
@@ -571,63 +540,75 @@ const CallScreen = ({
         {/* VIEW A: VOICE CALL STYLE */}
         {callType === "voice" ? (
           <div className="relative w-full h-full flex flex-col items-center justify-center p-6 z-[2]">
-            <div className="absolute inset-0 bg-radial-gradient from-emerald-950/20 to-transparent pointer-events-none" />
-            
-            {/* Avatar Pulse loop */}
-            <div className="relative flex flex-col items-center gap-5">
-              <div className="relative flex items-center justify-center">
-                {isPartnerSpeaking && (
-                  <>
-                    <div className="absolute w-56 h-56 rounded-full bg-[#25D366]/5 animate-ping opacity-30" />
-                    <div className="absolute w-44 h-44 rounded-full border border-[#25D366]/20 animate-pulse opacity-40" />
-                    <div className="absolute w-36 h-36 rounded-full border border-emerald-500/10" />
-                  </>
-                )}
-                
-                <img 
-                  src={callTarget.avatar} 
-                  className={`w-32 h-32 rounded-full object-cover border-4 p-1 shadow-2xl transition-all duration-300 ${
-                    isPartnerSpeaking ? 'border-[#25D366] scale-105' : 'border-zinc-700'
-                  }`} 
-                  referrerPolicy="no-referrer"
-                  alt={callTarget.name} 
-                  onError={(e) => { e.target.src = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80"; }}
-                />
-              </div>
-
-              <div className="text-center space-y-1 mt-4">
-                <span className="text-[#25D366] text-[10px] font-bold tracking-[0.2em] uppercase block">
-                  {isPartnerSpeaking ? "🎙️ SPEAKING..." : "🎙️ CONNECTED / MUTED FILTER SECURE"}
-                </span>
-                <span className="text-xs text-zinc-500 uppercase block font-mono">
-                  SUPPRESSION RATE: {noiseSuppression ? "99.8% (CLEAN)" : "BYPASSED"}
-                </span>
-              </div>
-            </div>
-
+            <HolographicFaceVisualizer 
+              name={callTarget.name} 
+              avatar={callTarget.avatar} 
+              isMe={false} 
+              active={callStatus === "connected"} 
+              isSpeaking={isPartnerSpeaking} 
+            />
           </div>
         ) : (
           /* VIEW B: VIDEO CALL STYLE WITH FLOATING PIC-IN-PIC */
           <div className="relative w-full h-full flex items-center justify-center z-[2]">
             
             {/* 1. Large Partner Feed block */}
-            <div className="absolute inset-0 z-0 bg-[#0d171d]">
-              <div className={`w-full h-full ${getFilterClass()}`}>
-                {/* Simulated companion camera streams via premium high-quality loop video */}
-                <video 
-                  src={callTarget.videoUrl || "https://assets.mixkit.co/videos/preview/mixkit-young-woman-with-glasses-talking-to-camera-40156-large.mp4"}
-                  autoPlay 
-                  loop 
-                  muted 
-                  playsInline 
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover filter brightness-[0.85] contrast-[1.05]"
-                  onError={(e) => {
-                    // Fallback to static portrait hologram canvas if block or error
-                    e.target.style.display = 'none';
-                  }}
+            <div className="absolute inset-0 z-0 bg-[#0d171d] flex flex-col items-center justify-center">
+              {feedStyle === "hologram" || partVideoError ? (
+                <HolographicFaceVisualizer 
+                  name={callTarget.name} 
+                  avatar={callTarget.avatar} 
+                  isMe={false} 
+                  active={callStatus === "connected"} 
+                  isSpeaking={isPartnerSpeaking} 
                 />
-              </div>
+              ) : (
+                <>
+                  {/* 1.1 Beautiful fallback background blur of contact's avatar face */}
+                  <div className="absolute inset-0 z-0 overflow-hidden select-none pointer-events-none opacity-20 filter blur-3xl scale-125">
+                    <img src={callTarget.avatar} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  </div>
+
+                  {/* 1.2 The central polished avatar display representing other partner's face */}
+                  <div className="relative flex flex-col items-center justify-center gap-6 z-10 p-4">
+                    <div className="relative flex items-center justify-center">
+                      <div className="absolute w-52 h-52 rounded-full bg-[#25D366]/5 animate-ping opacity-40" />
+                      <div className="absolute w-44 h-44 rounded-full border-2 border-emerald-500/15 animate-pulse" />
+                      <div className="absolute w-36 h-36 rounded-full border border-[#128C7E]/10 bg-slate-900/50" />
+                      
+                      <img 
+                        src={callTarget.avatar} 
+                        className="w-28 h-28 rounded-full object-cover border-4 border-[#128C7E] p-1 relative z-10 shadow-3xl" 
+                        referrerPolicy="no-referrer"
+                        alt={callTarget.name} 
+                        onError={(e) => { e.target.src = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80"; }}
+                      />
+                    </div>
+                    
+                    <div className="text-center font-sans space-y-1">
+                      <h3 className="text-xl font-bold text-zinc-100">{callTarget.name}</h3>
+                      <span className="text-[10px] text-[#25D366] font-mono tracking-widest uppercase block animate-pulse">
+                        {isPartnerSpeaking ? "🗣️ SPEAKING ACTIVE" : "🛡️ SECURE VIDEO SIGNAL"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 1.3 Companion camera loop video (mounted unless error, muted based on Speaker Boost) */}
+                  <video 
+                    src={callTarget.videoUrl || "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4"}
+                    autoPlay 
+                    loop 
+                    muted={!isSpeakerBoost} // Unmute video based on Speaker Boost state so voice actually plays!
+                    playsInline 
+                    referrerPolicy="no-referrer"
+                    className={`absolute inset-0 w-full h-full object-cover z-20 transition-opacity duration-500 ${getFilterClass()} brightness-[0.85] contrast-[1.05]`}
+                    onError={() => {
+                      setPartVideoError(true);
+                      setFeedStyle("hologram");
+                    }}
+                  />
+                </>
+              )}
             </div>
 
             {/* 2. Drag-draggable/Floating Picture-in-picture local camera frame */}
@@ -705,6 +686,23 @@ const CallScreen = ({
                 <span>▼</span>
               </button>
             </div>
+
+            {callType === "video" && (
+              <div className="flex justify-between items-center w-full mt-1.5 pt-1.5 border-t border-zinc-800/50">
+                <span className="text-[9px] text-[#128C7E] uppercase font-bold">Lens Mode:</span>
+                <button 
+                  onClick={() => setFeedStyle(prev => prev === "video" ? "hologram" : "video")} 
+                  className={`text-[8px] px-1.5 py-0.5 rounded uppercase font-mono font-black tracking-wider cursor-pointer transition-all ${
+                    feedStyle === "video" && !partVideoError
+                      ? "bg-emerald-950/45 border border-emerald-500/30 text-[#25D366] hover:bg-emerald-900/40"
+                      : "bg-[#25D366] text-[#0b141a] hover:bg-[#20bd5a]"
+                  }`}
+                  title="Switch between raw video loop and dynamic biometric interactive holographic matrix"
+                >
+                  {feedStyle === "video" && !partVideoError ? "🟢 CAMERA FEED" : "💎 HOLOGRAM SYNC"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
