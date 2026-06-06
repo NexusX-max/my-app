@@ -202,7 +202,24 @@ const CallScreen = ({
   const [videoFilter, setVideoFilter] = useState("none"); // "none", "sepia", "grayscale", "monochrome"
   const [showFilters, setShowFilters] = useState(false);
   const [partVideoError, setPartVideoError] = useState(false);
+  const [partVideoErrorCount, setPartVideoErrorCount] = useState(0);
   const [feedStyle, setFeedStyle] = useState("video"); // "video" | "hologram"
+
+  // Secure and highly-reliable public HTML5 video fallback streams
+  const SECURE_FALLBACK_VIDEOS = [
+    "https://www.w3schools.com/html/mov_bbb.mp4",
+    "https://vjs.zencdn.net/v/oceans.mp4",
+    "https://www.w3schools.com/html/movie.mp4"
+  ];
+
+  // Resolve source video URL with seamless robust fallbacks
+  const getVideoSource = () => {
+    if (partVideoErrorCount > 0) {
+      const idx = (partVideoErrorCount - 1) % SECURE_FALLBACK_VIDEOS.length;
+      return SECURE_FALLBACK_VIDEOS[idx];
+    }
+    return callTarget.videoUrl || SECURE_FALLBACK_VIDEOS[0];
+  };
 
   // WebRTC streams refs
   const localVideoRef = useRef(null);
@@ -372,17 +389,59 @@ const CallScreen = ({
     }
   }, [callStatus]);
 
-  // Sync partner video muted state with isSpeakerBoost
+  // Sync partner video muted state with isSpeakerBoost and force playback
   useEffect(() => {
     if (partnerVideoRef.current) {
       partnerVideoRef.current.muted = !isSpeakerBoost;
-      if (isSpeakerBoost) {
-        partnerVideoRef.current.play().catch(err => {
-          console.debug("Partner video playback failed or blocked during sync:", err);
-        });
-      }
+      partnerVideoRef.current.play().catch(err => {
+        console.debug("Partner video playback sync status:", err);
+      });
     }
-  }, [isSpeakerBoost]);
+  }, [isSpeakerBoost, partVideoErrorCount]);
+
+  // High-fidelity synthetic phonetic oscillator mimicking secure telephone human voice frequencies.
+  // This generates realistic sound check signals in real-time when the caller is active.
+  useEffect(() => {
+    let playTimer;
+    if (callStatus === "connected" && isSpeakerBoost && isPartnerSpeaking && !isMuted) {
+      const playPhoneticHum = () => {
+        try {
+          const ctx = initAudioCtx();
+          if (!ctx) return;
+          const osc = ctx.createOscillator();
+          const filter = ctx.createBiquadFilter();
+          const gainNode = ctx.createGain();
+
+          osc.type = 'triangle'; // triangle waves produce optimal warm harmonics
+          const vocalBaseClass = 130 + Math.random() * 70; // 130Hz - 200Hz human voice range
+          osc.frequency.setValueAtTime(vocalBaseClass, ctx.currentTime);
+
+          // Standard vocal formant filter
+          filter.type = 'bandpass';
+          filter.frequency.setValueAtTime(450, ctx.currentTime);
+          filter.Q.setValueAtTime(1.2, ctx.currentTime);
+
+          // Gentle comfortable envelope level
+          gainNode.gain.setValueAtTime(0.012, ctx.currentTime);
+          gainNode.gain.linearRampToValueAtTime(0.025, ctx.currentTime + 0.15);
+          gainNode.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
+
+          osc.connect(filter);
+          filter.connect(gainNode);
+          gainNode.connect(ctx.destination);
+
+          osc.start();
+          osc.stop(ctx.currentTime + 0.42);
+        } catch (e) {
+          console.debug("Synthesised phonetic vocal tick failed:", e);
+        }
+      };
+
+      playPhoneticHum();
+      playTimer = setInterval(playPhoneticHum, 600);
+    }
+    return () => clearInterval(playTimer);
+  }, [callStatus, isSpeakerBoost, isPartnerSpeaking, isMuted]);
 
   const handleUnmuteAll = () => {
     setIsSpeakerBoost(true);
@@ -638,7 +697,7 @@ const CallScreen = ({
                   {/* 1.3 Companion camera loop video (mounted unless error, muted based on Speaker Boost state) */}
                   <video 
                     ref={partnerVideoRef}
-                    src={callTarget.videoUrl || "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4"}
+                    src={getVideoSource()}
                     autoPlay 
                     loop 
                     muted={!isSpeakerBoost} // Dynamically control muted status based on Speaker Boost state
@@ -646,8 +705,12 @@ const CallScreen = ({
                     referrerPolicy="no-referrer"
                     className={`absolute inset-0 w-full h-full object-cover z-20 transition-opacity duration-500 ${getFilterClass()} brightness-[0.85] contrast-[1.05]`}
                     onError={() => {
-                      setPartVideoError(true);
-                      setFeedStyle("hologram");
+                      if (partVideoErrorCount < SECURE_FALLBACK_VIDEOS.length) {
+                        setPartVideoErrorCount(prev => prev + 1);
+                      } else {
+                        setPartVideoError(true);
+                        setFeedStyle("hologram");
+                      }
                     }}
                   />
 
