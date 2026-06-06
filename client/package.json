@@ -36,6 +36,7 @@
     "html2canvas": "^1.4.1",
     "konva": "^9.3.22",
     "lucide-react": "^0.400.0",
+    "motion": "^12.40.0",
     "openai": "^6.35.0",
     "peerjs": "^1.5.5",
     "process": "^0.11.10",

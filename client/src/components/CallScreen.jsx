@@ -1,1222 +1,845 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Video, 
-  Phone, 
-  PhoneOff, 
+  VideoOff, 
   Mic, 
   MicOff, 
-  VideoOff, 
-  Copy, 
-  Check, 
-  Users, 
+  PhoneOff, 
+  Shield, 
+  Zap, 
+  Clock, 
   User, 
   Activity, 
-  Clock, 
-  LogOut, 
   Volume2, 
   VolumeX, 
-  ShieldCheck, 
-  Zap, 
-  RefreshCw,
-  Camera
-} from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
-import { io } from "socket.io-client";
+  Grid,
+  Sparkles,
+  Maximize2,
+  Minimize2
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
-// Avatar definitions for an extremely premium UI/UX theme
-const AVATAR_PRESETS = [
-  { id: "1", name: "Sunset Crimson", gradient: "from-amber-500 via-rose-500 to-pink-600", text: "SC" },
-  { id: "2", name: "Cyber Violet", gradient: "from-purple-600 via-fuchsia-500 to-indigo-600", text: "CV" },
-  { id: "3", name: "Emerald Mint", gradient: "from-emerald-400 via-teal-500 to-cyan-600", text: "EM" },
-  { id: "4", name: "Neon Matrix", gradient: "from-yellow-400 via-amber-500 to-red-500", text: "NM" },
-  { id: "5", name: "Quantum Blue", gradient: "from-sky-400 via-blue-500 to-indigo-700", text: "QB" },
-  { id: "6", name: "Stardust Ash", gradient: "from-slate-500 via-zinc-600 to-neutral-800", text: "SA" }
-];
-
-// Pre-defined random names for an easy login experience
-const ADJECTIVES = ["Quantum", "Vortex", "Cosmic", "Lunar", "Solar", "Zephyr", "Alpha", "Apex", "Prism", "Echo"];
-const NOUNS = ["Pioneer", "Navigator", "Beacon", "Specter", "Voyager", "Rider", "Nomad", "Oracle", "Scribe", "Wave"];
-
-// WebAudio tone synth engine inside browser (handles perfect local dial/ring sounds bypassing files)
-class CallSoundSys {
+// WebAudio voice channel synthesizer for secure audio cues
+class ToneEngine {
   constructor() {
     this.ctx = null;
-    this.intervalId = null;
   }
 
   init() {
     if (!this.ctx) {
-      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      try {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch (e) {
+        console.warn("AudioContext failed to initialize:", e);
+      }
     }
   }
 
-  playInternalRing() {
+  playDialTone() {
     this.init();
-    this.stop();
-    const soundTask = () => {
-      if (!this.ctx) return;
-      const osc1 = this.ctx.createOscillator();
-      const osc2 = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-
-      osc1.type = "sine";
-      osc1.frequency.setValueAtTime(453, this.ctx.currentTime);
-      osc2.type = "sine";
-      osc2.frequency.setValueAtTime(440, this.ctx.currentTime);
-
-      gain.gain.setValueAtTime(0, this.ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.08, this.ctx.currentTime + 0.1);
-      gain.gain.setValueAtTime(0.08, this.ctx.currentTime + 0.8);
-      gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 1.0);
-
-      osc1.connect(gain);
-      osc2.connect(gain);
-      gain.connect(this.ctx.destination);
-
-      osc1.start();
-      osc2.start();
-      osc1.stop(this.ctx.currentTime + 1.1);
-      osc2.stop(this.ctx.currentTime + 1.1);
-    };
-    soundTask();
-    this.intervalId = setInterval(soundTask, 2000);
-  }
-
-  playOutgoingChime() {
-    this.init();
-    this.stop();
-    const playTick = () => {
-      if (!this.ctx) return;
+    if (!this.ctx) return;
+    try {
+      const start = this.ctx.currentTime;
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(425, this.ctx.currentTime);
-      gain.gain.setValueAtTime(0, this.ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.05, this.ctx.currentTime + 0.05);
-      gain.gain.setValueAtTime(0.05, this.ctx.currentTime + 0.35);
-      gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.4);
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(425, start);
+      
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.04, start + 0.05);
+      gain.gain.setValueAtTime(0.04, start + 0.3);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.4);
+
       osc.connect(gain);
       gain.connect(this.ctx.destination);
-      osc.start();
-      osc.stop(this.ctx.currentTime + 0.45);
-    };
-    playTick();
-    this.intervalId = setInterval(playTick, 1800);
+      osc.start(start);
+      osc.stop(start + 0.45);
+    } catch (e) {}
   }
 
-  playAlertTune() {
+  playDoubtChirp() {
     this.init();
-    this.stop();
     if (!this.ctx) return;
-    const notes = [523.25, 659.25, 783.99]; // C5 E5 G5
-    notes.forEach((freq, idx) => {
+    try {
+      const start = this.ctx.currentTime;
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.08);
-      gain.gain.setValueAtTime(0, this.ctx.currentTime + idx * 0.08);
-      gain.gain.linearRampToValueAtTime(0.04, this.ctx.currentTime + idx * 0.08 + 0.04);
-      gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + idx * 0.08 + 0.2);
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(120, start);
+      osc.frequency.linearRampToValueAtTime(80, start + 0.2);
+
+      gain.gain.setValueAtTime(0.08, start);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.22);
+
       osc.connect(gain);
       gain.connect(this.ctx.destination);
-      osc.start(this.ctx.currentTime + idx * 0.08);
-      osc.stop(this.ctx.currentTime + idx * 0.08 + 0.25);
-    });
+      osc.start(start);
+      osc.stop(start + 0.25);
+    } catch (e) {}
   }
 
-  playDeclineBuzz() {
+  playConfirmChirp() {
     this.init();
-    this.stop();
     if (!this.ctx) return;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-    osc.type = "triangle";
-    osc.frequency.setValueAtTime(140, this.ctx.currentTime);
-    osc.frequency.linearRampToValueAtTime(80, this.ctx.currentTime + 0.25);
-    gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.25);
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-    osc.start();
-    osc.stop(this.ctx.currentTime + 0.3);
-  }
+    try {
+      const idxs = [523.25, 659.25, 783.99]; // Secure system chord C5 E5 G5
+      idxs.forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const start = this.ctx.currentTime + idx * 0.08;
 
-  stop() {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-    }
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, start);
+
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(0.03, start + 0.03);
+        gain.gain.linearRampToValueAtTime(0, start + 0.18);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.2);
+      });
+    } catch (e) {}
   }
 }
 
-const sounds = new CallSoundSys();
+const toneEngine = new ToneEngine();
 
-export default function App() {
-  const [userId] = useState(() => "usr_" + Math.random().toString(36).substring(2, 9));
-  const [username, setUsername] = useState("");
-  const [selectedAvatar, setSelectedAvatar] = useState("1");
-  const [isLogged, setIsLogged] = useState(false);
-  const [copiedId, setCopiedId] = useState(false);
+export default function CallScreen({ 
+  socket, 
+  callTarget, 
+  callType = 'video', 
+  onEndCall, 
+  activeAccent, 
+  userProfile 
+}) {
+  // Safe default colors in case activeAccent is not provided
+  const accentGlowColor = activeAccent?.ring || 'ring-cyan-500/20';
+  const accentTextColor = activeAccent?.text || 'text-cyan-400';
+  const accentBgColor = activeAccent?.bg || 'bg-cyan-500';
+  const accentBorderColor = activeAccent?.border || 'border-cyan-500/30';
 
-  // Users & Streams State
-  const [onlineUsers, setOnlineUsers] = useState([]);
-  const [directDialId, setDirectDialId] = useState("");
-  const [clientStatus, setClientStatus] = useState("Connected & Idle");
+  const isIncoming = callTarget?.isIncoming || false;
+  const targetId = callTarget?.otherId || callTarget?.id;
 
-  // Call Mechanics State
-  const [callState, setCallState] = useState("idle"); // idle | dialing | ringing | connected
-  const [currentCall, setCurrentCall] = useState(null); // active call descriptor { remoteUser, callType, callId }
-  const [callType, setCallType] = useState("video"); // voice | video
-  const [isMuted, setIsMuted] = useState(false);
-  const [isCamOff, setIsCamOff] = useState(false);
+  // --- States ---
+  const [callState, setCallState] = useState(isIncoming ? 'incoming' : 'dialing'); // dialing | incoming | connecting | securing | connected | disconnected
+  const [sessionDuration, setSessionDuration] = useState(0);
+  const [isLocalMuted, setIsLocalMuted] = useState(false);
+  const [isLocalCamOff, setIsLocalCamOff] = useState(callType === 'voice');
   const [remoteMuteState, setRemoteMuteState] = useState({ audioMuted: false, videoMuted: false });
-  const [callDuration, setCallDuration] = useState(0);
+  const [isSpeakerOn, setIsSpeakerOn] = useState(true);
+  const [cryptoKey, setCryptoKey] = useState('AES-GCM-256');
+  const [fpsVal, setFpsVal] = useState(30);
+  const [bitrateVal, setBitrateVal] = useState(2500);
+  const [latencyVal, setLatencyVal] = useState('14ms');
+  const [isPipMode, setIsPipMode] = useState(false);
 
-  // Log of previous activities
-  const [logs, setLogs] = useState([]);
-
-  // Hardware and network diagnostics
-  const [webrtcState, setWebrtcState] = useState("offline"); // connection detail
-  const [networkLatency, setNetworkLatency] = useState(null);
-
-  // References
+  // --- Refs ---
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const localStreamRef = useRef(null);
   const peerConnectionRef = useRef(null);
-  const socketRef = useRef(null);
   const durationTimerRef = useRef(null);
+  const iceCandidatesQueue = useRef([]);
 
-  // Sound Engine Setup Helper with Browser Autoplay guard
-  const playSoundSecure = (mode) => {
-    try {
-      if (mode === "ring") sounds.playInternalRing();
-      else if (mode === "dial") sounds.playOutgoingChime();
-      else if (mode === "chime") sounds.playAlertTune();
-      else if (mode === "buzz") sounds.playDeclineBuzz();
-      else sounds.stop();
-    } catch (e) {
-      console.warn("Autoplay audio blocked", e);
-    }
-  };
-
-  // Setup logging helper
-  const addLog = useCallback((text) => {
-    const time = new Date().toLocaleTimeString();
-    setLogs((prev) => [{ text, time, id: Math.random() }, ...prev.slice(0, 14)]);
-  }, []);
-
-  // Generate randomized pro name
-  const generateRandomIdentity = () => {
-    const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
-    const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
-    setUsername(`${adj} ${noun}`);
-    setSelectedAvatar(String(Math.floor(Math.random() * 6) + 1));
-  };
-
-  // Copy ID utility
-  const handleCopyId = () => {
-    navigator.clipboard.writeText(userId);
-    setCopiedId(true);
-    setTimeout(() => setCopiedId(false), 2000);
-  };
-
-  // Local device media track cleanup helper
-  const stopLocalMedia = () => {
+  // --- WebRTC Setup & Handshaking ---
+  const stopLocalMedia = useCallback(() => {
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current.getTracks().forEach(track => {
+        try {
+          track.stop();
+        } catch (e) {
+          console.warn("Error stopping local track:", e);
+        }
+      });
       localStreamRef.current = null;
     }
-  };
+  }, []);
 
-  // Close connection helper
-  const cleanCallConnection = useCallback(() => {
-    playSoundSecure("stop");
-    
+  const terminatePeerConnection = useCallback(() => {
     if (durationTimerRef.current) {
       clearInterval(durationTimerRef.current);
       durationTimerRef.current = null;
     }
-
     if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
+      try {
+        peerConnectionRef.current.close();
+      } catch (e) {
+        console.warn("Error closing peer connection:", e);
+      }
       peerConnectionRef.current = null;
     }
-
-    setCallState("idle");
-    setCurrentCall(null);
-    setWebrtcState("idle");
-    setCallDuration(0);
-    setRemoteMuteState({ audioMuted: false, videoMuted: false });
-    stopLocalMedia();
   }, []);
 
-  // End dynamic call event
-  const handleHangUp = useCallback((sendSig = true) => {
-    if (sendSig && currentCall && socketRef.current) {
-      socketRef.current.emit("hangup", { to: currentCall.remoteUser.id });
+  const exitWithStatus = useCallback((status) => {
+    stopLocalMedia();
+    terminatePeerConnection();
+    if (onEndCall) {
+      onEndCall(sessionDuration, status);
     }
-    
-    if (currentCall) {
-      addLog(`Call completed with ${currentCall.remoteUser.name}`);
-    }
-    cleanCallConnection();
-  }, [currentCall, addLog, cleanCallConnection]);
+  }, [sessionDuration, onEndCall, stopLocalMedia, terminatePeerConnection]);
 
-  // Decline call
-  const handleDeclineCall = () => {
-    if (!currentCall) return;
-    if (socketRef.current) {
-      socketRef.current.emit("reject-call", {
-        to: currentCall.remoteUser.id,
-        reasonCall: "declined"
-      });
-    }
-    addLog(`Missed call from ${currentCall.remoteUser.name}`);
-    cleanCallConnection();
-  };
-
-  // Mute togglers
-  const toggleMute = () => {
-    const isNowMuted = !isMuted;
-    setIsMuted(isNowMuted);
-    if (localStreamRef.current) {
-      const audioTrack = localStreamRef.current.getAudioTracks()[0];
-      if (audioTrack) audioTrack.enabled = !isNowMuted;
-    }
-    // Sync to remote host
-    if (currentCall && socketRef.current) {
-      socketRef.current.emit("mute-status", {
-        to: currentCall.remoteUser.id,
-        audioMuted: isNowMuted,
-        videoMuted: isCamOff
-      });
-    }
-  };
-
-  const toggleCamera = () => {
-    const isNowCamOff = !isCamOff;
-    setIsCamOff(isNowCamOff);
-    if (localStreamRef.current) {
-      const videoTrack = localStreamRef.current.getVideoTracks()[0];
-      if (videoTrack) videoTrack.enabled = !isNowCamOff;
-    }
-    // Sync to remote host
-    if (currentCall && socketRef.current) {
-      socketRef.current.emit("mute-status", {
-        to: currentCall.remoteUser.id,
-        audioMuted: isMuted,
-        videoMuted: isNowCamOff
-      });
-    }
-  };
-
-  // Start Call logic
-  const handleInitiateCall = async (targetUser, requestedType) => {
-    if (!targetUser || targetUser.id === userId) return;
-    if (targetUser.status === "busy") {
-      alert("This user is currently busy on another live call.");
-      return;
-    }
-
-    setCallType(requestedType);
-    setCallState("dialing");
-    playSoundSecure("dial");
-    addLog(`Calling ${targetUser.name}...`);
-
-    setCurrentCall({
-      remoteUser: targetUser,
-      callType: requestedType,
-      callId: "call_" + Math.random().toString(36).substring(2, 9)
+  // Clean WebRTC setup helper
+  const initializePeerConnection = useCallback(async (stream) => {
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' }
+      ]
     });
 
-    try {
-      // Step A: Acquire local media
-      const captureStream = await navigator.mediaDevices.getUserMedia({
-        video: requestedType === "video" ? { width: 1280, height: 720 } : false,
-        audio: true
-      });
-      
-      localStreamRef.current = captureStream;
-      if (localVideoRef.current && requestedType === "video") {
-        localVideoRef.current.srcObject = captureStream;
+    peerConnectionRef.current = pc;
+
+    // Attach stream tracks
+    if (stream) {
+      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+    }
+
+    // Capture dynamic remote tracks
+    pc.ontrack = (event) => {
+      console.log("🔗 WebRTC Stream Received remote tracks");
+      if (remoteVideoRef.current && event.streams[0]) {
+        remoteVideoRef.current.srcObject = event.streams[0];
       }
+    };
 
-      // Step B: Build standard RTCPeerConnection with Google Free STUN/NAT traversal
-      const pc = new RTCPeerConnection({
-        iceServers: [
-          { urls: "stun:stun.l.google.com:19302" },
-          { urls: "stun:stun1.l.google.com:19302" },
-          { urls: "stun:stun2.l.google.com:19302" }
-        ]
-      });
-
-      peerConnectionRef.current = pc;
-      setWebrtcState("initializing");
-
-      // Attach track handlers
-      captureStream.getTracks().forEach(track => pc.addTrack(track, captureStream));
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate && socketRef.current) {
-          socketRef.current.emit("ice-candidate", {
-            to: targetUser.id,
-            candidate: event.candidate
-          });
-        }
-      };
-
-      pc.onconnectionstatechange = () => {
-        setWebrtcState(pc.connectionState);
-        if (pc.connectionState === "connected") {
-          playSoundSecure("chime");
-        }
-      };
-
-      pc.ontrack = (event) => {
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = event.streams[0];
-        }
-      };
-
-      // Create WebRTC Offer
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      // Dispatch Offer downstream via Socket.io
-      if (socketRef.current) {
-        socketRef.current.emit("call-user", {
-          to: targetUser.id,
-          offer,
-          callId: "call_" + Math.random().toString(36).substring(2, 9),
-          callType: requestedType
+    // Forward ICE candidates to signaling server
+    pc.onicecandidate = (event) => {
+      if (event.candidate && socket) {
+        socket.emit("ice-candidate", {
+          to: targetId,
+          candidate: event.candidate
         });
       }
+    };
 
+    // Connection state listening
+    pc.onconnectionstatechange = () => {
+      console.log(`📡 PeerConnection state change: ${pc.connectionState}`);
+      if (pc.connectionState === 'connected') {
+        toneEngine.playConfirmChirp();
+        setCallState('connected');
+        
+        // Start duration timer
+        if (!durationTimerRef.current) {
+          durationTimerRef.current = setInterval(() => {
+            setSessionDuration(prev => prev + 1);
+            // Simulate realistic micro FPS/bitrate telemetries
+            setFpsVal(prev => Math.max(28, Math.min(60, Math.floor(58 + Math.random() * 4 - 2))));
+            setBitrateVal(prev => Math.floor(4800 + Math.random() * 300 - 150));
+            setLatencyVal(() => +(8 + Math.random() * 8).toFixed(1) + "ms");
+          }, 1000);
+        }
+      } else if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        exitWithStatus('completed');
+      }
+    };
+
+    return pc;
+  }, [socket, targetId, exitWithStatus]);
+
+  // Start outgoing call sequence (caller)
+  const initiateOutgoingCall = useCallback(async () => {
+    try {
+      setCallState('connecting');
+      toneEngine.playConfirmChirp();
+
+      // Acquire media
+      const userMedia = await navigator.mediaDevices.getUserMedia({
+        video: callType === 'video' ? { width: 1280, height: 720 } : false,
+        audio: true
+      });
+
+      localStreamRef.current = userMedia;
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = userMedia;
+      }
+
+      const pc = await initializePeerConnection(userMedia);
+
+      // Create configuration details & send to socket endpoint
+      const rtcOffer = await pc.createOffer();
+      await pc.setLocalDescription(rtcOffer);
+
+      // Use the standard expected signaling event name
+      socket.emit("call-user", {
+        to: targetId,
+        offer: rtcOffer,
+        callId: "call_" + Math.random().toString(36).substring(2, 9),
+        callType: callType
+      });
+
+      setCallState('dialing');
     } catch (err) {
       console.error("Local hardware capture failed:", err);
-      alert("Could not start call. Please check your camera/mic permissions.");
-      cleanCallConnection();
+      toneEngine.playDoubtChirp();
+      exitWithStatus('missed');
     }
-  };
+  }, [callType, targetId, socket, initializePeerConnection, exitWithStatus]);
 
-  // Accept and answer an incoming WebRTC call offer
-  const handleAcceptCall = async () => {
-    if (!currentCall || !currentCall.offer) return;
-    playSoundSecure("stop");
-    setCallState("connected");
-    setWebrtcState("connecting");
-    addLog(`Connected with ${currentCall.remoteUser.name}`);
-
-    // Track Call Duration
-    durationTimerRef.current = setInterval(() => {
-      setCallDuration(prev => prev + 1);
-    }, 1000);
-
+  // Start incoming answering sequence (callee)
+  const acceptIncomingCall = useCallback(async (incomingOffer) => {
     try {
-      // Step A: Capture own media streams
-      const captureStream = await navigator.mediaDevices.getUserMedia({
-        video: currentCall.callType === "video" ? { width: 1280, height: 720 } : false,
+      setCallState('securing');
+
+      // Acquire media
+      const userMedia = await navigator.mediaDevices.getUserMedia({
+        video: callType === 'video' ? { width: 1280, height: 720 } : false,
         audio: true
       });
 
-      localStreamRef.current = captureStream;
-      if (localVideoRef.current && currentCall.callType === "video") {
-        localVideoRef.current.srcObject = captureStream;
+      localStreamRef.current = userMedia;
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = userMedia;
       }
 
-      // Step B: Setup Peer connection
-      const pc = new RTCPeerConnection({
-        iceServers: [
-          { urls: "stun:stun.l.google.com:19302" },
-          { urls: "stun:stun1.l.google.com:19302" }
-        ]
+      const pc = await initializePeerConnection(userMedia);
+
+      // Apply incoming offer
+      await pc.setRemoteDescription(new RTCSessionDescription(incomingOffer));
+
+      // Append any waiting ICE candidates that came before description was set
+      while (iceCandidatesQueue.current.length > 0) {
+        const candidate = iceCandidatesQueue.current.shift();
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (e) {
+          console.warn("Failed queuing candidate:", e);
+        }
+      }
+
+      // Generate local answer
+      const rtcAnswer = await pc.createAnswer();
+      await pc.setLocalDescription(rtcAnswer);
+
+      // Dispatch WebRTC answer back to caller
+      socket.emit("accept-call", {
+        to: targetId,
+        answer: rtcAnswer,
+        callId: "call_" + Math.random().toString(36).substring(2, 9)
       });
 
-      peerConnectionRef.current = pc;
-
-      // Bind media tracks
-      captureStream.getTracks().forEach(track => pc.addTrack(track, captureStream));
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate && socketRef.current) {
-          socketRef.current.emit("ice-candidate", {
-            to: currentCall.remoteUser.id,
-            candidate: event.candidate
-          });
-        }
-      };
-
-      pc.onconnectionstatechange = () => {
-        setWebrtcState(pc.connectionState);
-      };
-
-      pc.ontrack = (event) => {
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = event.streams[0];
-        }
-      };
-
-      // Set Remote Description from incoming Offer
-      await pc.setRemoteDescription(new RTCSessionDescription(currentCall.offer));
-
-      // Create WebRTC Answer
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-
-      // Dispatch Answer via Socket.io
-      if (socketRef.current) {
-        socketRef.current.emit("accept-call", {
-          to: currentCall.remoteUser.id,
-          answer,
-          callId: currentCall.callId
-        });
-      }
-
+      setCallState('securing');
     } catch (err) {
-      console.error("Failed setting WebRTC Answer connection:", err);
-      alert("WebRTC initialization failed on camera/mic lookup.");
-      cleanCallConnection();
+      console.error("Failed executing response WebRTC Answer:", err);
+      toneEngine.playDoubtChirp();
+      exitWithStatus('declined');
     }
-  };
+  }, [callType, targetId, socket, initializePeerConnection, exitWithStatus]);
 
-  // Setup Signalling Socket.io listener connection
-  const connectToSignalingSocket = useCallback(() => {
-    if (socketRef.current) {
-      socketRef.current.disconnect();
-    }
 
-    setClientStatus("Handshaking...");
-    
-    // Connect to Socket.io signaling server
-    const socket = io({
-      autoConnect: true,
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 2000
-    });
+  // --- Event Handling Socket Pipeline ---
+  useEffect(() => {
+    if (!socket) return;
 
-    socketRef.current = socket;
+    // Incoming signaling handlers
+    const handleIncomingOfferSig = async (payload) => {
+      // Direct answering handler if callee
+      if (isIncoming && payload.offer) {
+        await acceptIncomingCall(payload.offer);
+      }
+    };
 
-    socket.on("connect", () => {
-      setClientStatus("Online & Available");
-      setWebrtcState("ready");
-      addLog("Registered securely on live Socket.io signaling loop");
-      
-      // Register with server
-      socket.emit("register", {
-        clientId: userId,
-        name: username,
-        avatar: selectedAvatar
-      });
-    });
-
-    socket.on("disconnect", () => {
-      setClientStatus("Offline");
-    });
-
-    socket.on("connect_error", (err) => {
-      console.error("Signaling socket connection error:", err);
-      setClientStatus("Connection Error");
-    });
-
-    // Receive active users list
-    socket.on("users-list", (list) => {
-      const otherUsers = list.filter((user) => user.id !== userId);
-      setOnlineUsers(otherUsers);
-    });
-
-    // Receive incoming call offer alert
-    socket.on("incoming-call", (payload) => {
-      playSoundSecure("ring");
-      setCallType(payload.callType);
-      setCallState("ringing");
-      setCurrentCall({
-        callId: payload.callId,
-        callType: payload.callType,
-        offer: payload.offer,
-        remoteUser: {
-          id: payload.from,
-          name: payload.callerName,
-          avatar: payload.callerAvatar
-        }
-      });
-      addLog(`Incoming ${payload.callType} call from ${payload.callerName}`);
-    });
-
-    // Receive Call accepted / SDP Answer
-    socket.on("call-answered", async (payload) => {
+    const handleAnswerSig = async (payload) => {
       try {
         if (peerConnectionRef.current) {
           await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer));
-          setCallState("connected");
-          playSoundSecure("stop");
-          addLog("Call established!");
-
-          // Start active timer counter
-          if (durationTimerRef.current) clearInterval(durationTimerRef.current);
-          durationTimerRef.current = setInterval(() => {
-            setCallDuration((prev) => prev + 1);
-          }, 1000);
+          setCallState('securing');
+          
+          // Force apply queued ICE candidates
+          while (iceCandidatesQueue.current.length > 0) {
+            const cand = iceCandidatesQueue.current.shift();
+            try {
+              await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(cand));
+            } catch (e) {}
+          }
         }
       } catch (err) {
-        console.error(err);
+        console.error("Remote SDP Answer application failed:", err);
       }
-    });
+    };
 
-    // Connection rejected
-    socket.on("call-rejected", (payload) => {
-      playSoundSecure("buzz");
-      addLog(`Call declined by user.`);
-      cleanCallConnection();
-    });
-
-    // Call routing failure from server
-    socket.on("call-error", (payload) => {
-      playSoundSecure("buzz");
-      alert(payload.error);
-      cleanCallConnection();
-    });
-
-    // Incoming Ice candidate routing
-    socket.on("ice-candidate", async (payload) => {
-      try {
-        if (peerConnectionRef.current) {
+    const handleIceCandidateSig = async (payload) => {
+      if (peerConnectionRef.current && peerConnectionRef.current.remoteDescription) {
+        try {
           await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
+        } catch (err) {
+          console.warn("Add ICE target error: ", err);
         }
-      } catch (err) {
-        console.error("Ice setup error:", err);
+      } else {
+        // Enqueue candidate
+        iceCandidatesQueue.current.push(payload.candidate);
       }
-    });
+    };
 
-    // Call End notice
-    socket.on("call-ended", (payload) => {
-      addLog("Call ended by counterpart.");
-      cleanCallConnection();
-    });
+    const handleCallEndedSig = () => {
+      toneEngine.playDoubtChirp();
+      exitWithStatus('completed');
+    };
 
-    // Sync Mute states
-    socket.on("mute-status-change", (payload) => {
+    const handleCallRejectedSig = () => {
+      toneEngine.playDoubtChirp();
+      exitWithStatus('declined');
+    };
+
+    const handleMuteStatusSig = (payload) => {
       setRemoteMuteState(payload);
+    };
+
+    // Socket binds
+    socket.on("incoming-call", handleIncomingOfferSig);
+    socket.on("incomingCall", handleIncomingOfferSig); // double binding defense
+    socket.on("call-answered", handleAnswerSig);
+    socket.on("ice-candidate", handleIceCandidateSig);
+    socket.on("call-ended", handleCallEndedSig);
+    socket.on("callCancelled", handleCallEndedSig); // handle Messenger.jsx cancellation trigger
+    socket.on("callConnected", () => {
+      console.log("🔗 Messenger reported connection handshake");
     });
+    socket.on("call-rejected", handleCallRejectedSig);
+    socket.on("mute-status-change", handleMuteStatusSig);
 
-  }, [userId, username, selectedAvatar, addLog, cleanCallConnection]);
+    // Initial setup branching
+    if (!isIncoming) {
+      initiateOutgoingCall();
+    }
 
-  // Clean elements on reload or unmount
+    return () => {
+      socket.off("incoming-call", handleIncomingOfferSig);
+      socket.off("incomingCall", handleIncomingOfferSig);
+      socket.off("call-answered", handleAnswerSig);
+      socket.off("ice-candidate", handleIceCandidateSig);
+      socket.off("call-ended", handleCallEndedSig);
+      socket.off("callCancelled", handleCallEndedSig);
+      socket.off("callConnected");
+      socket.off("call-rejected", handleCallRejectedSig);
+      socket.off("mute-status-change", handleMuteStatusSig);
+    };
+  }, [socket, isIncoming, targetId, initiateOutgoingCall, acceptIncomingCall, exitWithStatus]);
+
+  // Dial tone synthesizer loops for outgoing state
+  useEffect(() => {
+    let playInterval;
+    if (callState === 'dialing') {
+      toneEngine.playDialTone();
+      playInterval = setInterval(() => {
+        toneEngine.playDialTone();
+      }, 2000);
+    }
+    return () => {
+      if (playInterval) clearInterval(playInterval);
+    };
+  }, [callState]);
+
+  // Generate random cryptographic session keys to fit Onyx theme
+  useEffect(() => {
+    const keyOpts = ["AES-GCM-256", "CHA-CHA20-POLY1305", "X25519-AES-512-V2", "ECDH-ED25519-AES"];
+    setCryptoKey(keyOpts[Math.floor(Math.random() * keyOpts.length)]);
+  }, [callTarget]);
+
+  // Cleanup references on unmount
   useEffect(() => {
     return () => {
-      if (socketRef.current) socketRef.current.disconnect();
-      cleanCallConnection();
+      stopLocalMedia();
+      terminatePeerConnection();
     };
-  }, [cleanCallConnection]);
+  }, [stopLocalMedia, terminatePeerConnection]);
 
-  const handleLogin = (e) => {
-    e.preventDefault();
-    if (!username.trim()) {
-      alert("Please provide any username name!");
-      return;
+
+  // --- Interactivity Controllers ---
+  const toggleTrackMute = () => {
+    const targetMuteState = !isLocalMuted;
+    setIsLocalMuted(targetMuteState);
+
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach(track => {
+        track.enabled = !targetMuteState;
+      });
     }
-    setIsLogged(true);
-    addLog(`Signed in as ${username}`);
-    // Register Socket immediately
-    setTimeout(() => {
-      connectToSignalingSocket();
-    }, 100);
-  };
 
-  const handleLogout = () => {
-    if (socketRef.current) socketRef.current.disconnect();
-    cleanCallConnection();
-    setIsLogged(false);
-    addLog("Signed out.");
-  };
-
-  // Helper template for render avatar gradients
-  const getAvatarGradient = (avatarId) => {
-    const found = AVATAR_PRESETS.find(a => a.id === String(avatarId));
-    return found ? found.gradient : "from-gray-500 to-gray-700";
-  };
-
-  const getAvatarText = (avatarId) => {
-    const found = AVATAR_PRESETS.find(a => a.id === String(avatarId));
-    return found ? found.text : "??";
-  };
-
-  // Translate call duration into visual text MM:SS
-  const formatTime = (secs) => {
-    const mins = Math.floor(secs / 60);
-    const remainder = secs % 60;
-    return `${mins.toString().padStart(2, "0")}:${remainder.toString().padStart(2, "0")}`;
-  };
-
-  // Setup sample test latency tracking interval
-  useEffect(() => {
-    if (isLogged) {
-      const getLatency = setInterval(() => {
-        const start = Date.now();
-        fetch("/api/signaling/stream?clientId=" + userId, { method: "HEAD" })
-          .then(() => setNetworkLatency(Date.now() - start))
-          .catch(() => {});
-      }, 12000);
-      return () => clearInterval(getLatency);
+    if (socket) {
+      socket.emit("mute-status", {
+        to: targetId,
+        audioMuted: targetMuteState,
+        videoMuted: isLocalCamOff
+      });
     }
-  }, [isLogged, userId]);
+  };
 
+  const toggleTrackCamera = () => {
+    if (callType === 'voice') return; // strictly audio session
+    const targetCamState = !isLocalCamOff;
+    setIsLocalCamOff(targetCamState);
 
-  // ================= MAIN RENDER =================
+    if (localStreamRef.current) {
+      localStreamRef.current.getVideoTracks().forEach(track => {
+        track.enabled = !targetCamState;
+      });
+    }
+
+    if (socket) {
+      socket.emit("mute-status", {
+        to: targetId,
+        audioMuted: isLocalMuted,
+        videoMuted: targetCamState
+      });
+    }
+  };
+
+  const toggleLocalSpeaker = () => {
+    setIsSpeakerOn(!isSpeakerOn);
+    toneEngine.playConfirmChirp();
+  };
+
+  const formatMinSec = (secs) => {
+    const mm = Math.floor(secs / 60).toString().padStart(2, '0');
+    const ss = (secs % 60).toString().padStart(2, '0');
+    return `${mm}:${ss}`;
+  };
+
+  // Trigger outbound manual rejection if declining/hanging up
+  const handleOnboardHangup = () => {
+    toneEngine.playDoubtChirp();
+    if (socket) {
+      socket.emit("hangup", { to: targetId });
+      socket.emit("reject-call", { to: targetId, reasonCall: "declined" });
+      socket.emit("declineCall", { to: targetId, from: userProfile?._id || 'me' });
+    }
+    exitWithStatus('completed');
+  };
+
   return (
-    <div className="min-h-screen bg-slate-950 font-sans text-slate-150 antialiased overflow-x-hidden selection:bg-rose-500/30">
-      
-      {/* Visual background ambient blurs to look modern and elegant */}
-      <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-rose-900/10 via-purple-900/5 to-transparent pointer-events-none" />
-      <div className="absolute top-[20%] right-[-10%] w-[400px] h-[400px] bg-sky-500/5 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[10%] left-[-10%] w-[540px] h-[540px] bg-indigo-500/5 rounded-full blur-[140px] pointer-events-none" />
+    <div id="call-screen-frame" className="fixed inset-0 z-[6000] bg-zinc-950/98 select-none flex flex-col justify-between overflow-hidden font-mono antialiased text-white">
+      {/* Decorative neon grid layer */}
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.007)_1px,_transparent_1px),_linear-gradient(90deg,_rgba(255,255,255,0.007)_1px,_transparent_1px)] bg-[size:25px_25px] pointer-events-none" />
+      <div className={`absolute -top-40 -left-40 w-96 h-96 rounded-full bg-gradient-to-tr ${activeAccent?.bg || 'from-cyan-500/10'} to-transparent blur-[120px] pointer-events-none`} />
+      <div className="absolute -bottom-45 -right-45 w-96 h-96 rounded-full bg-gradient-to-bl from-purple-500/10 to-transparent blur-[120px] pointer-events-none" />
 
-      {/* --- LAYER 1: ENTRANCE SCREEN --- */}
-      {!isLogged ? (
-        <div className="flex min-h-screen items-center justify-center p-4 relative z-10">
-          <motion.div 
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="w-full max-w-md rounded-2xl border border-slate-800/80 bg-slate-900/90 p-8 shadow-2xl backdrop-blur-xl"
-            id="login-card"
-          >
-            <div className="mb-8 text-center flex flex-col items-center">
-              <div className="p-3 bg-rose-500/10 rounded-2xl border border-rose-500/20 text-rose-500 mb-3 animate-pulse">
-                <Video className="w-8 h-8" />
-              </div>
-              <h1 className="text-3xl font-bold tracking-tight text-white mb-2 font-mono">
-                P2P Live Call
-              </h1>
-              <p className="text-sm text-slate-400">
-                Full-Stack WebRTC Video &amp; Voice Signaling Hub
-              </p>
-            </div>
-
-            <form onSubmit={handleLogin} className="space-y-6">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-widest mb-2 font-mono" htmlFor="username">
-                  Choose Username
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    id="username"
-                    required
-                    maxLength={20}
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Enter calling identity tag..."
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950/60 py-3 pl-4 pr-12 text-sm text-white placeholder-slate-500 shadow-inner focus:border-rose-500 focus:outline-none focus:ring-1 focus:ring-rose-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={generateRandomIdentity}
-                    className="absolute right-2 top-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-rose-400 font-mono py-1.5 px-2.5 transition active:scale-95 border border-slate-700"
-                    title="Generate randomized pro username"
-                  >
-                    Quick Roll
-                  </button>
-                </div>
-              </div>
-
-              {/* Avatar Picker presets */}
-              <div>
-                <span className="block text-xs font-semibold text-slate-300 uppercase tracking-widest mb-2 font-mono">
-                  Select Visual Avatar Profile
+      {/* --- HUD HEADER STATISTICS PANEL --- */}
+      <div className="relative z-10 w-full flex items-center justify-between px-6 py-4 bg-zinc-900/60 border-b border-white/5 backdrop-blur-md">
+        
+        {/* Profile targets */}
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <img 
+              referrerPolicy="no-referrer"
+              src={callTarget?.avatar || "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80"} 
+              className={`w-10 h-10 rounded-xl object-cover border ${accentBorderColor} shadow-md`}
+              alt="Remote target avatar"
+            />
+            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border border-zinc-900" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black tracking-widest text-zinc-100 uppercase">{callTarget?.name || 'Operator'}</span>
+              {callState === 'connected' && (
+                <span className={`px-2 py-0.5 rounded text-[8px] tracking-wider uppercase font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/20`}>
+                  SECURE
                 </span>
-                <div className="grid grid-cols-6 gap-2">
-                  {AVATAR_PRESETS.map((av) => (
-                    <button
-                      key={av.id}
-                      type="button"
-                      onClick={() => setSelectedAvatar(av.id)}
-                      className={`relative aspect-square rounded-xl bg-gradient-to-tr ${av.gradient} p-[2px] transition hover:scale-105 active:scale-95`}
-                    >
-                      <div className="flex h-full w-full items-center justify-center rounded-[10px] bg-slate-950 text-xs font-bold text-white font-mono">
-                        {selectedAvatar === av.id ? (
-                          <Check className="w-4 h-4 text-rose-400" />
-                        ) : (
-                          av.text
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                id="btn-login-submit"
-                className="w-full cursor-pointer rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 py-3.5 px-4 text-center text-sm font-semibold text-white shadow-lg shadow-rose-950/30 hover:from-rose-600 hover:to-amber-600 transition duration-150 active:scale-[0.98]"
-              >
-                Launch Digital Dashboard
-              </button>
-            </form>
-
-            <div className="mt-8 pt-6 border-t border-slate-800 text-center flex items-center justify-center gap-2 text-slate-500 font-mono text-[11px]">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Full cryptographic peer keys (DTLS / SRTP)</span>
-            </div>
-          </motion.div>
-        </div>
-      ) : (
-
-        /* --- LAYER 2: DASHBOARD CONTROLS AND DIAL HUB --- */
-        <div className="max-w-7xl mx-auto px-4 py-6 relative z-10">
-          
-          {/* Dashboard Header Bar */}
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-8 bg-slate-900/60 p-4 rounded-2xl border border-slate-800/80 backdrop-blur-md">
-            
-            <div className="flex items-center gap-4">
-              <div className={`h-12 w-12 rounded-xl bg-gradient-to-br ${getAvatarGradient(selectedAvatar)} p-[2px]`}>
-                <div className="h-full w-full rounded-[10px] bg-slate-900 flex items-center justify-center font-bold text-white text-sm font-mono">
-                  {getAvatarText(selectedAvatar)}
-                </div>
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-bold text-white font-mono">{username}</h2>
-                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-                  <span className="text-rose-400">Active NodeID:</span>
-                  <span className="text-slate-200">{userId}</span>
-                  <button 
-                    onClick={handleCopyId}
-                    className="p-1 hover:text-white hover:bg-slate-800 rounded transition text-slate-400"
-                    title="Copy Unique Calling Link"
-                  >
-                    {copiedId ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-wrap items-center gap-3">
-              {/* Status Diagnostic Panel */}
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-950 font-mono text-xs border border-slate-800">
-                <Zap className="w-3 h-3 text-amber-400" />
-                <span className="text-slate-400">Signal:</span>
-                <span className="text-amber-400 font-semibold">{clientStatus}</span>
-              </div>
-
-              {networkLatency !== null && (
-                <div className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-950 font-mono text-xs text-slate-400 border border-slate-800">
-                  <Activity className="w-3 h-3 text-indigo-400" />
-                  <span>Ping: <span className="text-white">{networkLatency}ms</span></span>
-                </div>
               )}
+            </div>
+            <p className="text-[9px] text-zinc-500 uppercase tracking-widest">
+              PEER LINK ID: {targetId ? targetId.slice(-8) : "INITIALIZING"}
+            </p>
+          </div>
+        </div>
 
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-950 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 transition border border-slate-800 hover:border-rose-900/30"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Go Offline</span>
-              </button>
+        {/* Status indicator banner */}
+        <div className="flex items-center gap-4 text-xs font-mono">
+          {callState === 'connected' ? (
+            <div className="flex items-center gap-4 bg-zinc-950/80 px-4 py-1.5 rounded-xl border border-white/5">
+              <div className="flex items-center gap-1.5 text-zinc-400">
+                <Clock size={12} className={accentTextColor} />
+                <span className="text-zinc-200 font-bold">{formatMinSec(sessionDuration)}</span>
+              </div>
+              <span className="text-zinc-700">|</span>
+              <div className="hidden sm:flex items-center gap-1.5 text-zinc-400">
+                <Shield size={12} className="text-emerald-400" />
+                <span className="text-[10px] text-zinc-300 font-semibold">{cryptoKey}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-1 bg-zinc-950 border border-white/5 rounded-xl text-zinc-400 text-[10px] uppercase tracking-widest animate-pulse">
+              <span className={`w-1.5 h-1.5 rounded-full ${accentBgColor}`} />
+              <span>{callState}...</span>
+            </div>
+          )}
+        </div>
+
+        {/* Telemetry log and signals button */}
+        <div className="flex items-center gap-2">
+          {callState === 'connected' && (
+            <div className="hidden md:flex items-center gap-4 text-[10px] text-zinc-500 font-mono">
+              <span className="flex items-center gap-1"><Grid size={11} /> FPS: <span className="text-zinc-300">{fpsVal}</span></span>
+              <span className="flex items-center gap-1"><Sparkles size={11} /> BITRATE: <span className="text-zinc-300">{bitrateVal}kbps</span></span>
+              <span className="flex items-center gap-1"><Activity size={11} /> PING: <span className="text-zinc-300">{latencyVal}</span></span>
+            </div>
+          )}
+          
+          {callType === 'video' && callState === 'connected' && (
+            <button
+              type="button"
+              onClick={() => setIsPipMode(!isPipMode)}
+              className="p-2 border border-white/5 hover:border-white/10 rounded-xl bg-zinc-900 text-zinc-400 hover:text-white transition cursor-pointer"
+              title="Toggle Pip Layout View"
+            >
+              {isPipMode ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* --- MAIN MEDIA CHANNELS CANVAS --- */}
+      <div className="flex-1 w-full relative flex items-center justify-center p-6">
+        
+        {/* Dialing, Waiting and Handshake loaders */}
+        {callState !== 'connected' && callState !== 'securing' && (
+          <div className="flex flex-col items-center justify-center text-center max-w-sm w-full mx-auto relative z-10 p-8 rounded-3xl bg-zinc-900/40 border border-white/5 backdrop-blur-sm">
+            <div className="relative mb-6">
+              {/* Outer wave ripples */}
+              <span className={`absolute inset-0 rounded-full border-2 border-dashed ${accentBorderColor} animate-spin scale-110`} />
+              <motion.div 
+                animate={{ scale: [1, 1.25, 1], opacity: [0.15, 0.4, 0.15] }}
+                transition={{ repeat: Infinity, duration: 2 }}
+                className={`absolute inset-0 rounded-full ${accentBgColor}/25 blur-md`} 
+              />
+              <img 
+                referrerPolicy="no-referrer"
+                src={callTarget?.avatar || "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80"} 
+                className={`w-24 h-24 rounded-full object-cover border-2 p-1 ${accentBorderColor} relative z-10`}
+                alt="Target avatar large"
+              />
+            </div>
+            
+            <p className="text-[10px] text-zinc-500 tracking-[0.3em] uppercase font-black mb-1.5">
+              Secure Channel Request
+            </p>
+            <h3 className="text-xl font-bold text-white tracking-widest uppercase mb-1">{callTarget?.name || 'Operator Node'}</h3>
+            <p className="text-xs text-zinc-400 font-mono mb-8 lowercase text-zinc-500">
+              {isIncoming ? "Direct answering and decryption link ready..." : "Dialing telemetry link, verifying STUN server status..."}
+            </p>
+
+            {/* Glowing bouncing wave analyzer */}
+            <div className="flex items-center justify-center gap-1.5 h-5 mb-2">
+              <span className={`w-1 h-3 ${accentBgColor} rounded animate-bounce [animation-delay:0.1s]`} />
+              <span className={`w-1 h-5 ${accentBgColor} rounded animate-bounce [animation-delay:0.2s]`} />
+              <span className={`w-1 h-4 ${accentBgColor} rounded animate-bounce [animation-delay:0.3s]`} />
+              <span className={`w-1 h-5 ${accentBgColor} rounded animate-bounce [animation-delay:0.4s]`} />
+              <span className={`w-1 h-3 ${accentBgColor} rounded animate-bounce [animation-delay:0.5s]`} />
             </div>
           </div>
+        )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Split layouts or Hover PIP view for active call */}
+        {(callState === 'connected' || callState === 'securing') && (
+          <div className="w-full h-full relative flex items-center justify-center">
             
-            {/* COLUMN 1: DIRECT DIAL HANDSHAKER & ACTIVE USERS */}
-            <div className="lg:col-span-1 space-y-6">
-              
-              {/* Direct dial input box */}
-              <div className="border border-slate-800/80 bg-slate-900/30 p-5 rounded-2xl backdrop-blur-sm">
-                <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-4 font-mono flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-rose-500" />
-                  <span>Duo WebRTC Quick Connect</span>
-                </h3>
-                <div className="space-y-4">
-                  <div>
-                    <input
-                      type="text"
-                      id="direct-target-id"
-                      placeholder="Paste user's calling NodeID directly..."
-                      value={directDialId}
-                      onChange={(e) => setDirectDialId(e.target.value.trim())}
-                      className="w-full rounded-xl border border-slate-800 bg-slate-950/80 py-2.5 px-3.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500 font-mono"
+            {/* Caller mode UI (strictly audio layout) */}
+            {callType === 'voice' ? (
+              <div className="flex items-center justify-center gap-12 w-full max-w-xl p-8 rounded-3xl bg-zinc-900/30 border border-white/5 backdrop-blur-md">
+                
+                {/* Local user profile */}
+                <div className="flex flex-col items-center">
+                  <div className="w-20 h-20 rounded-2xl bg-zinc-800 flex items-center justify-center border border-white/10 mb-4 overflow-hidden">
+                    <img 
+                      referrerPolicy="no-referrer"
+                      src={userProfile?.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"}
+                      className="w-full h-full object-cover" 
+                      alt="Your avatar tag"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => {
-                        if (!directDialId) return alert("Write or paste a valid remote NodeID!");
-                        handleInitiateCall({ id: directDialId, name: `Remote Node (${directDialId.slice(-4)})`, avatar: "2" }, "voice");
-                      }}
-                      className="flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-medium text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition border border-slate-700 active:scale-95 cursor-pointer"
-                    >
-                      <Phone className="w-3.5 h-3.5 text-slate-400" />
-                      <span>Audio Call</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!directDialId) return alert("Write or paste a remote NodeID!");
-                        handleInitiateCall({ id: directDialId, name: `Remote Node (${directDialId.slice(-4)})`, avatar: "2" }, "video");
-                      }}
-                      className="flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-medium text-white bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 rounded-lg transition active:scale-95 cursor-pointer"
-                    >
-                      <Video className="w-3.5 h-3.5" />
-                      <span>Video Call</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Online Users List */}
-              <div className="border border-slate-800/80 bg-slate-900/30 rounded-2xl p-5 backdrop-blur-sm">
-                <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-800">
-                  <h3 className="text-sm font-semibold text-white uppercase tracking-wider font-mono flex items-center gap-2">
-                    <Users className="w-4 h-4 text-rose-500" />
-                    <span>Lobby Directory</span>
-                  </h3>
-                  <span className="px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 text-xs font-mono font-bold">
-                    {onlineUsers.length} online
-                  </span>
+                  <span className="text-[10px] text-zinc-500 font-bold mb-1 uppercase tracking-widest">You</span>
+                  <span className="text-xs font-black text-zinc-300">{isLocalMuted ? "MUTED" : "ACTIVE VOICE"}</span>
                 </div>
 
-                {onlineUsers.length === 0 ? (
-                  <div className="text-center py-8 text-xs text-slate-500 font-mono space-y-2">
-                    <p>No other users are currently online.</p>
-                    <p className="text-[10px] text-slate-600 leading-relaxed">
-                      Tip: Copy your NodeID, open a new browser incognito tab, and paste it to test a fully functional WebRTC video or voice call!
-                    </p>
+                {/* Secure connecting heartbeats in center */}
+                <div className="flex-1 flex flex-col items-center justify-center text-center">
+                  <div className={`text-[10px] uppercase font-black tracking-widest ${accentTextColor} mb-2`}>
+                    Zero-Knowledge Link
                   </div>
-                ) : (
-                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-                    {onlineUsers.map((usr) => (
-                      <div 
-                        key={usr.id} 
-                        className="flex items-center justify-between p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 hover:border-slate-700 transition duration-100"
-                        id={`user-node-${usr.id}`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={`h-9 w-9 rounded-lg bg-gradient-to-tr ${getAvatarGradient(usr.avatar)} p-[1.5px]`}>
-                            <div className="h-full w-full rounded-[7px] bg-slate-900 flex items-center justify-center text-[10px] font-bold text-white font-mono">
-                              {getAvatarText(usr.avatar)}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-semibold text-slate-100 font-mono">{usr.name}</span>
-                              <span className={`h-1.5 w-1.5 rounded-full ${usr.status === 'busy' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-                            </div>
-                            <span className="text-[10px] text-slate-500 font-mono block">ID: {usr.id.slice(-6)}</span>
-                          </div>
-                        </div>
+                  <div className="flex items-center gap-1.5 h-6">
+                    <span className={`w-1.5 h-4 ${isLocalMuted ? 'bg-zinc-700' : accentBgColor} rounded-full animate-pulse`} />
+                    <span className="w-1.5 h-6 bg-zinc-700 rounded-full animate-bounce" />
+                    <span className={`w-1.5 h-5 ${remoteMuteState.audioMuted ? 'bg-zinc-700' : accentBgColor} rounded-full animate-pulse`} />
+                  </div>
+                  <span className="text-[9px] text-zinc-500 mt-3 font-mono">STABILIZED — {cryptoKey}</span>
+                </div>
 
-                        {/* Dial Operations */}
-                        <div className="flex items-center gap-1.5">
-                          {usr.status === "busy" ? (
-                            <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-1 rounded font-mono font-medium">In-Call</span>
-                          ) : (
-                            <>
-                              <button
-                                onClick={() => handleInitiateCall(usr, "voice")}
-                                className="p-2 bg-slate-900 border border-slate-850 hover:bg-slate-800 rounded-lg text-slate-300 transition"
-                                title="Start voice session"
-                              >
-                                <Phone className="w-3.5 h-3.5 text-rose-400" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleInitiateCall(usr, "video")}
-                                className="p-2 bg-slate-900 border border-slate-850 hover:bg-rose-500/10 rounded-lg text-slate-300 hover:text-white transition"
-                                title="Start high definition video call"
-                              >
-                                <Video className="w-3.5 h-3.5 text-amber-400" />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                {/* Remote user profile */}
+                <div className="flex flex-col items-center">
+                  <div className={`w-20 h-20 rounded-2xl flex items-center justify-center border ${accentBorderColor} mb-4 overflow-hidden relative shadow-[0_0_20px_rgba(6,182,212,0.04)]`}>
+                    <img 
+                      referrerPolicy="no-referrer"
+                      src={callTarget?.avatar || "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80"} 
+                      className="w-full h-full object-cover"
+                      alt="Remote User"
+                    />
                   </div>
-                )}
+                  <span className="text-[10px] text-zinc-500 font-bold mb-1 uppercase tracking-widest">PEER</span>
+                  <span className="text-xs font-black text-zinc-300">{remoteMuteState.audioMuted ? "MUTED" : "ON-LINE"}</span>
+                </div>
+
+                {/* Auxiliary native audio tags to pull WebRTC sounds */}
+                <audio ref={remoteVideoRef} autoPlay playsInline muted={!isSpeakerOn} className="hidden" />
               </div>
-
-            </div>
-
-            {/* COLUMN 2 & 3: CALL CANVAS & MEMENTO LOGGER */}
-            <div className="lg:col-span-2 space-y-6">
+            ) : (
               
-              {/* Core Call Interface Block */}
-              <div className="border border-slate-800/80 bg-slate-900/40 rounded-2xl p-6 min-h-[460px] flex flex-col justify-between backdrop-blur-sm relative overflow-hidden" id="call-interface">
+              /* VIDEO CONFERENCING CANVAS LAYOUTS */
+              <div className="w-full h-full flex flex-col md:flex-row gap-6 relative">
                 
-                {/* Visual Ringing pulsing ambient effect */}
-                {callState !== "idle" && (
-                  <div className="absolute inset-0 bg-radial from-slate-900/10 via-slate-950/80 to-slate-950 pointer-events-none" />
-                )}
+                {/* REMOTE STREAM (FILL VIEW) */}
+                <div className="flex-1 h-full rounded-3xl bg-zinc-900 border border-white/5 relative overflow-hidden flex items-center justify-center shadow-inner">
+                  
+                  {isLocalCamOff && (
+                    <div className="absolute inset-x-0 top-3 text-center z-20">
+                      <span className="bg-zinc-950/80 px-3 py-1 rounded text-[8px] font-bold text-zinc-400 uppercase tracking-widest border border-white/5">
+                        Your video transmission suspended
+                      </span>
+                    </div>
+                  )}
 
-                {/* CALL STATE: IDLE GRAPHIC */}
-                {callState === "idle" && (
-                  <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-                    <div className="p-4 bg-slate-950 rounded-full border border-slate-800/80 text-rose-500 mb-4 shadow-xl">
-                      <Phone className="w-10 h-10 animate-bounce" />
+                  <video 
+                    ref={remoteVideoRef}
+                    autoPlay 
+                    playsInline
+                    className="w-full h-full object-cover"
+                    poster="https://images.unsplash.com/photo-1620121692029-d088224ddc74?auto=format&fit=crop&w=1200&q=80"
+                  />
+
+                  {/* Remote states overlay */}
+                  <div className="absolute bottom-4 left-4 z-10 flex gap-2">
+                    <div className="bg-zinc-950/85 backdrop-blur-md px-3.5 py-1 rounded-xl text-[10px] uppercase tracking-wider border border-white/5 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                      <span>{callTarget?.name || 'Remote Agent'}</span>
                     </div>
-                    <h3 className="text-lg font-bold text-slate-200 font-mono mb-2">WebRTC Endpoint Standby</h3>
-                    <p className="text-xs text-slate-500 max-w-sm leading-relaxed mb-6 font-sans">
-                      Start dialing by pasting another user's unique NodeID from above, or choose an available peer in the lobby.
-                    </p>
-                    <div className="flex gap-4 items-center text-[11px] text-slate-500 font-mono px-4 py-2 border border-slate-850 bg-slate-900/55 rounded-xl">
-                      <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-emerald-500" /> STUN/NAT Active</span>
-                      <span className="h-3 w-[1px] bg-slate-850" />
-                      <span className="flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-emerald-500" /> Secure DTLS</span>
-                    </div>
+                    {remoteMuteState.audioMuted && (
+                      <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1 rounded-xl text-[8px] font-bold tracking-widest uppercase flex items-center gap-1">
+                        <MicOff size={10} /> Muted
+                      </span>
+                    )}
+                    {remoteMuteState.videoMuted && (
+                      <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-3 py-1 rounded-xl text-[8px] font-bold tracking-widest uppercase flex items-center gap-1">
+                        <VideoOff size={10} /> Camera Off
+                      </span>
+                    )}
                   </div>
-                )}
+                </div>
 
-
-                {/* CALL STATE: OUTGOING DIALING */}
-                {callState === "dialing" && (
-                  <div className="flex-1 flex flex-col items-center justify-center p-6 text-center z-15">
-                    <div className="relative mb-6">
-                      <motion.div 
-                        animate={{ scale: [1, 1.2, 1] }} 
-                        transition={{ repeat: Infinity, duration: 1.6 }}
-                        className="absolute inset-0 bg-amber-500/20 rounded-full blur-md"
-                      />
-                      <div className={`h-24 w-24 rounded-full bg-gradient-to-tr ${getAvatarGradient(currentCall?.remoteUser?.avatar)} p-1 relative z-20 shadow-2xl`}>
-                        <div className="h-full w-full rounded-full bg-slate-900 flex items-center justify-center text-2xl font-bold text-white font-mono">
-                          {getAvatarText(currentCall?.remoteUser?.avatar)}
-                        </div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-mono tracking-widest text-amber-400 font-semibold uppercase mb-1">
-                      Signal Dialing
-                    </span>
-                    <h4 className="text-xl font-bold text-white font-mono mb-1">{currentCall?.remoteUser?.name}</h4>
-                    <p className="text-xs text-slate-500 font-mono mb-8 flex items-center justify-center gap-2">
-                      <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping" />
-                      <span>Ringing Peer Handset...</span>
-                    </p>
-
-                    <button
-                      onClick={() => handleHangUp(true)}
-                      className="px-6 py-3 bg-rose-600 hover:bg-rose-700 text-xs font-semibold text-white rounded-xl transition shadow-lg active:scale-95 flex items-center gap-2 cursor-pointer"
-                    >
-                      <PhoneOff className="w-4 h-4" />
-                      <span>Cancel Signal</span>
-                    </button>
-                  </div>
-                )}
-
-
-                {/* CALL STATE: INCOMING RINGING */}
-                {callState === "ringing" && (
-                  <div className="flex-1 flex flex-col items-center justify-center p-6 text-center z-15">
-                    <span className="px-3 py-1 text-[10px] font-mono tracking-widest text-white bg-rose-600 rounded-full font-bold uppercase mb-4 animate-bounce">
-                      Incoming Call Request
-                    </span>
+                {/* LOCAL PREVIEW WINDOW (PIP OR SIDE-BY-SIDE SPLIT) */}
+                <div className={`p-[1.5px] rounded-3xl bg-gradient-to-tr ${activeAccent?.bg || 'from-cyan-500'} to-transparent transition-all duration-300 ${
+                  isPipMode 
+                    ? 'absolute top-6 right-6 w-32 md:w-52 h-44 md:h-64 shadow-2xl z-30'
+                    : 'w-full md:w-64 h-52 md:h-full flex flex-col shrink-0'
+                }`}>
+                  <div className="w-full h-full rounded-[23px] bg-zinc-950 border border-zinc-900 overflow-hidden relative flex items-center justify-center">
                     
-                    <div className="relative mb-6">
-                      <motion.div 
-                        animate={{ scale: [1, 1.3, 1] }} 
-                        transition={{ repeat: Infinity, duration: 1.2 }}
-                        className="absolute inset-0 bg-rose-500/20 rounded-full blur-lg"
+                    {isLocalCamOff ? (
+                      <div className="flex flex-col items-center p-4 text-center z-10">
+                        <VideoOff className="text-zinc-600 mb-2" size={24} />
+                        <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest">CAMERA SUSPENDED</span>
+                      </div>
+                    ) : (
+                      <video 
+                        ref={localVideoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="w-full h-full object-cover scale-x-[-1]"
                       />
-                      <div className={`h-24 w-24 rounded-full bg-gradient-to-tr ${getAvatarGradient(currentCall?.remoteUser?.avatar)} p-1 relative z-20 shadow-2xl`}>
-                        <div className="h-full w-full rounded-full bg-slate-900 flex items-center justify-center text-3xl font-bold text-white font-mono">
-                          {getAvatarText(currentCall?.remoteUser?.avatar)}
-                        </div>
+                    )}
+
+                    {/* Local profile indicators */}
+                    <div className="absolute bottom-3 left-3 z-10">
+                      <div className="bg-zinc-900/80 backdrop-blur-md px-2.5 py-0.5 rounded text-[8px] uppercase tracking-widest font-black text-zinc-300">
+                        Me {isLocalMuted && "(Muted)"}
                       </div>
-                    </div>
-
-                    <h4 className="text-xl font-bold text-white font-mono mb-1">{currentCall?.remoteUser?.name}</h4>
-                    <p className="text-xs text-slate-400 font-mono mb-8">
-                      Offering secure Peer-to-Peer {currentCall?.callType} call stream
-                    </p>
-
-                    <div className="flex items-center gap-4">
-                      <button
-                        onClick={handleDeclineCall}
-                        className="px-6 py-3 cursor-pointer bg-slate-850 hover:bg-slate-800 text-xs font-semibold text-slate-300 rounded-xl transition active:scale-95 flex items-center gap-2 border border-slate-700"
-                      >
-                        <PhoneOff className="w-4 h-4 text-rose-500" />
-                        <span>Decline</span>
-                      </button>
-                      <button
-                        onClick={handleAcceptCall}
-                        className="px-8 py-3 cursor-pointer bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-xs font-semibold text-white rounded-xl transition shadow-lg active:scale-95 flex items-center gap-2"
-                      >
-                        <Phone className="w-4 h-4" />
-                        <span>Answer Call</span>
-                      </button>
                     </div>
                   </div>
-                )}
-
-
-                {/* CALL STATE: CONNECTED CALL SCREEN */}
-                {callState === "connected" && (
-                  <div className="flex-1 flex flex-col justify-between z-15 min-h-[380px] relative">
-                    
-                    {/* Top Call Info Hud */}
-                    <div className="flex items-center justify-between p-3 bg-slate-950/80 rounded-xl border border-slate-850 mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`h-9 w-9 rounded-full bg-gradient-to-tr ${getAvatarGradient(currentCall?.remoteUser?.avatar)} p-[1.5px]`}>
-                          <div className="h-full w-full rounded-full bg-slate-900 flex items-center justify-center text-[10px] font-bold text-white font-mono">
-                            {getAvatarText(currentCall?.remoteUser?.avatar)}
-                          </div>
-                        </div>
-                        <div>
-                          <span className="text-xs font-semibold block text-white font-mono">{currentCall?.remoteUser?.name}</span>
-                          <span className="text-[10.5px] text-slate-500 font-mono block">Status: <span className="text-emerald-500 font-semibold">Active WebRTC P2P</span></span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3 font-mono">
-                        <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-900 text-rose-400 text-xs rounded border border-slate-800">
-                          <Clock className="w-3.5 h-3.5 text-rose-500 animate-spin" />
-                          <span>{formatTime(callDuration)}</span>
-                        </div>
-                        <div className="text-[10px] text-slate-400 px-2 py-1 bg-slate-900 rounded border border-slate-800 uppercase">
-                          {webrtcState}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* CORE FEED VIDEO AND WAVEFORM WORKSPACE */}
-                    <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 items-center justify-center relative min-h-[280px]">
-                      
-                      {/* Left: Remote Host View */}
-                      <div className="relative aspect-video md:h-full bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex flex-col items-center justify-center group shadow-md">
-                        {currentCall?.callType === "video" && !remoteMuteState.videoMuted ? (
-                          <video
-                            ref={remoteVideoRef}
-                            autoPlay
-                            playsInline
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="text-center p-6 space-y-3 relative z-10 w-full flex flex-col items-center">
-                            <div className="h-16 w-16 rounded-full bg-gradient-to-tr from-slate-700 to-slate-900 p-[2px]">
-                              <div className="h-full w-full rounded-full bg-slate-950 flex items-center justify-center text-lg font-bold font-mono text-slate-400">
-                                {getAvatarText(currentCall?.remoteUser?.avatar)}
-                              </div>
-                            </div>
-                            <span className="text-[10px] font-mono tracking-wider text-slate-500 uppercase">
-                              {remoteMuteState.videoMuted ? "Remote webcam Disabled" : "High Quality Voice Calling"}
-                            </span>
-                          </div>
-                        )}
-                        {/* Remote details banner */}
-                        <div className="absolute bottom-2 left-2 bg-slate-950/80 px-2 py-1 rounded text-[10px] font-mono text-slate-400 border border-slate-850 flex items-center gap-1.5">
-                          <span>{currentCall?.remoteUser?.name}</span>
-                          {remoteMuteState.audioMuted && (
-                            <span className="text-rose-500 flex items-center gap-0.5 text-[9px] uppercase"><MicOff className="w-2.5 h-2.5" /> Muted</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Right: Local preview node */}
-                      <div className="relative aspect-video md:h-full bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex flex-col items-center justify-center group shadow-md">
-                        {currentCall?.callType === "video" && !isCamOff ? (
-                          <video
-                            ref={localVideoRef}
-                            autoPlay
-                            playsInline
-                            muted
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="text-center p-6 space-y-3 relative z-10 w-full flex flex-col items-center">
-                            <div className="h-16 w-16 rounded-full bg-gradient-to-tr from-slate-800 to-slate-950 p-[2px]">
-                              <div className="h-full w-full rounded-full bg-slate-950 flex items-center justify-center text-lg font-bold font-mono text-slate-500">
-                                Me
-                              </div>
-                            </div>
-                            <span className="text-[10px] font-mono tracking-wider text-slate-500 uppercase">
-                              {isCamOff ? "Local camera Disabled" : "Microphone Audio Stream"}
-                            </span>
-                          </div>
-                        )}
-                        {/* Local tag */}
-                        <div className="absolute bottom-2 left-2 bg-slate-950/80 px-2 py-1 rounded text-[10px] font-mono text-slate-400 border border-slate-850 flex items-center gap-1.5">
-                          <span>Local Output</span>
-                          {isMuted && (
-                            <span className="text-rose-500 flex items-center gap-0.5 text-[9px] uppercase"><MicOff className="w-2.5 h-2.5" /> Self Muted</span>
-                          )}
-                        </div>
-                      </div>
-
-                    </div>
-
-                    {/* Bottom Dynamic control cluster bar */}
-                    <div className="flex items-center justify-center gap-4 mt-6">
-                      
-                      <button
-                        onClick={toggleMute}
-                        className={`p-3.5 rounded-full border transition cursor-pointer ${
-                          isMuted 
-                            ? "bg-rose-500/10 border-rose-500 text-rose-500 hover:bg-rose-500/20" 
-                            : "bg-slate-950 border-slate-800 text-slate-450 hover:bg-slate-800 hover:text-white"
-                        }`}
-                        title={isMuted ? "Unmute local microphone" : "Mute local microphone"}
-                      >
-                        {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-                      </button>
-
-                      <button
-                        onClick={() => handleHangUp(true)}
-                        className="p-4 bg-rose-600 hover:bg-rose-700 text-white rounded-full transition shadow-lg shadow-rose-950/30 active:scale-[0.96] flex items-center justify-center cursor-pointer"
-                        title="Disconnect current call session"
-                      >
-                        <PhoneOff className="w-6 h-6" />
-                      </button>
-
-                      {currentCall?.callType === "video" && (
-                        <button
-                          onClick={toggleCamera}
-                          className={`p-3.5 rounded-full border transition cursor-pointer ${
-                            isCamOff 
-                              ? "bg-rose-500/10 border-rose-500 text-rose-500 hover:bg-rose-500/20" 
-                              : "bg-slate-950 border-slate-800 text-slate-450 hover:bg-slate-800 hover:text-white"
-                          }`}
-                          title={isCamOff ? "Enable front video track" : "Disable front video track"}
-                        >
-                          {isCamOff ? <VideoOff className="w-5 h-5" /> : <Camera className="w-5 h-5" />}
-                        </button>
-                      )}
-
-                    </div>
-
-                  </div>
-                )}
+                </div>
 
               </div>
-
-              {/* Secure Call Logs Panel at the Bottom */}
-              <div className="border border-slate-800/80 bg-slate-900/30 p-5 rounded-2xl backdrop-blur-sm shadow-xl">
-                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3 font-mono">
-                  Telemetry logs &amp; Diagnostics
-                </h4>
-                {logs.length === 0 ? (
-                  <div className="text-xs text-slate-500 font-mono py-2">
-                    Lobby started. No caller activity yet.
-                  </div>
-                ) : (
-                  <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
-                    {logs.map((log) => (
-                      <div key={log.id} className="text-xs font-mono text-slate-400 flex items-center justify-between border-b border-slate-900/60 pb-1">
-                        <span className="text-rose-400/90">{log.text}</span>
-                        <span className="text-[10px] text-slate-500">{log.time}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-            </div>
+            )}
 
           </div>
+        )}
+
+      </div>
+
+      {/* --- FLOATING SECURED CONTROLLER DECK --- */}
+      <div className="relative z-10 w-full flex flex-col items-center px-6 py-6 border-t border-white/5 bg-zinc-900/70 backdrop-blur-md gap-4">
+        
+        {/* Visual telemetry security key check */}
+        {callState === 'connected' && (
+          <div className="hidden sm:flex items-center gap-2 text-[9px] text-zinc-500 tracking-wider">
+            <Shield size={11} className="text-emerald-400" />
+            <span>SESSION ENCRYPTION VERIFIED AT ZERO-KNOWLEDGE NODE BASE TERMINAL: {cryptoKey}</span>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between w-full max-w-sm">
+          
+          {/* Audio output selector */}
+          <button
+            type="button"
+            onClick={toggleLocalSpeaker}
+            className={`w-12 h-12 rounded-xl flex items-center justify-center shadow transition-all cursor-pointer ${
+              isSpeakerOn
+                ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-white/5'
+                : 'bg-amber-600/10 hover:bg-amber-600/20 text-amber-400 border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.08)]'
+            }`}
+            title={isSpeakerOn ? 'Mute speaker feedback' : 'Enable speaker feedback'}
+          >
+            {isSpeakerOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
+          </button>
+
+          {/* Audio input micro tracker */}
+          <button
+            type="button"
+            onClick={toggleTrackMute}
+            className={`w-12 h-12 rounded-xl flex items-center justify-center shadow transition-all cursor-pointer ${
+              !isLocalMuted
+                ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-white/5'
+                : 'bg-red-600/10 hover:bg-red-600/20 text-red-400 border border-red-500/30'
+            }`}
+            title={isLocalMuted ? 'Activate Voice Transmit' : 'Mute Microphone'}
+          >
+            {!isLocalMuted ? <Mic size={18} /> : <MicOff size={18} />}
+          </button>
+
+          {/* Camera controls (Video only restriction) */}
+          <button
+            type="button"
+            disabled={callType === 'voice'}
+            onClick={toggleTrackCamera}
+            className={`w-12 h-12 rounded-xl flex items-center justify-center shadow transition-all ${
+              callType === 'voice' 
+                ? 'opacity-40 cursor-not-allowed bg-zinc-900 border border-white/5 text-zinc-600'
+                : !isLocalCamOff
+                  ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-white/5 cursor-pointer'
+                  : 'bg-amber-600/10 hover:bg-amber-600/20 text-amber-400 border border-amber-500/20 cursor-pointer'
+            }`}
+            title={isLocalCamOff ? 'Activate Camera Stream' : 'Disable Camera Stream'}
+          >
+            {!isLocalCamOff ? <Video size={18} /> : <VideoOff size={18} />}
+          </button>
+
+          {/* HANG UP TERMINALS LINE */}
+          <button
+            type="button"
+            onClick={handleOnboardHangup}
+            className="w-14 h-14 rounded-2xl bg-red-600 hover:bg-red-500 text-white flex items-center justify-center transition-all cursor-pointer shadow-[0_0_25px_rgba(239,68,68,0.3)] active:scale-95 animate-pulse"
+            title="Terminate Core Signaling Session"
+          >
+            <PhoneOff size={20} />
+          </button>
 
         </div>
-      )}
+      </div>
     </div>
   );
 }
