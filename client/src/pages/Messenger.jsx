@@ -401,6 +401,21 @@ export default function Messenger() {
     loadAllConversations();
   }, [user, dynamicChats]);
 
+  // Global user gesture detection to unlock AudioContext compliant with browser autoplay policies
+  useEffect(() => {
+    const enableAudioOnGesture = () => {
+      window.hasOnyxAudioBeenGestureActivated = true;
+      document.removeEventListener('click', enableAudioOnGesture);
+      document.removeEventListener('touchstart', enableAudioOnGesture);
+    };
+    document.addEventListener('click', enableAudioOnGesture);
+    document.addEventListener('touchstart', enableAudioOnGesture);
+    return () => {
+      document.removeEventListener('click', enableAudioOnGesture);
+      document.removeEventListener('touchstart', enableAudioOnGesture);
+    };
+  }, []);
+
   // --- Searched Users dynamic lookup ---
   useEffect(() => {
     if (searchQuery.trim().length < 2) {
@@ -433,20 +448,22 @@ export default function Messenger() {
     socket.on("receiveMessage", (data) => {
       console.log("⚡ [SOCKET] Message stream ingress payload:", data);
       
-      // Play a quick soft digital chirp synth sound for message notification
+      // Play a quick soft digital chirp synth sound for message notification (only if user interacted)
       try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.frequency.setValueAtTime(580, audioCtx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.12);
-        osc.type = "sine";
-        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.15);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.2);
+        if (window.hasOnyxAudioBeenGestureActivated) {
+          const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.frequency.setValueAtTime(580, audioCtx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.12);
+          osc.type = "sine";
+          gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.15);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.2);
+        }
       } catch (e) {}
 
       // Trigger standard browser notification if permitted
@@ -586,6 +603,10 @@ export default function Messenger() {
     if (incomingCallSession) {
       const playBbeebRing = () => {
         try {
+          // Avoid playing the dial tone until the user gesture has unlocked the audio layer
+          if (!window.hasOnyxAudioBeenGestureActivated) {
+            return;
+          }
           const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
           const playDualTone = (f1, f2, duration, delay) => {
             const osc1 = audioCtx.createOscillator();

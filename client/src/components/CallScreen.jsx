@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  PhoneOff, Mic, MicOff, Video, VideoOff, Shield, 
+  PhoneOff, Phone, Mic, MicOff, Video, VideoOff, Shield, 
   Layers, Radio, Zap, Users, Monitor, MessageSquare, 
   Sparkles, Sliders, X, Send, Lock, Eye, Check, Edit2, 
   Plus, Download, HelpCircle, Laptop, Tablet, Smartphone, 
@@ -878,9 +878,28 @@ const CallScreen = ({
     return () => clearInterval(bboxTimer);
   }, [faceTracking]);
 
-  // 7. Ambient feedback tone generators
+  // 7. Ambient feedback tone generators with gesture protection
+  const initializeOnyxAudio = () => {
+    try {
+      window.hasOnyxAudioBeenGestureActivated = true;
+      if (!synthCtxRef.current) {
+        synthCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (synthCtxRef.current.state === "suspended") {
+        synthCtxRef.current.resume();
+      }
+      return synthCtxRef.current;
+    } catch (err) {
+      console.warn("AudioContext setup error:", err);
+    }
+  };
+
   const triggerBeepTone = (frequency = 440, type = 'sine') => {
     try {
+      // Prevent automatic interval beeps from creating AudioContext and raising browser errors
+      if (!window.hasOnyxAudioBeenGestureActivated && !synthCtxRef.current) {
+        return;
+      }
       if (!synthCtxRef.current) {
         synthCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
       }
@@ -899,7 +918,7 @@ const CallScreen = ({
       osc.start();
       osc.stop(audioCtx.currentTime + 0.35);
     } catch (e) {
-      console.warn("Cyber Synthesizer output blocked by sandboxed browser policy.");
+      console.warn("Cyber Synthesizer output blocked by sandboxed browser policy.", e);
     }
   };
 
@@ -1107,71 +1126,72 @@ const CallScreen = ({
 
   if (callStatus === "ringing") {
     return (
-      <div id="ringing-screen" className="fixed inset-0 z-[6500] bg-zinc-950 text-white flex flex-col items-center justify-center overflow-hidden font-mono select-none">
-        {/* Decorative Grid backing */}
-        <div className="absolute inset-0 bg-gradient-to-tr from-cyan-950/15 via-transparent to-purple-950/20 pointer-events-none" />
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.012)_1px,_transparent_1px),_linear-gradient(90deg,_rgba(255,255,255,0.012)_1px,_transparent_1px)] bg-[size:30px_30px] pointer-events-none" />
-        
-        {/* Glowing visual pulse ring */}
-        <div className="relative mb-10 flex items-center justify-center animate-pulse">
-          <div className="absolute w-44 h-44 rounded-full border border-cyan-500/10 animate-ping opacity-30" />
-          <div className="absolute w-32 h-32 rounded-full border border-cyan-400/20 animate-pulse opacity-50" />
-          <img 
-            src={callTarget.avatar} 
-            className="w-24 h-24 rounded-full object-cover border-4 border-cyan-400 p-1 relative z-10 shadow-[0_0_30px_rgba(6,182,212,0.3)] animate-pulse" 
-            alt="Calling Partner" 
-          />
+      <div id="ringing-screen" className="fixed inset-0 z-[6500] bg-[#121B22] text-white flex flex-col items-center justify-between p-8 select-none font-sans">
+        {/* Soft elegant background glows */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,168,132,0.12)_0%,transparent_75%)] pointer-events-none" />
+
+        {/* Top Header Label */}
+        <div className="mt-12 flex flex-col items-center gap-1 text-center relative z-10 w-full animate-fade-in">
+          <span className="text-[#00a884] text-[10px] font-black tracking-[0.25em] uppercase flex items-center gap-1.5 justify-center">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#00a884] animate-ping" />
+            ONYX SECURE LINE RINGING
+          </span>
+          <span className="text-zinc-500 text-[9px] uppercase tracking-wider font-mono">
+            ESTABLISHING ENCRYPTED AUDIO-DYNAMIC LINK
+          </span>
         </div>
 
-        <span className="text-cyan-400 text-xs font-black tracking-[0.3em] uppercase mb-1 animate-pulse">
-          INITIALIZING SECURE ONYX LINK
-        </span>
-        <h2 className="text-2xl font-bold uppercase tracking-widest text-white mb-2">
-          {callTarget.name}
-        </h2>
-        <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-10 font-mono">
-          DIALING SECURE TELEMETRY ADDR // RATE MATCH ...
-        </p>
-
-        {/* Ringing waves */}
-        <div className="flex gap-2 mb-12 items-center justify-center">
-          <span className="w-2 h-4 bg-cyan-400 rounded-full animate-bounce [animation-duration:1s]" />
-          <span className="w-2 h-8 bg-cyan-500 rounded-full animate-bounce [animation-duration:1.2s] [animation-delay:0.1s]" />
-          <span className="w-2 h-12 bg-cyan-600 rounded-full animate-bounce [animation-duration:1.4s] [animation-delay:0.2s]" />
-          <span className="w-2 h-8 bg-cyan-500 rounded-full animate-bounce [animation-duration:1.2s] [animation-delay:0.3s]" />
-          <span className="w-2 h-4 bg-cyan-400 rounded-full animate-bounce [animation-duration:1s] [animation-delay:0.4s]" />
+        {/* Central Pulse Avatar */}
+        <div className="flex flex-col items-center justify-center gap-5 relative z-10 my-auto">
+          <div className="relative flex items-center justify-center">
+            <div className="absolute w-48 h-48 rounded-full bg-[#00a884]/5 animate-ping opacity-30" />
+            <div className="absolute w-36 h-36 rounded-full border border-[#00a884]/20 animate-pulse opacity-50" />
+            <div className="absolute w-28 h-28 rounded-full border border-[#00a884]/10" />
+            <img 
+              src={callTarget.avatar} 
+              className="w-24 h-24 rounded-full object-cover border-4 border-[#00a884] p-0.5 relative z-10 shadow-2xl transition-transform hover:scale-105 duration-300" 
+              alt={callTarget.name} 
+            />
+          </div>
+          
+          <div className="text-center">
+            <h2 className="text-2xl font-bold tracking-tight text-white mb-1 font-sans">
+              {callTarget.name}
+            </h2>
+            <p className="text-[#00a884] text-xs font-semibold tracking-wider uppercase bg-[#182229] px-3 py-1 rounded-full border border-[#00a884]/20 inline-block font-sans">
+              {callTarget.role || 'Onyx Operator'}
+            </p>
+          </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex gap-10 relative z-20">
-          {/* Cancel/Disconnect button */}
+        {/* Bottom Actions: WhatsApp Style Clean Controls */}
+        <div className="mb-14 flex items-center gap-8 relative z-20">
+          {/* Decline (Red Circle) */}
           <button
             onClick={() => {
               triggerBeepTone(150, 'sawtooth');
-              onEndCall(0, 'missed'); // End call with 0 duration and missed status
+              onEndCall(0, 'missed'); // End call as missed
             }}
-            className="w-16 h-16 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center cursor-pointer transition-all active:scale-95 shadow-[0_0_25px_rgba(244,63,94,0.3)] hover:shadow-[0_0_35px_rgba(244,63,94,0.5)]"
-            title="Cancel Call Connection"
+            className="w-16 h-16 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center cursor-pointer transition-all active:scale-95 shadow-[0_4px_15px_rgba(244,63,94,0.3)] hover:shadow-[0_4px_25px_rgba(244,63,94,0.45)]"
+            title="Decline Call"
           >
             <PhoneOff size={24} />
           </button>
 
-          {/* Simulate Pick Up button */}
+          {/* Accept / Activate (Green Circle) */}
           <button
             onClick={() => {
+              initializeOnyxAudio();
+              setCallStatus("connected"); // Connect call
               triggerBeepTone(880, 'sine');
-              setCallStatus("connected"); // Immediately connect
             }}
-            className="px-6 h-16 rounded-3xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold uppercase tracking-widest text-xs flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-[0_0_25px_rgba(6,182,212,0.3)] hover:shadow-[0_0_35px_rgba(6,182,212,0.5)] animate-pulse"
-            title="Bypass Tunnel Handshake"
+            className="px-6 h-16 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold uppercase tracking-wide text-xs flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-[0_4px_15px_rgba(16,185,129,0.3)] hover:shadow-[0_4px_25px_rgba(16,185,129,0.45)] animate-pulse"
+            title="Accept Dynamic Connection"
           >
-            <span>Instant Connect</span>
+            <Phone size={15} />
+            <span className="font-sans">Accept Call</span>
           </button>
         </div>
-
-        <p className="text-[9px] text-zinc-600 mt-16 uppercase tracking-widest font-mono">
-          AUTOCONNECT PROTOCOL WILL INGRESS IN 4 SECONDS...
-        </p>
       </div>
     );
   }
@@ -1285,38 +1305,86 @@ const CallScreen = ({
         </div>
       </header>
 
-      {/* 🔊 Audio Consent Warning Banner */}
+      {/* 🔊 Audio Consent Warning Overlay (WhatsApp-inspired Clean Design) */}
       {showAudioConsent && (
-        <div className="bg-gradient-to-r from-cyan-500 to-purple-500 text-slate-950 px-4 py-3 text-xs flex flex-col md:flex-row items-center justify-between font-mono font-bold uppercase tracking-wider relative z-20 shadow-[0_4px_25px_rgba(6,182,212,0.35)] gap-3 border-b border-cyan-400 select-none">
-          <div className="flex items-center gap-2.5">
-            <Volume2 size={18} className="animate-bounce shrink-0" />
-            <span className="text-center md:text-left">
-              🔊 Click "UNMUTE AUDIO" to enable high-fidelity voice output and sync speakers with {callTarget.name}!
+        <div id="audio-consent-overlay" className="fixed inset-0 z-[6100] bg-[#121B22] text-white flex flex-col items-center justify-between p-6 select-none font-sans">
+          {/* WhatsApp soft teal gradient halo backing */}
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(18,140,126,0.15)_0%,transparent_75%)] pointer-events-none" />
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.005)_1px,_transparent_1px),_linear-gradient(90deg,_rgba(255,255,255,0.005)_1px,_transparent_1px)] bg-[size:40px_40px] pointer-events-none" />
+
+          {/* Header */}
+          <div className="mt-12 flex flex-col items-center gap-1.5 text-center relative z-10 w-full">
+            <span className="text-[#00a884] text-[11px] font-black tracking-[0.25em] uppercase flex items-center gap-2 justify-center">
+              <span className="w-2 h-2 rounded-full bg-[#00a884] animate-pulse inline-block" />
+              Secure VoIP Handshake
+            </span>
+            <span className="text-zinc-500 text-[10px] uppercase tracking-widest font-mono">
+              Onyx Encrypted Connection Link
             </span>
           </div>
-          <button 
-            onClick={() => {
-              setShowAudioConsent(false);
-              setIsPartnerMuted(false); // Unmute partner on click
-              try {
-                if ('speechSynthesis' in window) {
-                  window.speechSynthesis.cancel();
-                  const dict = TRANSLATIONS[translateLang] || {};
-                  const targetText = dict[currentTranscript] || currentTranscript;
-                  const welcome = new SpeechSynthesisUtterance("Biometric voice uplink synchronized. " + targetText);
-                  welcome.rate = 1.05;
-                  welcome.pitch = callTarget.name.includes("Agent") || callTarget.name.includes("Onyx") ? 0.85 : 1.1;
-                  window.speechSynthesis.speak(welcome);
+
+          {/* Center Content: Avatar & Waves */}
+          <div className="flex flex-col items-center justify-center gap-6 relative z-10 my-auto">
+            <div className="relative flex items-center justify-center">
+              {/* Pulsing visual echo halos */}
+              <div className="absolute w-52 h-52 rounded-full bg-[#00a884]/5 animate-ping opacity-30" />
+              <div className="absolute w-44 h-44 rounded-full border border-[#00a884]/20 animate-pulse opacity-50" />
+              <div className="absolute w-36 h-36 rounded-full border border-[#00a884]/10" />
+              
+              <img 
+                src={callTarget.avatar} 
+                className="w-28 h-28 rounded-full object-cover border-4 border-[#00a884] p-0.5 relative z-10 shadow-[0_8px_30px_rgba(0,0,0,0.6)]" 
+                alt={callTarget.name} 
+              />
+            </div>
+            
+            <div className="text-center">
+              <h2 className="text-3xl font-bold tracking-tight text-white mb-2">
+                {callTarget.name}
+              </h2>
+              <p className="text-zinc-400 font-mono text-[10px] uppercase tracking-widest bg-[#202c33] px-3.5 py-1.5 rounded-full border border-white/5 inline-block">
+                🔒 End-to-End Encrypted
+              </p>
+            </div>
+          </div>
+
+          {/* Buttons and call-to-action */}
+          <div className="mb-14 flex flex-col items-center gap-4 w-full max-w-sm relative z-10 text-center">
+            <button 
+              onClick={() => {
+                initializeOnyxAudio();
+                setShowAudioConsent(false);
+                setIsPartnerMuted(false); // Unmute incoming partner audio
+                try {
+                  if ('speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                    const dict = TRANSLATIONS[translateLang] || {};
+                    const targetText = dict[currentTranscript] || currentTranscript;
+                    const welcome = new SpeechSynthesisUtterance("Uplink secured. Audio synchronized with " + callTarget.name);
+                    welcome.rate = 1.05;
+                    window.speechSynthesis.speak(welcome);
+                  }
+                } catch(e) {
+                  console.warn(e);
                 }
-              } catch(e) {
-                console.warn(e);
-              }
-              triggerBeepTone(880, 'sine');
-            }}
-            className="bg-slate-950 text-cyan-400 border-2 border-cyan-400 px-4 py-1.5 rounded-xl text-[10px] hover:bg-cyan-400 hover:text-slate-950 transition-all font-black shrink-0 cursor-pointer shadow-[0_0_10px_rgba(0,0,0,0.5)] animate-pulse"
-          >
-            UNMUTE AUDIO & SIGNALS
-          </button>
+                triggerBeepTone(880, 'sine');
+              }}
+              className="w-full bg-[#00a884] hover:bg-[#008f72] text-[#111b21] font-extrabold py-4 px-6 rounded-2xl tracking-wider text-xs uppercase cursor-pointer transition-all active:scale-95 shadow-[0_4px_15px_rgba(0,168,132,0.3)] hover:shadow-[0_4px_25px_rgba(0,168,132,0.5)] flex items-center justify-center gap-2"
+            >
+              <Volume2 size={16} />
+              <span>ACTIVATE SECURE TUNNEL</span>
+            </button>
+            
+            <button
+              onClick={() => {
+                triggerBeepTone(150, 'sawtooth');
+                onEndCall(0, 'declined');
+              }}
+              className="text-[10px] text-rose-400 hover:text-rose-300 tracking-widest uppercase font-black cursor-pointer bg-rose-950/20 hover:bg-rose-950/40 border border-rose-500/10 px-4 py-2.5 rounded-xl transition-all"
+            >
+              Decline Link
+            </button>
+          </div>
         </div>
       )}
 
