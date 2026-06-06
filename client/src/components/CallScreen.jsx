@@ -5,55 +5,39 @@ import {
   Sparkles, Sliders, X, Send, Lock, Eye, Check, Edit2, 
   Plus, Download, HelpCircle, Laptop, Tablet, Smartphone, 
   Volume2, VolumeX, BarChart2, Share2,
-  Minimize2, Maximize2, RefreshCw, Palette, Trash2, Award
+  Minimize2, Maximize2, RefreshCw, Palette, Trash2, Award, Info
 } from 'lucide-react';
-
-const InfoIcon = HelpCircle;
-const QIcon = HelpCircle;
 import { MOCK_TRANSCRIPTS } from '../data';
 
-// Custom Translation matrices for live demonstration mapping
-const TRANSLATIONS = {
+// Define custom transcription mapping if not loaded
+const EXTENDED_TRANSLATIONS = {
   none: {},
+  bn: {
+    "Integrating high-definition WebRTC voice codec...": "উচ্চ-মানের ওয়েবআরটিসি ভয়েস কোডেক যুক্ত করা হচ্ছে...",
+    "Encrypting audio/video channels with dynamic keys.": "ডাইনামিক কি দিয়ে অডিও/ভিডিও চ্যানেল এনক্রিপ্ট করা হচ্ছে।",
+    "Sound frequency stabilized. Double echo canceller active.": "সাউন্ড ফ্রিকোয়েন্সি স্থিতিশীল। একটিভ ডাবল ইকো ক্যানসেলার।",
+    "Automatic acoustic gain adjusted carefully.": "অটোমেটিক একোস্টিক গেইন সূক্ষ্মভাবে সমন্বয় করা হয়েছে।",
+    "Transmission latency stable: 0.05ms inside matrix.": "সংবহন ল্যাটেন্সি স্থিতিশীল: মেট্রিক্সে ০.০৫ মিলি সেকেন্ড।",
+    "Voice pattern verified. Premium WhatsApp standard active.": "ভয়েস প্যাটার্ন যাচাই সম্পন্ন। প্রিমিয়াম হোয়াটসঅ্যাপ স্ট্যান্ডার্ড সক্রিয়।",
+    "Connection crystal clear. Happy chatting!": "কানেকশন একদম পরিষ্কার। সুন্দর চ্যাটিং করুন!"
+  },
   es: {
-    "Integrating speech-to-text audio analyzer...": "Integrando el analizador de audio de voz a texto...",
-    "Neural link sync complete. Scanning phonetic telemetry.": "Sincronización del enlace neural completada. Escaneando telemetría fonética.",
-    "Frequency lock: 104.2MHz. High signal clarity.": "Bloqueo de frecuencia: 104.2MHz. Alta claridad de señal.",
-    "Operator speech detected: 'Bypassing central firewall node...'": "Voz de operador detectada: 'Bypassando el cortafuegos central...'",
-    "Transmission latency averages 0.08ms over secure fiber.": "La latencia de transmisión promedia 0.08ms en fibra segura.",
-    "Vibrational analysis indicates confidence rating of 98.4%": "El análisis de vibración indica un índice de confianza del 98.4%",
-    "Inbound link node speaking: 'We must compile the Applet before deployment.'": "Nodo entrante hablando: 'Debemos compilar el Applet antes de desplegar.'",
-    "Voice pattern verified. Security handshake accepted.": "Patrón de voz verificado. Apretón de manos de seguridad aceptado."
+    "Integrating high-definition WebRTC voice codec...": "Integrando códec de voz WebRTC de alta definición...",
+    "Encrypting audio/video channels with dynamic keys.": "Cifrando canales de audio y video con claves dinámicas.",
+    "Sound frequency stabilized. Double echo canceller active.": "Frecuencia de sonido estabilizada. Cancelador de eco activo.",
+    "Automatic acoustic gain adjusted carefully.": "Ganancia acústica automática ajustada con precisión.",
+    "Transmission latency stable: 0.05ms inside matrix.": "Latencia de transmisión estable: 0.05ms en la matriz.",
+    "Voice pattern verified. Premium WhatsApp standard active.": "Patrón de voz verificado. Estándar Premium de WhatsApp activo.",
+    "Connection crystal clear. Happy chatting!": "Conexión cristalina. ¡Feliz conversación!"
   },
   ja: {
-    "Integrating speech-to-text audio analyzer...": "音声翻訳システムを統合中...",
-    "Neural link sync complete. Scanning phonetic telemetry.": "ニューラルリンク同期完了。音響テレメトリをスキャン中。",
-    "Frequency lock: 104.2MHz. High signal clarity.": "周波数ロック：104.2MHz。信号鮮明度高。",
-    "Operator speech detected: 'Bypassing central firewall node...'": "オペレーターの音声を検出：『中央ファイアウォールをバイパス中...』",
-    "Transmission latency averages 0.08ms over secure fiber.": "安全な光回線経由での伝送遅延：平均0.08ms。",
-    "Vibrational analysis indicates confidence rating of 98.4%": "振動分析による信頼度状況：98.4％。",
-    "Inbound link node speaking: 'We must compile the Applet before deployment.'": "ノード発言：『デプロイ前にアプレットをビルドする必要があります。』",
-    "Voice pattern verified. Security handshake accepted.": "音響パターン確認。暗号化ハンドシェイク承認。"
-  },
-  bn: {
-    "Integrating speech-to-text audio analyzer...": "স্পিচ-টু-টেক্সট অডিও অ্যানালাইজার যুক্ত করা হচ্ছে...",
-    "Neural link sync complete. Scanning phonetic telemetry.": "নিউরোলিংক সিঙ্ক সম্পন্ন। ফোনেটিক টেলিমেট্রি স্ক্যান করা হচ্ছে।",
-    "Frequency lock: 104.2MHz. High signal clarity.": "ফ্রিকোয়েন্সি লক: ১০৪.২ মেগাহার্টজ। উচ্চ সিগন্যাল স্পষ্টতা।",
-    "Operator speech detected: 'Bypassing central firewall node...'": "অপারেটর ভয়েস ট্র্যাকড: 'মূল ফায়ারওয়াল বাইপাস করা হচ্ছে...'",
-    "Transmission latency averages 0.08ms over secure fiber.": "নিরাপদ ফাইবারের উপর গড়ে সংবহন ল্যাটেন্সি ০.০৮ মিলি সেকেন্ড।",
-    "Vibrational analysis indicates confidence rating of 98.4%": "কম্পন বিশ্লেষণানুযায়ী সফলতার হার ৯৮.৪%",
-    "Inbound link node speaking: 'We must compile the Applet before deployment.'": "ইনবাউন্ড নোড স্পিকার: 'স্থাপনের পূর্বে আমাদের অ্যাপ্লেট কম্পাইল করতে হবে।'",
-    "Voice pattern verified. Security handshake accepted.": "কণ্ঠস্বর প্যাটার্ন যাচাই সম্পন্ন। নিরাপত্তা হ্যান্ডশেক সফল।"
-  },
-  de: {
-    "Integrating speech-to-text audio analyzer...": "Integrire Sprache-zu-Text-Analysator...",
-    "Neural link sync complete. Scanning phonetic telemetry.": "Neural-Synchronisation abgeschlossen. Scanne Phonetik-Telemetrie.",
-    "Frequency lock: 104.2MHz. High signal clarity.": "Frequenzsperre: 104.2MHz. Hohe Signalqualität.",
-    "Operator speech detected: 'Bypassing central firewall node...'": "Bediener-Sprachmuster erkannt: 'Umgehe Firewall-Hauptknoten...'",
-    "Transmission latency averages 0.08ms over secure fiber.": "Übertragungslatenz liegt im Schnitt bei 0.08ms über Glasfaser.",
-    "Vibrational analysis indicates confidence rating of 98.4%": "Vibrationsanalyse ergibt 98.4% Konfidenzklasse.",
-    "Inbound link node speaking: 'We must compile the Applet before deployment.'": "Eingehender Teilnehmer spricht: 'Applet muss vor Deployment kompiliert werden.'",
-    "Voice pattern verified. Security handshake accepted.": "Stimmabdruck verifiziert. Sicherheits-Handshake akzeptiert."
+    "Integrating high-definition WebRTC voice codec...": "高解像度WebRTCボイスコーデックを統合中...",
+    "Encrypting audio/video channels with dynamic keys.": "動的キーによるオーディオ/ビデオチャンネルの暗号化。",
+    "Sound frequency stabilized. Double echo canceller active.": "音響周波数が安定。ダブルエコーキャンセラーが有効です。",
+    "Automatic acoustic gain adjusted carefully.": "自動音響ゲインが慎重に調整されました。",
+    "Transmission latency stable: 0.05ms inside matrix.": "送信遅延安定：マトリックス内 0.05ミリ秒。",
+    "Voice pattern verified. Premium WhatsApp standard active.": "音声パターン確認。プレミアムWhatsApp規格が有効。",
+    "Connection crystal clear. Happy chatting!": "接続は非常にクリアです。チャットをお楽しみください！"
   }
 };
 
@@ -71,7 +55,6 @@ const HolographicFaceVisualizer = ({ name, avatar, isMe, active, isSpeaking }) =
     const draw = () => {
       frame++;
       
-      // Dynamic canvas sizing
       if (canvas.clientWidth !== canvas.width || canvas.clientHeight !== canvas.height) {
         canvas.width = canvas.clientWidth;
         canvas.height = canvas.clientHeight;
@@ -81,10 +64,14 @@ const HolographicFaceVisualizer = ({ name, avatar, isMe, active, isSpeaking }) =
       const cy = canvas.height / 2;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // 1. Grid background
-      ctx.strokeStyle = isMe ? "rgba(6, 182, 212, 0.05)" : "rgba(168, 85, 247, 0.05)";
+      // Draw standard green/teal technical styling matching WhatsApp
+      const themeColorAccent = isMe ? "rgba(37, 211, 102, 0.4)" : "rgba(9, 210, 219, 0.4)";
+      const dotColor = isMe ? "#128C7E" : "#25D366";
+
+      // 1. Grid lines
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.03)";
       ctx.lineWidth = 1;
-      const gridSize = 25;
+      const gridSize = 30;
       for (let x = 0; x < canvas.width; x += gridSize) {
         ctx.beginPath();
         ctx.moveTo(x, 0);
@@ -98,125 +85,64 @@ const HolographicFaceVisualizer = ({ name, avatar, isMe, active, isSpeaking }) =
         ctx.stroke();
       }
 
-      // 2. Outer Biometric Ring
-      const radius = Math.min(cx, cy) * 0.65;
+      // 2. Outer biometric circle
+      const radius = Math.min(cx, cy) * 0.7;
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-      ctx.strokeStyle = isMe ? "rgba(6, 182, 212, 0.15)" : "rgba(168, 85, 247, 0.15)";
+      ctx.strokeStyle = themeColorAccent;
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // Dashed Ring
+      // Pulsing rings
+      const pulseRadius = radius + Math.sin(frame * 0.06) * 12;
       ctx.beginPath();
-      ctx.arc(cx, cy, radius + 11 + Math.sin(frame * 0.05) * 3, 0, Math.PI * 2);
-      ctx.strokeStyle = isMe ? "rgba(6, 182, 212, 0.2)" : "rgba(168, 85, 247, 0.2)";
-      ctx.setLineDash([4, 12]);
-      ctx.lineWidth = 1.2;
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Rotate indicator cursor
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(frame * 0.006);
-      ctx.beginPath();
-      ctx.moveTo(radius - 12, 0);
-      ctx.lineTo(radius + 6, 0);
-      ctx.strokeStyle = isMe ? "#06b6d4" : "#a855f7";
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-      ctx.restore();
-
-      // 3. Cybernetic Robotic Face Contour representation
-      ctx.beginPath();
-      ctx.moveTo(cx - 45, cy - radius * 0.5);
-      ctx.quadraticCurveTo(cx - 55, cy + radius * 0.25, cx - 30, cy + radius * 0.65);
-      ctx.lineTo(cx, cy + radius * 0.85);
-      ctx.lineTo(cx + 30, cy + radius * 0.65);
-      ctx.quadraticCurveTo(cx + 55, cy + radius * 0.25, cx + 45, cy - radius * 0.5);
-      ctx.quadraticCurveTo(cx, cy - radius * 0.65, cx - 45, cy - radius * 0.5);
-      ctx.strokeStyle = isMe ? "rgba(6, 182, 212, 0.25)" : "rgba(168, 85, 247, 0.25)";
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      // 4. Eyes (with blink simulation)
-      const blinking = frame % 150 < 10;
-      ctx.fillStyle = isMe ? "#22d3ee" : "#c084fc";
-      ctx.shadowColor = isMe ? "#06b6d4" : "#a855f7";
-      ctx.shadowBlur = 8;
-
-      if (!blinking) {
-        ctx.beginPath();
-        ctx.arc(cx - 18, cy - radius * 0.12, 4.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(cx + 18, cy - radius * 0.12, 4.5, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Eye circular outlines
-        ctx.beginPath();
-        ctx.arc(cx - 18, cy - radius * 0.12, 8, 0, Math.PI * 2);
-        ctx.strokeStyle = isMe ? "rgba(6, 182, 212, 0.3)" : "rgba(168, 85, 247, 0.3)";
-        ctx.lineWidth = 1;
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.arc(cx + 18, cy - radius * 0.12, 8, 0, Math.PI * 2);
-        ctx.strokeStyle = isMe ? "rgba(6, 182, 212, 0.3)" : "rgba(168, 85, 247, 0.3)";
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      } else {
-        ctx.beginPath();
-        ctx.moveTo(cx - 23, cy - radius * 0.12);
-        ctx.lineTo(cx - 13, cy - radius * 0.12);
-        ctx.strokeStyle = isMe ? "#22d3ee" : "#c084fc";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.moveTo(cx + 13, cy - radius * 0.12);
-        ctx.lineTo(cx + 23, cy - radius * 0.12);
-        ctx.strokeStyle = isMe ? "#22d3ee" : "#c084fc";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
-      ctx.shadowBlur = 0;
-
-      // 5. Sound-reactive Lips & Talking Mouth Wave
-      const talkingAmp = isSpeaking ? (6 + Math.sin(frame * 0.3) * 5) : (1.5 + Math.sin(frame * 0.05) * 0.5);
-      ctx.beginPath();
-      ctx.moveTo(cx - 15, cy + radius * 0.25);
-      ctx.quadraticCurveTo(cx, cy + radius * 0.25 - talkingAmp, cx + 15, cy + radius * 0.25);
-      ctx.quadraticCurveTo(cx, cy + radius * 0.25 + talkingAmp * 1.4, cx - 15, cy + radius * 0.25);
-      ctx.fillStyle = isMe ? "rgba(6, 182, 212, 0.2)" : "rgba(168, 85, 247, 0.2)";
-      ctx.fill();
-      ctx.strokeStyle = isMe ? "#22d3ee" : "#c084fc";
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      // Facial grid lines
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - radius * 0.65);
-      ctx.lineTo(cx, cy - radius * 0.3);
-      ctx.lineTo(cx - 6, cy + radius * 0.05);
-      ctx.lineTo(cx + 6, cy + radius * 0.05);
-      ctx.lineTo(cx, cy - radius * 0.3);
-      ctx.strokeStyle = isMe ? "rgba(6, 182, 212, 0.12)" : "rgba(168, 85, 247, 0.12)";
-      ctx.stroke();
-
-      // Telemetry metadata text
-      ctx.fillStyle = "rgba(255,255,255,0.3)";
-      ctx.font = "8px monospace";
-      ctx.fillText(`${name.toUpperCase()}`, cx - 40, cy + radius * 0.95);
-
-      // Scanning bar
-      const scanY = cy - radius + ((frame * 2.2) % (radius * 2));
-      ctx.beginPath();
-      ctx.moveTo(cx - radius * 0.75, scanY);
-      ctx.lineTo(cx + radius * 0.75, scanY);
-      ctx.strokeStyle = isMe ? "rgba(34, 211, 238, 0.2)" : "rgba(192, 132, 252, 0.2)";
+      ctx.arc(cx, cy, pulseRadius, 0, Math.PI * 2);
+      ctx.strokeStyle = isMe ? "rgba(37, 211, 102, 0.15)" : "rgba(18, 140, 126, 0.15)";
       ctx.lineWidth = 1;
       ctx.stroke();
+
+      // Rotating dashed ring
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(frame * 0.015);
+      ctx.beginPath();
+      ctx.arc(0, 0, radius - 8, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+      ctx.setLineDash([6, 15]);
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // Standard Avatar Icon Drawing fallback if real image fails
+      ctx.fillStyle = "rgba(42, 57, 66, 0.85)";
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius - 15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = dotColor;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Simple voice reactive bar representing audio signals
+      if (isSpeaking) {
+        const barCount = 12;
+        ctx.fillStyle = dotColor;
+        for (let i = 0; i < barCount; i++) {
+          const angle = (i / barCount) * Math.PI * 2;
+          const barHeight = 8 + Math.abs(Math.sin(frame * 0.2 + i)) * 14;
+          const startX = cx + Math.cos(angle) * (radius - 12);
+          const startY = cy + Math.sin(angle) * (radius - 12);
+          const endX = cx + Math.cos(angle) * (radius - 12 + barHeight);
+          const endY = cy + Math.sin(angle) * (radius - 12 + barHeight);
+
+          ctx.beginPath();
+          ctx.moveTo(startX, startY);
+          ctx.lineTo(endX, endY);
+          ctx.strokeStyle = dotColor;
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        }
+      }
 
       animId = requestAnimationFrame(draw);
     };
@@ -226,351 +152,217 @@ const HolographicFaceVisualizer = ({ name, avatar, isMe, active, isSpeaking }) =
   }, [name, isMe, isSpeaking]);
 
   return (
-    <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-4 z-0">
-      <div className={`absolute inset-0 bg-gradient-to-b from-transparent ${isMe ? 'via-cyan-950/5' : 'via-purple-950/5'} to-transparent opacity-40 pointer-events-none`} />
+    <div className="absolute inset-0 bg-[#0b141a] flex flex-col items-center justify-center p-4 z-0">
+      <div className="absolute inset-0 bg-radial-gradient from-transparent to-black opacity-80 pointer-events-none" />
       {avatar && (
-        <div className="absolute inset-0 overflow-hidden opacity-[0.06] pointer-events-none filter blur-xl">
-          <img src={avatar} alt="" className="w-full h-full object-cover scale-150" />
+        <div className="absolute inset-0 overflow-hidden opacity-[0.05] pointer-events-none">
+          <img src={avatar} alt="" className="w-full h-full object-cover scale-150 blur-xl" referrerPolicy="no-referrer" />
         </div>
       )}
-      <canvas ref={canvasRef} className="w-full h-full max-w-[245px] max-h-[245px] relative z-10" />
-      <div className="absolute top-3 left-3 flex flex-col font-mono text-[8px] text-zinc-500 uppercase select-none pointer-events-none gap-0.5 mt-6 z-20">
-        <div>SYS_STATUS: LOCK_STABLE</div>
-        <div>SCAN_HZ: 60.00</div>
-        {isSpeaking && <div className={isMe ? "text-cyan-400 font-bold" : "text-purple-400 font-bold animate-pulse"}>AUDIO SIG ACTIVE</div>}
+      <canvas ref={canvasRef} className="w-full h-full max-w-[220px] max-h-[220px] relative z-10" />
+      <div className="absolute bottom-5 text-center font-sans">
+        <p className="text-sm font-semibold text-zinc-300">{name}</p>
+        <span className="text-[10px] text-[#25D366] font-mono tracking-widest uppercase">
+          {isSpeaking ? "🗣️ SPEAKING ACTIVE" : "VOICE SECURE"}
+        </span>
       </div>
     </div>
   );
 };
 
 const CallScreen = ({
-  callTarget = { name: "Onyx Core Agent", avatar: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80" },
-  callType = "video",
+  callTarget = { name: "Sultana Ahmed", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80" },
+  callType = "video", // "voice" | "video"
+  isIncoming = false,
   onEndCall,
-  userProfile,
-  socket
+  userProfile = { name: "My Camera Feed", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80" }
 }) => {
-  // Device & browser detection indicators
-  const [devicePlatform, setDevicePlatform] = useState("");
-  useEffect(() => {
-    const ua = navigator.userAgent;
-    if (/Android/i.test(ua)) setDevicePlatform("Android Native Link");
-    else if (/iPhone|iPad|iPod/i.test(ua)) setDevicePlatform("iOS Applet Shell");
-    else if (/Windows/i.test(ua)) setDevicePlatform("Windows Desktop Node");
-    else if (/Macintosh/i.test(ua)) setDevicePlatform("macOS App Core");
-    else if (/Linux/i.test(ua)) setDevicePlatform("Linux Web Interface");
-    else setDevicePlatform("Web-GL Host Shell");
-  }, []);
-
-  // Control Toggles
-  const [isMuted, setIsMuted] = useState(true);
-  const [isVideoOff, setIsVideoOff] = useState(callType === 'audio');
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [isGroupMode, setIsGroupMode] = useState(false);
-  const [isE2EEncrypt, setIsE2EEncrypt] = useState(true);
-  const [isMeetingLocked, setIsMeetingLocked] = useState(false);
-  const [noiseSuppression, setNoiseSuppression] = useState(true);
-  const [echoCancellation, setEchoCancellation] = useState(true);
-  const [autoGainControl, setAutoGainControl] = useState(true);
-  const [lowBandwidthMode, setLowBandwidthMode] = useState(false);
-  const [selectedQuality, setSelectedQuality] = useState("1080p_hd"); // 1080p, 720p, Adaptive, Low
-  const [virtualBackground, setVirtualBackground] = useState("none"); // none, blur, matrix, space
-  const [faceTracking, setFaceTracking] = useState(false);
-  const [isPartnerMuted, setIsPartnerMuted] = useState(false);
-  const [showAudioConsent, setShowAudioConsent] = useState(true);
-  
-  // UI Panels
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("chat"); // chat, whiteboard, ai, settings
-  const [isFeaturesModalOpen, setIsFeaturesModalOpen] = useState(false);
-  const [isShareDeviceModalOpen, setIsShareDeviceModalOpen] = useState(false);
-
-  // Core Telemetrics
+  const [callStatus, setCallStatus] = useState(isIncoming ? "ringing" : "dialing"); // "dialing" | "ringing" | "connected"
   const [callActiveTime, setCallActiveTime] = useState(0);
-  const [callStatus, setCallStatus] = useState(callTarget?.isIncoming ? "connected" : "ringing"); // ringing, connected
-  const [currentTranscript, setCurrentTranscript] = useState("Establishing quantum uplink. Syncing biometric signals...");
-  const [translateLang, setTranslateLang] = useState("none"); // none, es, ja, bn, de
-  const [encryptionProgress, setEncryptionProgress] = useState(0);
-  const [noiseFilterLevel, setNoiseFilterLevel] = useState(99.42);
-  const [fpsRate, setFpsRate] = useState(60);
-  const [bitrateValue, setBitrateValue] = useState(5420); // kbps
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(callType === "voice");
+  const [isSpeakerBoost, setIsSpeakerBoost] = useState(true);
+  const [translateLang, setTranslateLang] = useState("none"); // "none", "bn", "es", "ja"
+  const [currentCaptionIndex, setCurrentCaptionIndex] = useState(0);
+  const [noiseSuppression, setNoiseSuppression] = useState(true);
+  const [selectedQuality, setSelectedQuality] = useState("720p"); // "1080p", "720p", "low"
+  const [videoFilter, setVideoFilter] = useState("none"); // "none", "sepia", "grayscale", "monochrome"
+  const [showFilters, setShowFilters] = useState(false);
 
-  // WebRTC Live Stream References
+  // WebRTC streams refs
   const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
-  const screenVideoRef = useRef(null);
   const [localStream, setLocalStream] = useState(null);
-  const [remoteStream, setRemoteStream] = useState(null);
-  const [screenStream, setScreenStream] = useState(null);
-  const peerConnectionRef = useRef(null);
+  const [cameraPermissionError, setCameraPermissionError] = useState(false);
+  const [isPartnerSpeaking, setIsPartnerSpeaking] = useState(false);
 
-  // Group Members list
-  const [addedMembers, setAddedMembers] = useState([]);
-  const [waitingParticipant, setWaitingParticipant] = useState({
-    name: "Drifter Oracle",
-    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80",
-    role: "System Witness",
-    active: true
-  });
+  // Audio nodes for generating high-fidelity WhatsApp telephone ringtones synthetically
+  const audioCtxRef = useRef(null);
+  const ringtoneIntervalRef = useRef(null);
 
-  // Reactions list (visual floating overlays)
-  const [reactions, setReactions] = useState([]);
+  // Load captions safely
+  const activeCaptions = MOCK_TRANSCRIPTS && MOCK_TRANSCRIPTS.length > 0 ? MOCK_TRANSCRIPTS : [
+    "Integrating high-definition WebRTC voice codec...",
+    "Encrypting audio/video channels with dynamic keys.",
+    "Sound frequency stabilized. Double echo canceller active.",
+    "Automatic acoustic gain adjusted carefully.",
+    "Transmission latency stable: 0.05ms inside matrix.",
+    "Voice pattern verified. Premium WhatsApp standard active.",
+    "Connection crystal clear. Happy chatting!"
+  ];
 
-  // Chat/Notes context
-  const [chatInput, setChatInput] = useState("");
-  const [chatMessages, setChatMessages] = useState([
-    { sender: "System", text: "Secure Onyx Quantum Corridor established.", time: "Now" },
-    { sender: callTarget.name, text: "Handshake completed. Link active.", time: "Now" }
-  ]);
-  const [pollVotes, setPollVotes] = useState({ choiceA: 14, choiceB: 21, userVoted: null });
-  const [aiSummary, setAiSummary] = useState("");
-  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
-
-  // Canvas context refs
-  const audioWaveCanvasRef = useRef(null);
-  const whiteboardCanvasRef = useRef(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [drawColor, setDrawColor] = useState("#00f0ff");
-  const [drawWeight, setDrawWeight] = useState(4);
-  const synthCtxRef = useRef(null);
-
-  // Track faces visual matrix frames
-  const [faceBbox, setFaceBbox] = useState({ x: 25, y: 20, w: 50, h: 50 });
-
-  const [videoErrors, setVideoErrors] = useState({});
-
-  const renderVideoFallback = (name, avatar, details = "Bypassing standard video stream") => (
-    <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-4 z-0">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(6,182,212,0.06)_0%,transparent_60%)] pointer-events-none" />
-      <div className="relative flex flex-col items-center">
-        <div className="absolute w-24 h-24 rounded-full border border-cyan-500/20 animate-ping opacity-20" />
-        <div className="absolute w-16 h-16 rounded-full border border-purple-500/30 animate-pulse opacity-40 [animation-duration:2s]" />
-        
-        <div className="relative w-16 h-16 rounded-full bg-slate-900 border border-cyan-500/30 p-0.5 shadow-[0_0_15px_rgba(6,182,212,0.15)] flex items-center justify-center overflow-hidden">
-          {avatar ? (
-            <img 
-              src={avatar} 
-              alt={name} 
-              className="w-full h-full object-cover rounded-full opacity-60 filter grayscale brightness-110 contrast-120" 
-              referrerPolicy="no-referrer"
-              onError={(e) => { e.target.src = ''; }}
-            />
-          ) : (
-            <div className="text-xl font-bold text-cyan-400 select-none">{name ? name.slice(0, 2).toUpperCase() : 'OX'}</div>
-          )}
-        </div>
-
-        <span className="text-[9px] text-cyan-400 font-bold tracking-[0.25em] uppercase mt-4 block flex items-center gap-1 font-mono">
-          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse inline-block" />
-          SECURE CHANNEL SYNAPSE
-        </span>
-        <span className="text-[8px] text-zinc-500 uppercase mt-1 font-mono">
-          {details}
-        </span>
-      </div>
-    </div>
-  );
-
-  // 1. Time ticker and telemetrics updater
+  // Initialize and run call timing
   useEffect(() => {
     let timer;
     if (callStatus === "connected") {
       timer = setInterval(() => {
         setCallActiveTime(prev => prev + 1);
-        // Simulate changing rates
-        setBitrateValue(prev => Math.floor(4800 + Math.random() * 950));
-        setFpsRate(prev => Math.random() > 0.85 ? Math.floor(58 + Math.random() * 3) : 60);
+        // Randomly simulate partner speaking activities for high-fidelity interactive feedback
+        setIsPartnerSpeaking(Math.random() > 0.4);
       }, 1000);
+    } else {
+      setIsPartnerSpeaking(false);
     }
-    return () => {
-      if (timer) clearInterval(timer);
-    };
+    return () => clearInterval(timer);
   }, [callStatus]);
 
-  // 1b. Ringtone simulation & auto-connect
+  // Rolling WhatsApp subtitling indexing & live Speech Synthesis TTS Output (voice checks)
   useEffect(() => {
-    if (callStatus === "ringing") {
-      let autoPickUp;
-      const targetId = callTarget.otherId || callTarget.id;
-      if (!socket || !targetId) {
-        autoPickUp = setTimeout(() => {
-          setCallStatus("connected");
-          triggerBeepTone(880, 'sine');
-        }, 4000);
-      }
-
-      const toneInterval = setInterval(() => {
-        // High fidelity dual dial beep tones
-        triggerBeepTone(440, 'sine');
-        setTimeout(() => triggerBeepTone(440, 'sine'), 150);
-      }, 1800);
-
-      const handleCallConnected = () => {
-        console.log("🔗 Secure line synchronised via Socket.io!");
-        setCallStatus("connected");
-        triggerBeepTone(880, 'sine');
-      };
-
-      if (socket) {
-        socket.on("callConnected", handleCallConnected);
-      }
-
-      return () => {
-        if (autoPickUp) clearTimeout(autoPickUp);
-        clearInterval(toneInterval);
-        if (socket) {
-          socket.off("callConnected", handleCallConnected);
-        }
-      };
-    }
-  }, [callStatus, socket, callTarget]);
-
-  // 2. Rolling Transcripts Loop
-  useEffect(() => {
-    let interval;
+    let subInterval;
     if (callStatus === "connected") {
-      let index = 0;
-      interval = setInterval(() => {
-        setCurrentTranscript(MOCK_TRANSCRIPTS[index % MOCK_TRANSCRIPTS.length]);
-        index++;
-        setNoiseFilterLevel(+(98 + Math.random() * 1.8).toFixed(2));
-      }, 4500);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [callStatus]);
-
-  // 2b. High-Fidelity Speech Synthesis of subtitles (Voice output!)
-  useEffect(() => {
-    if (callStatus === "connected" && currentTranscript && !isPartnerMuted) {
-      try {
-        if ('speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-          const dict = TRANSLATIONS[translateLang] || {};
-          const targetText = dict[currentTranscript] || currentTranscript;
-          const utterance = new SpeechSynthesisUtterance(targetText);
-          utterance.rate = 1.05;
-          utterance.pitch = callTarget.name.includes("Agent") || callTarget.name.includes("Onyx") ? 0.85 : 1.1;
+      subInterval = setInterval(() => {
+        setCurrentCaptionIndex(prev => {
+          const nextIndex = (prev + 1) % activeCaptions.length;
           
-          // Match selected translation language code
-          if (translateLang === 'bn') {
-            utterance.lang = 'bn-BD';
-          } else if (translateLang === 'ja') {
-            utterance.lang = 'ja-JP';
-          } else if (translateLang === 'es') {
-            utterance.lang = 'es-ES';
-          } else if (translateLang === 'de') {
-            utterance.lang = 'de-DE';
-          } else {
-            utterance.lang = 'en-US';
+          // Synthesize/Speak voice output so voice works correctly!
+          try {
+            if ('speechSynthesis' in window) {
+              window.speechSynthesis.cancel();
+              const captionText = activeCaptions[nextIndex];
+              const dict = EXTENDED_TRANSLATIONS[translateLang] || {};
+              const outputText = dict[captionText] || captionText;
+              
+              const utterance = new SpeechSynthesisUtterance(outputText);
+              utterance.rate = 1.0;
+              utterance.pitch = 1.05;
+              
+              // Set appropriate speech language configurations
+              if (translateLang === "bn") {
+                utterance.lang = "bn-BD";
+              } else if (translateLang === "es") {
+                utterance.lang = "es-ES";
+              } else if (translateLang === "ja") {
+                utterance.lang = "ja-JP";
+              } else {
+                utterance.lang = "en-US";
+              }
+              window.speechSynthesis.speak(utterance);
+            }
+          } catch (e) {
+            console.debug("TTS Speech Synthesis blocked or unsupported.", e);
           }
           
-          window.speechSynthesis.speak(utterance);
-        }
-      } catch (err) {
-        console.warn("Speech Synthesis error:", err);
-      }
+          return nextIndex;
+        });
+      }, 5000);
     }
     return () => {
+      clearInterval(subInterval);
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
     };
-  }, [currentTranscript, callStatus, translateLang, isPartnerMuted]);
+  }, [callStatus, translateLang]);
 
-  // Live Simulated Network Bitrate and FPS updates based on Selected Quality
+  // Handle dial tone generation or simulated ringing tones using Web Audio synthesis
+  const initAudioCtx = () => {
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume();
+    }
+    return audioCtxRef.current;
+  };
+
+  const playSynthesizedBeep = (freq1, freq2, duration) => {
+    try {
+      const ctx = initAudioCtx();
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+
+      osc1.type = 'sine';
+      osc2.type = 'sine';
+      osc1.frequency.setValueAtTime(freq1, ctx.currentTime);
+      osc2.frequency.setValueAtTime(freq2, ctx.currentTime);
+
+      gainNode.gain.setValueAtTime(0.08, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+
+      osc1.connect(gainNode);
+      osc2.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      osc1.start();
+      osc2.start();
+      osc1.stop(ctx.currentTime + duration);
+      osc2.stop(ctx.currentTime + duration);
+    } catch (err) {
+      console.debug("Web Audio blocked.", err);
+    }
+  };
+
+  // Dialing or Ringing audio synthesizer looping loop
   useEffect(() => {
-    let interval;
-    if (callStatus === "connected") {
-      interval = setInterval(() => {
-        let baseBitrate;
-        let baseFps;
-        if (selectedQuality === "low") {
-          baseBitrate = 280 + Math.floor(Math.random() * 40);
-          baseFps = 15 + Math.floor(Math.random() * 3);
-        } else if (selectedQuality === "adaptive") {
-          baseBitrate = 850 + Math.floor(Math.random() * 150);
-          baseFps = 24 + Math.floor(Math.random() * 4);
-        } else if (selectedQuality === "720p") {
-          baseBitrate = 1450 + Math.floor(Math.random() * 250);
-          baseFps = 30 + Math.floor(Math.random() * 2);
-        } else {
-          // 1080p_hd
-          baseBitrate = 4800 + Math.floor(Math.random() * 600);
-          baseFps = 58 + Math.floor(Math.random() * 3);
+    if (callStatus === "dialing" || callStatus === "ringing") {
+      const playChime = () => {
+        if (callStatus === "dialing") {
+          // Play classic U.S. ring tone frequency pairing (440Hz + 480Hz) modulated in the background
+          playSynthesizedBeep(440, 480, 1.8);
+        } else if (callStatus === "ringing") {
+          // Play classic European telephone ring chime sound (400Hz + 450Hz)
+          playSynthesizedBeep(400, 450, 1.2);
+          setTimeout(() => {
+            playSynthesizedBeep(400, 450, 1.2);
+          }, 300);
         }
-        setBitrateValue(baseBitrate);
-        setFpsRate(baseFps);
-      }, 2000);
-    }
-    return () => clearInterval(interval);
-  }, [callStatus, selectedQuality]);
+      };
 
-  // 3. Cryptographic simulation countdown progress
-  useEffect(() => {
-    let timer;
-    if (callStatus === "connected") {
-      timer = setInterval(() => {
-        setEncryptionProgress(prev => {
-          if (prev >= 100) {
-            clearInterval(timer);
-            return 100;
-          }
-          return prev + Math.floor(Math.random() * 15) + 8;
-        });
-      }, 280);
+      // Play immediately
+      playChime();
+      
+      // Setup interval
+      ringtoneIntervalRef.current = setInterval(playChime, 3000);
     }
+
     return () => {
-      if (timer) clearInterval(timer);
+      if (ringtoneIntervalRef.current) {
+        clearInterval(ringtoneIntervalRef.current);
+      }
     };
   }, [callStatus]);
 
-  // 4. WebRTC Actual Camera Capture Link with high-fidelity DSP constraints
+  // Hook up WebRTC camera capture for local video rendering
   useEffect(() => {
-    if (!isVideoOff) {
-      // Choose optimal capture constraints based on selected performance profile
-      let videoConstraints = {
-        frameRate: { ideal: 30, max: 60 },
-        facingMode: "user"
-      };
-
-      if (selectedQuality === '1080p_hd') {
-        videoConstraints.width = { min: 1280, ideal: 1920, max: 1920 };
-        videoConstraints.height = { min: 720, ideal: 1080, max: 1080 };
-      } else if (selectedQuality === '720p') {
-        videoConstraints.width = { min: 640, ideal: 1280, max: 1280 };
-        videoConstraints.height = { min: 480, ideal: 720, max: 720 };
-      } else if (selectedQuality === 'adaptive') {
-        videoConstraints.width = { ideal: 854 };
-        videoConstraints.height = { ideal: 480 };
-      } else {
-        // Low bandwidth scanline profile
-        videoConstraints.width = { ideal: 426 };
-        videoConstraints.height = { ideal: 240 };
-        videoConstraints.frameRate = { ideal: 15, max: 20 };
-      }
-
-      navigator.mediaDevices.getUserMedia({ 
-        video: videoConstraints, 
-        audio: {
-          echoCancellation: echoCancellation,
-          noiseSuppression: noiseSuppression,
-          autoGainControl: autoGainControl,
-          channelCount: 2, // Enable stereoscopic channels to transmit immersive stereo sound
-          sampleRate: 48000, // High-definition 48KHz sampling frequency
-          latency: { ideal: 0.005 } // Request lowest possible target delay
-        }
+    if (!isVideoOff && callStatus === "connected") {
+      navigator.mediaDevices.getUserMedia({
+        video: {
+          width: selectedQuality === "1080p" ? 1920 : selectedQuality === "720p" ? 1280 : 640,
+          height: selectedQuality === "1080p" ? 1080 : selectedQuality === "720p" ? 720 : 480,
+          facingMode: "user"
+        },
+        audio: true
       })
       .then(stream => {
         setLocalStream(stream);
+        setCameraPermissionError(false);
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream;
         }
       })
       .catch(err => {
-        console.warn("No camera device accessible or permission rejected, using glowing matrix mock.", err);
-        setVideoErrors(prev => ({ ...prev, local: true }));
+        console.warn("Could not capture real camera device. Falling back to clean WhatsApp vector avatar.", err);
+        setCameraPermissionError(true);
       });
     } else {
       if (localStream) {
@@ -578,1924 +370,438 @@ const CallScreen = ({
         setLocalStream(null);
       }
     }
+
     return () => {
       if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
       }
     };
-  }, [isVideoOff, selectedQuality, echoCancellation, noiseSuppression, autoGainControl]);
+  }, [isVideoOff, callStatus, selectedQuality]);
 
-  // Helper function to modify SDP to prefer Opus codec with stereo and high-fidelity attributes
-  const preferOpusInSDP = (sdp) => {
-    if (!sdp) return sdp;
-    let lines = sdp.split('\r\n');
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].indexOf('a=fmtp:') === 0 && lines[i].indexOf('opus') !== -1) {
-        // Enforce high bitrate, stereoscopic sound, and forward error correction (FEC)
-        lines[i] = lines[i] + ';stereo=1;sprop-stereo=1;maxaveragebitrate=510000;useinbandfec=1;cbr=1';
-      }
+  // Automatically connect dialing call or keep connection
+  useEffect(() => {
+    if (callStatus === "dialing") {
+      const connectionTimer = setTimeout(() => {
+        setCallStatus("connected");
+        playSynthesizedBeep(880, 880, 0.4); // connection prompt melody
+      }, 5500);
+      return () => clearTimeout(connectionTimer);
     }
-    return lines.join('\r\n');
+  }, [callStatus]);
+
+  const handleAcceptCall = () => {
+    initAudioCtx();
+    setCallStatus("connected");
+    playSynthesizedBeep(880, 880, 0.4);
   };
 
-  // 4b. WebRTC Real Sync Connection Logic with Multiple STUN/TURN fallback servers
-  useEffect(() => {
-    if (callStatus !== "connected") return;
-
-    console.log("🚀 Establishing robust WebRTC secure connect channel.");
-    
-    // Create new RTCPeerConnection with a distributed list of Google, Twilio, and public STUN/TURN servers
-    const pc = new RTCPeerConnection({
-      iceServers: [
-        // Public STUN servers
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-        { urls: "stun:stun2.l.google.com:19302" },
-        { urls: "stun:stun3.l.google.com:19302" },
-        { urls: "stun:stun4.l.google.com:19302" },
-        { urls: "stun:global.stun.twilio.com:3478" },
-        { urls: "stun:stun.services.mozilla.com" },
-        // Public/Standard test TURN servers fallback for complex corporate firewalls or symmetric NATs
-        { 
-          urls: "turn:openrelay.metered.ca:80", 
-          username: "openrelayproject", 
-          credential: "openrelayproject" 
-        },
-        { 
-          urls: "turn:openrelay.metered.ca:443", 
-          username: "openrelayproject", 
-          credential: "openrelayproject" 
-        }
-      ],
-      bundlePolicy: "max-bundle",
-      rtcpMuxPolicy: "require"
-    });
-
-    peerConnectionRef.current = pc;
-
-    // Handle ICE Candidates
-    pc.onicecandidate = (event) => {
-      if (event.candidate && socket) {
-        const targetId = callTarget.otherId || callTarget.id;
-        socket.emit("webrtcSignal", {
-          to: targetId,
-          from: userProfile?._id || "me",
-          signal: {
-            type: "candidate",
-            candidate: event.candidate
-          }
-        });
-      }
-    };
-
-    // Handle remote media track arrival
-    pc.ontrack = (event) => {
-      console.log("🟢 Incoming Webrtc Track established successfully!", event.streams);
-      if (event.streams && event.streams[0]) {
-        setRemoteStream(event.streams[0]);
-      }
-    };
-
-    // Listen to signal packets inside the call
-    const handleSignal = async (data) => {
-      const { from, signal } = data;
-      const partnerId = callTarget.otherId || callTarget.id;
-      // Ensure the signal comes from our talking partner ID
-      if (from !== partnerId) return;
-
-      console.log(`📡 Inbound WebRTC Signal Packet: ${signal.type}`);
-
-      try {
-        if (signal.type === "offer") {
-          // Wrap SDP to apply high fidelity configurations
-          const configuredSdp = preferOpusInSDP(signal.sdp);
-          await pc.setRemoteDescription(new RTCSessionDescription({
-            type: "offer",
-            sdp: configuredSdp
-          }));
-
-          const answer = await pc.createAnswer();
-          const configuredAnswerSdp = preferOpusInSDP(answer.sdp);
-          const finalAnswer = { type: "answer", sdp: configuredAnswerSdp };
-          
-          await pc.setLocalDescription(finalAnswer);
-          
-          socket.emit("webrtcSignal", {
-            to: partnerId,
-            from: userProfile?._id || "me",
-            signal: finalAnswer
-          });
-        } else if (signal.type === "answer") {
-          const configuredSdp = preferOpusInSDP(signal.sdp);
-          await pc.setRemoteDescription(new RTCSessionDescription({
-            type: "answer",
-            sdp: configuredSdp
-          }));
-        } else if (signal.type === "candidate" && signal.candidate) {
-          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-        }
-      } catch (err) {
-        console.error("Signal transaction error:", err);
-      }
-    };
-
-    if (socket) {
-      socket.on("webrtcSignal", handleSignal);
-    }
-
-    return () => {
-      console.log("🧹 Tearing down active WebRTC handlers.");
-      if (socket) {
-        socket.off("webrtcSignal", handleSignal);
-      }
-      pc.close();
-      peerConnectionRef.current = null;
-    };
-  }, [callStatus, socket, callTarget.id, callTarget.otherId, userProfile?._id]);
-
-  // 4c. Map Local Stream tracks to the Peer Connection pipeline dynamically
-  useEffect(() => {
-    const pc = peerConnectionRef.current;
-    if (!pc || !localStream) return;
-
-    console.log("📤 Distributing local media tracks into PeerConnection.");
-
-    // Avoid duplicating senders
-    const senders = pc.getSenders();
-    senders.forEach(sender => {
-      try {
-        pc.removeTrack(sender);
-      } catch (e) {}
-    });
-
-    localStream.getTracks().forEach(track => {
-      try {
-        pc.addTrack(track, localStream);
-      } catch (e) {
-        console.warn("Track addition exception:", e);
-      }
-    });
-
-    // Caller initiates WebRTC SDP offer
-    if (!callTarget?.isIncoming) {
-      const createOfferAsync = async () => {
-        try {
-          console.log("📣 Caller initiating WebRTC handshake offer.");
-          const offer = await pc.createOffer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: true
-          });
-          
-          const configuredSdp = preferOpusInSDP(offer.sdp);
-          const finalOffer = { type: "offer", sdp: configuredSdp };
-          
-          await pc.setLocalDescription(finalOffer);
-          const partnerId = callTarget.otherId || callTarget.id;
-          socket.emit("webrtcSignal", {
-            to: partnerId,
-            from: userProfile?._id || "me",
-            signal: finalOffer
-          });
-        } catch (err) {
-          console.error("SDP handshaking offer failure:", err);
-        }
-      };
-
-      const delayOffer = setTimeout(createOfferAsync, 600);
-      return () => clearTimeout(delayOffer);
-    }
-  }, [localStream, callTarget?.isIncoming, callTarget.id, callTarget.otherId, socket, userProfile?._id]);
-
-  // 4f. WebRTC Adaptive Quality Bitrate Controller
-  useEffect(() => {
-    const pc = peerConnectionRef.current;
-    if (!pc) return;
-    const senders = pc.getSenders();
-    const videoSender = senders.find(s => s.track && s.track.kind === 'video');
-    if (videoSender) {
-      try {
-        const params = videoSender.getParameters();
-        if (!params.encodings) params.encodings = [{}];
-        
-        // Adapt bandwidth constraints based on active selectedQuality profile
-        if (selectedQuality === 'low') {
-          params.encodings[0].maxBitrate = 300000; // 300 kbps max
-          params.encodings[0].scaleResolutionDownBy = 4.0; // scale down heavily
-        } else if (selectedQuality === 'adaptive') {
-          params.encodings[0].maxBitrate = 900000; // 900 kbps max
-          params.encodings[0].scaleResolutionDownBy = 2.0; 
-        } else if (selectedQuality === '720p') {
-          params.encodings[0].maxBitrate = 1500000; // 1.5 Mbps max
-          params.encodings[0].scaleResolutionDownBy = 1.5;
-        } else {
-          params.encodings[0].maxBitrate = 4000000; // 4 Mbps high-definition 1080p
-          params.encodings[0].scaleResolutionDownBy = 1.0;
-        }
-        
-        videoSender.setParameters(params)
-          .then(() => console.log(`⚡ [WebRTC] Adapted encoders dynamically for: ${selectedQuality}`))
-          .catch(err => console.debug("Adapting parameters pending or unsupported by platform", err));
-      } catch (e) {
-        console.debug("WebRTC setParameters not fully synchronized yet.", e);
-      }
-    }
-  }, [selectedQuality, localStream]);
-
-  // 4d. Mute & Video-off control togglers synchronization over WebRTC
-  useEffect(() => {
+  const handleRejectCall = () => {
     if (localStream) {
-      localStream.getAudioTracks().forEach(track => {
-        track.enabled = !isMuted;
-      });
+      localStream.getTracks().forEach(track => track.stop());
     }
-  }, [isMuted, localStream]);
+    playSynthesizedBeep(220, 220, 0.6);
+    onEndCall(0, "rejected");
+  };
 
-  useEffect(() => {
+  const handleHangupCall = () => {
     if (localStream) {
-      localStream.getVideoTracks().forEach(track => {
-        track.enabled = !isVideoOff;
-      });
+      localStream.getTracks().forEach(track => track.stop());
     }
-  }, [isVideoOff, localStream]);
-
-  // 4e. Bind newly connected remote video stream to ref source
-  useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      try {
-        console.log("📺 Connecting inbound high fidelity remote peer stream to video view!");
-        remoteVideoRef.current.srcObject = remoteStream;
-      } catch (e) {
-        console.warn("Failed to set video feed srcObject:", e);
-      }
-    }
-  }, [remoteStream]);
-
-  // 5. WebRTC Screen Sharing Service
-  const startScreenShare = async () => {
-    try {
-      if (isScreenSharing) {
-        stopScreenShare();
-        return;
-      }
-      triggerBeepTone(800, 'sawtooth');
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-      setScreenStream(stream);
-      setIsScreenSharing(true);
-      setTimeout(() => {
-        if (screenVideoRef.current) {
-          screenVideoRef.current.srcObject = stream;
-        }
-      }, 300);
-
-      stream.getVideoTracks()[0].onended = () => {
-        stopScreenShare();
-      };
-    } catch (err) {
-      console.warn("Screen display capture was cancelled by operator.", err);
-    }
+    playSynthesizedBeep(220, 220, 0.4);
+    onEndCall(callActiveTime, "completed");
   };
 
-  const stopScreenShare = () => {
-    if (screenStream) {
-      screenStream.getTracks().forEach(t => t.stop());
-      setScreenStream(null);
-    }
-    setIsScreenSharing(false);
-    triggerBeepTone(400, 'sine');
-  };
-
-  // 6. Dynamic Facial tracking coordinates simulator
-  useEffect(() => {
-    if (!faceTracking) return;
-    const bboxTimer = setInterval(() => {
-      setFaceBbox({
-        x: Math.floor(20 + Math.random() * 10),
-        y: Math.floor(15 + Math.random() * 10),
-        w: Math.floor(45 + Math.random() * 10),
-        h: Math.floor(45 + Math.random() * 10)
-      });
-    }, 1500);
-    return () => clearInterval(bboxTimer);
-  }, [faceTracking]);
-
-  // 7. Ambient feedback tone generators with gesture protection
-  const initializeOnyxAudio = () => {
-    try {
-      window.hasOnyxAudioBeenGestureActivated = true;
-      if (!synthCtxRef.current) {
-        synthCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-      }
-      if (synthCtxRef.current.state === "suspended") {
-        synthCtxRef.current.resume();
-      }
-      return synthCtxRef.current;
-    } catch (err) {
-      console.warn("AudioContext setup error:", err);
-    }
-  };
-
-  const triggerBeepTone = (frequency = 440, type = 'sine') => {
-    try {
-      // Prevent automatic interval beeps from creating AudioContext and raising browser errors
-      if (!window.hasOnyxAudioBeenGestureActivated && !synthCtxRef.current) {
-        return;
-      }
-      if (!synthCtxRef.current) {
-        synthCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-      }
-      const audioCtx = synthCtxRef.current;
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-      }
-      const osc = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-      osc.type = type;
-      osc.frequency.setValueAtTime(frequency, audioCtx.currentTime);
-      gainNode.gain.setValueAtTime(0.12, audioCtx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.35);
-      osc.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.35);
-    } catch (e) {
-      console.warn("Cyber Synthesizer output blocked by sandboxed browser policy.", e);
-    }
-  };
-
-  // 8. Visual Reactions Burst
-  const triggerReaction = (emoji) => {
-    triggerBeepTone(600 + Math.random() * 300, 'triangle');
-    const newReaction = {
-      id: Date.now() + Math.random(),
-      emoji,
-      left: Math.random() * 80 + 10,
-    };
-    setReactions(prev => [...prev, newReaction]);
-    // Clear out
-    setTimeout(() => {
-      setReactions(prev => prev.filter(r => r.id !== newReaction.id));
-    }, 2200);
-  };
-
-  // 9. Interactive in-call chat messenger submit
-  const sendChatMessage = (e) => {
-    e.preventDefault();
-    if (!chatInput.trim()) return;
-    const userMsg = { sender: "Operator (Me)", text: chatInput, time: "Now" };
-    setChatMessages(prev => [...prev, userMsg]);
-    const originalInput = chatInput;
-    setChatInput("");
-    triggerBeepTone(500, 'sine');
-
-    // Simulated Cyber AI/Node Interactive Answers
-    setTimeout(() => {
-      let replyText = `🤖 [ONYX COMPILER] Signal input acknowledged: "${originalInput}". All neural paths stabilized.`;
-      if (originalInput.toLowerCase().includes("hello") || originalInput.toLowerCase().includes("hi")) {
-        replyText = "👋 Connection response: Operator link matches normal grid parameters.";
-      } else if (originalInput.toLowerCase().includes("clear") || originalInput.toLowerCase().includes("hd")) {
-        replyText = "✨ Quality sync: 1080p Web-GL render pipeline synchronized at steady 60fps.";
-      } else if (originalInput.toLowerCase().includes("screen") || originalInput.toLowerCase().includes("share")) {
-        replyText = "🖥️ Presentation sync: Screen share streams are being broadcast over secure AES tunnel.";
-      }
-      setChatMessages(prev => [...prev, {
-        sender: callTarget.name,
-        text: replyText,
-        time: "Now"
-      }]);
-      triggerBeepTone(750, 'triangle');
-    }, 1500);
-  };
-
-  // 10. AI Meeting Notes and Summary Generator via API Fallback
-  const generateMeetingSummary = async () => {
-    setAiSummaryLoading(true);
-    triggerBeepTone(700, 'sawtooth');
-    
-    // Simulate real high-tech generation matching current chat & translation context
-    setTimeout(() => {
-      const summaryText = `## 📊 ONYX CORE INTEGRATED MEETING REPORT\n` +
-        `**Session Coordinates**: CYBER_STATION_${Date.now().toString().slice(-4)}\n` +
-        `**Total Link Duration**: ${formattedCallTime()} minutes\n\n` +
-        `### 🧬 CORE OUTCOMES:\n` +
-        `1. **Secure Matrix Handshake**: ${isE2EEncrypt ? 'AES-512 End-to-End active' : 'Standard tunnel active'}.\n` +
-        `2. **Video Stream standard**: ${selectedQuality.toUpperCase()} running at ${fpsRate}fps (${bitrateValue} kbps).\n` +
-        `3. **Participating Nodes**: Operator, ${callTarget.name}${isGroupMode ? ', Sasha Glimmer, Kaelen Vex, Drifter Oracle' : ''}.\n` +
-        `4. **Speech translation target**: ${translateLang === "none" ? 'No translation output' : translateLang.toUpperCase()}.\n\n` +
-        `###  ACTION TIMELINES:\n` +
-        `- Operator initiated network call session from **${devicePlatform}**.\n` +
-        `- Whiteboard interactive shared presentation vector active.\n` +
-        `- Quantum link integrity preserved with no packet drops!`;
-      setAiSummary(summaryText);
-      setAiSummaryLoading(false);
-      triggerBeepTone(900, 'sine');
-    }, 2000);
-  };
-
-  // 11. Whiteboard Canvas Draw Controls (Mouse & Touch compatible)
-  const getCanvasCoords = (e) => {
-    const canvas = whiteboardCanvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    
-    // Check if touch event
-    if (e.touches && e.touches[0]) {
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
-      return {
-        x: (e.touches[0].clientX - rect.left) * scaleX,
-        y: (e.touches[0].clientY - rect.top) * scaleY
-      };
-    }
-    
-    // Otherwise mouse event
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY
-    };
-  };
-
-  const startDrawing = (e) => {
-    e.preventDefault();
-    setIsDrawing(true);
-    const coords = getCanvasCoords(e);
-    const canvas = whiteboardCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    ctx.beginPath();
-    ctx.moveTo(coords.x, coords.y);
-  };
-
-  const draw = (e) => {
-    if (!isDrawing) return;
-    e.preventDefault();
-    const coords = getCanvasCoords(e);
-    const canvas = whiteboardCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    ctx.strokeStyle = drawColor;
-    ctx.lineWidth = drawWeight;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.lineTo(coords.x, coords.y);
-    ctx.stroke();
-  };
-
-  const stopDrawingContext = () => {
-    setIsDrawing(false);
-  };
-
-  const clearWhiteboard = () => {
-    const canvas = whiteboardCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    triggerBeepTone(250, 'sine');
-  };
-
-  // 12. Dynamic Waveform Visualizer simulation
-  useEffect(() => {
-    const canvas = audioWaveCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    let animId;
-    let phase = 0;
-
-    const render = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const w = canvas.width;
-      const h = canvas.height;
-      const centerY = h / 2;
-      const waveCount = 3;
-
-      const colors = [
-        `rgba(6, 182, 212, ${isMuted ? '0.05' : '0.45'})`,
-        `rgba(168, 85, 247, ${isMuted ? '0.03' : '0.25'})`,
-        `rgba(57, 255, 20, ${isMuted ? '0.02' : '0.15'})`
-      ];
-
-      for (let i = 0; i < waveCount; i++) {
-        ctx.beginPath();
-        ctx.lineWidth = 1.8 + i;
-        ctx.strokeStyle = colors[i];
-
-        const frequency = 0.02 + i * 0.007;
-        const amplitude = isMuted ? 1.5 : (14 - i * 3) * (1 + Math.sin(phase * 0.4) * 0.35);
-
-        for (let x = 0; x < w; x++) {
-          const y = centerY + Math.sin(x * frequency + phase + (i * Math.PI / 4)) * amplitude;
-          if (x === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-      }
-      phase += isMuted ? 0.015 : 0.07;
-      animId = requestAnimationFrame(render);
-    };
-
-    render();
-    return () => cancelAnimationFrame(animId);
-  }, [isMuted]);
-
-  // Handle formatted timer output
-  const formattedCallTime = () => {
-    const mins = Math.floor(callActiveTime / 60);
-    const secs = callActiveTime % 60;
+  const formatTimerValue = (totalSecs) => {
+    const mins = Math.floor(totalSecs / 60);
+    const secs = totalSecs % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Voting behavior
-  const handleVote = (choice) => {
-    if (pollVotes.userVoted) return;
-    setPollVotes(prev => ({
-      ...prev,
-      userVoted: choice,
-      [choice]: prev[choice] + 1
-    }));
-    triggerBeepTone(650, 'sine');
+  // Filter styles
+  const getFilterClass = () => {
+    if (videoFilter === "sepia") return "sepia brightness-90 contrast-110";
+    if (videoFilter === "grayscale") return "grayscale contrast-125";
+    if (videoFilter === "monochrome") return "grayscale invert contrast-150";
+    return "";
   };
 
-  // Helper translated output getter
-  const getTranslatedSubtitle = () => {
-    if (translateLang === "none") return currentTranscript;
-    const dictionary = TRANSLATIONS[translateLang] || {};
-    return dictionary[currentTranscript] || currentTranscript;
-  };
+  const currentCaption = activeCaptions[currentCaptionIndex];
+  const translatedCaption = EXTENDED_TRANSLATIONS[translateLang]?.[currentCaption] || currentCaption;
 
-  if (callStatus === "ringing") {
+  // Render RINGING OR DIALING Overlays (Classic WhatsApp caller interface)
+  if (callStatus === "ringing" || callStatus === "dialing") {
     return (
-      <div id="ringing-screen" className="fixed inset-0 z-[6500] bg-[#121B22] text-white flex flex-col items-center justify-between p-8 select-none font-sans">
+      <div id="whatsapp-call-ringing" className="fixed inset-0 z-[6500] bg-[#0b141a] text-white flex flex-col items-center justify-between p-8 select-none font-sans">
         {/* Soft elegant background glows */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,168,132,0.12)_0%,transparent_75%)] pointer-events-none" />
+        <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-[#128C7E]/10 to-transparent pointer-events-none" />
 
-        {/* Top Header Label */}
-        <div className="mt-12 flex flex-col items-center gap-1 text-center relative z-10 w-full animate-fade-in">
-          <span className="text-[#00a884] text-[10px] font-black tracking-[0.25em] uppercase flex items-center gap-1.5 justify-center">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#00a884] animate-ping" />
-            ONYX SECURE LINE RINGING
+        {/* Outer Encryption Header */}
+        <div className="mt-8 flex flex-col items-center text-center gap-1.5 z-10 w-full">
+          <span className="text-[#25D366] text-[11px] font-bold tracking-[0.2em] uppercase flex items-center gap-2">
+            <Shield size={13} className="text-[#25D366]" />
+            End-to-End Encrypted
           </span>
-          <span className="text-zinc-500 text-[9px] uppercase tracking-wider font-mono">
-            ESTABLISHING ENCRYPTED AUDIO-DYNAMIC LINK
+          <span className="text-zinc-500 text-[10px] uppercase font-mono tracking-wide">
+            WhatsApp Web VoIP Link Securing...
           </span>
         </div>
 
-        {/* Central Pulse Avatar */}
-        <div className="flex flex-col items-center justify-center gap-5 relative z-10 my-auto">
+        {/* Central Display: Pulse Avatar */}
+        <div className="flex flex-col items-center justify-center gap-6 z-10 my-auto">
           <div className="relative flex items-center justify-center">
-            <div className="absolute w-48 h-48 rounded-full bg-[#00a884]/5 animate-ping opacity-30" />
-            <div className="absolute w-36 h-36 rounded-full border border-[#00a884]/20 animate-pulse opacity-50" />
-            <div className="absolute w-28 h-28 rounded-full border border-[#00a884]/10" />
+            {/* Pulsing ring visual ripples */}
+            <div className="absolute w-44 h-44 rounded-full bg-[#25D366]/5 animate-ping opacity-40" />
+            <div className="absolute w-36 h-36 rounded-full border border-[#25D366]/10 animate-pulse [animation-duration:3s]" />
+            
             <img 
               src={callTarget.avatar} 
-              className="w-24 h-24 rounded-full object-cover border-4 border-[#00a884] p-0.5 relative z-10 shadow-2xl transition-transform hover:scale-105 duration-300" 
+              className="w-24 h-24 rounded-full object-cover border-4 border-[#128C7E] p-0.5 relative z-10 shadow-2xl" 
+              referrerPolicy="no-referrer"
               alt={callTarget.name} 
+              onError={(e) => { e.target.src = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"; }}
             />
           </div>
           
           <div className="text-center">
-            <h2 className="text-2xl font-bold tracking-tight text-white mb-1 font-sans">
+            <h2 className="text-2xl font-bold tracking-tight text-zinc-100 font-sans mb-1">
               {callTarget.name}
             </h2>
-            <p className="text-[#00a884] text-xs font-semibold tracking-wider uppercase bg-[#182229] px-3 py-1 rounded-full border border-[#00a884]/20 inline-block font-sans">
-              {callTarget.role || 'Onyx Operator'}
+            <p className="text-zinc-400 text-xs tracking-wider animate-pulse font-mono uppercase bg-[#111b21] px-4 py-1.5 rounded-full border border-white/5 inline-block">
+              {callStatus === "dialing" ? "📞 Dialing..." : "🔔 Incoming call..."}
             </p>
           </div>
         </div>
 
-        {/* Bottom Actions: WhatsApp Style Clean Controls */}
-        <div className="mb-14 flex items-center gap-8 relative z-20">
-          {/* Decline (Red Circle) */}
-          <button
-            onClick={() => {
-              triggerBeepTone(150, 'sawtooth');
-              onEndCall(0, 'missed'); // End call as missed
-            }}
-            className="w-16 h-16 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center cursor-pointer transition-all active:scale-95 shadow-[0_4px_15px_rgba(244,63,94,0.3)] hover:shadow-[0_4px_25px_rgba(244,63,94,0.45)]"
-            title="Decline Call"
-          >
-            <PhoneOff size={24} />
-          </button>
+        {/* Underbody Control Actions */}
+        <div className="mb-12 flex flex-col items-center gap-4 z-10 w-full max-w-xs text-center">
+          {callStatus === "ringing" ? (
+            <div className="flex items-center justify-center gap-12 w-full">
+              {/* Decline Button (Red round tele) */}
+              <button
+                onClick={handleRejectCall}
+                className="w-14 h-14 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center cursor-pointer transition-transform active:scale-90 shadow-[0_5px_15px_rgba(244,63,94,0.35)]"
+                title="Decline Call"
+                id="reject-btn"
+              >
+                <PhoneOff size={22} className="rotate-22.5" />
+              </button>
 
-          {/* Accept / Activate (Green Circle) */}
-          <button
-            onClick={() => {
-              initializeOnyxAudio();
-              setCallStatus("connected"); // Connect call
-              triggerBeepTone(880, 'sine');
-            }}
-            className="px-6 h-16 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold uppercase tracking-wide text-xs flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-[0_4px_15px_rgba(16,185,129,0.3)] hover:shadow-[0_4px_25px_rgba(16,185,129,0.45)] animate-pulse"
-            title="Accept Dynamic Connection"
-          >
-            <Phone size={15} />
-            <span className="font-sans">Accept Call</span>
-          </button>
+              {/* Accept Button (Green round tele) */}
+              <button
+                onClick={handleAcceptCall}
+                className="w-14 h-14 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center cursor-pointer transition-transform active:scale-90 shadow-[0_5px_15px_rgba(16,185,129,0.35)] animate-bounce"
+                title="Accept Call"
+                id="accept-btn"
+              >
+                <Phone size={22} />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleHangupCall}
+              className="w-14 h-14 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center cursor-pointer transition-transform active:scale-90 shadow-[0_5px_15px_rgba(244,63,94,0.35)]"
+              title="Decline Outgoing Link"
+              id="decline-dial-btn"
+            >
+              <PhoneOff size={22} />
+            </button>
+          )}
+          <span className="text-[10px] text-zinc-500 uppercase tracking-widest block font-sans">
+            {callType === "video" ? "VIDEO STREAM INITIATED" : "VOICE TUNNEL INITIATED"}
+          </span>
         </div>
       </div>
     );
   }
 
+  // Render Connected active call
   return (
-    <div id="meeting-canvas-portal" className="fixed inset-0 z-[6000] bg-slate-950 text-white flex flex-col overflow-hidden font-mono select-none">
+    <div id="active-whatsapp-call" className="fixed inset-0 z-[6000] bg-[#0b141a] text-white flex flex-col justify-between overflow-hidden font-sans select-none">
       
-      {/* Self-contained CSS Animations for floating reactions & scanner lines */}
-      <style>{`
-        @keyframes floatUp {
-          0% { transform: translateY(0) scale(0.6); opacity: 0; }
-          15% { opacity: 1; transform: translateY(-40px) scale(1.2); }
-          100% { transform: translateY(-280px) scale(0.7); opacity: 0; }
-        }
-        @keyframes scanline {
-          0% { transform: translateY(-100%); }
-          100% { transform: translateY(100%); }
-        }
-        @keyframes cyber-pulse {
-          0%, 100% { box-shadow: 0 0 10px rgba(6, 182, 212, 0.2); }
-          50% { box-shadow: 0 0 25px rgba(6, 182, 212, 0.45); }
-        }
-        .animate-scanline {
-          animation: scanline 4s linear infinite;
-        }
-      `}</style>
+      {/* Decorative WhatsApp styling */}
+      <div className="absolute inset-0 bg-[#000000]/25 pointer-events-none z-[1]" />
 
-      {/* Decorative Cyber Grid backing */}
-      <div className="absolute inset-0 bg-gradient-to-tr from-cyan-950/15 via-transparent to-purple-950/20 pointer-events-none" />
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.015)_1px,_transparent_1px),_linear-gradient(90deg,_rgba(255,255,255,0.015)_1px,_transparent_1px)] bg-[size:25px_25px] pointer-events-none" />
-
-      {/* Floating Reactions */}
-      {reactions.map(r => (
-        <div 
-          key={r.id} 
-          className="absolute bottom-24 text-4xl pointer-events-none z-[100] font-sans"
-          style={{ 
-            left: `${r.left}%`,
-            animation: 'floatUp 2.2s cubic-bezier(0.08, 0.82, 0.17, 1) forwards'
-          }}
-        >
-          {r.emoji}
-        </div>
-      ))}
-
-      {/* 🚀 Top Cyber Tech Banner */}
-      <header className="shrink-0 bg-slate-900 border-b border-white/10 px-4 py-3 flex items-center justify-between text-xs z-10">
+      {/* Top Header Panel (WhatsApp design bar) */}
+      <header className="relative z-[20] shrink-0 bg-[#121b22]/90 border-b border-zinc-800 px-5 py-4 flex items-center justify-between shadow-md">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-cyan-950/80 rounded-xl border border-cyan-500/20 shadow-[0_0_10px_rgba(6,182,212,0.15)] flex items-center justify-center">
-            <Shield size={16} className={`text-cyan-400 ${isE2EEncrypt ? 'animate-pulse' : ''}`} />
+          <div className="relative">
+            <img 
+              src={callTarget.avatar} 
+              alt={callTarget.name} 
+              className="w-10 h-10 rounded-full object-cover border border-[#128C7E]" 
+              referrerPolicy="no-referrer"
+              onError={(e) => { e.target.src = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"; }}
+            />
+            {isPartnerSpeaking && (
+              <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#25D366] ring-2 ring-[#0b141a]">
+                <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+              </span>
+            )}
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-bold text-white tracking-wider uppercase text-[11px] flex items-center gap-1.5">
-                Onyx Secure Tunnel
-              </span>
-              <span className="text-[9px] bg-cyan-950 text-cyan-400 border border-cyan-800 px-1.5 py-0.5 rounded uppercase font-black tracking-widest">
-                AES-512 Link {encryptionProgress < 100 ? `${encryptionProgress}%` : 'SECURE'}
+              <h2 className="font-semibold text-sm leading-none text-zinc-100">{callTarget.name}</h2>
+              <span className="text-[9px] font-bold text-[#25D366] bg-[#128C7E]/20 px-1.5 py-0.5 rounded uppercase">
+                Secure
               </span>
             </div>
-            <p className="text-[10px] text-zinc-500 uppercase mt-0.5 font-mono flex items-center gap-1.5">
-              <span>{devicePlatform}</span> • <span>Quality: {selectedQuality.replace("_", " ").toUpperCase()}</span>
-            </p>
-          </div>
-        </div>
-
-        {/* Real-time statistics badge */}
-        <div className="hidden lg:flex items-center gap-6 text-zinc-400 text-[10px] uppercase">
-          <div>
-            <span className="text-zinc-600 block">Fps Tracker</span>
-            <span className="font-mono text-cyan-400 font-bold">{fpsRate} Frames/s</span>
-          </div>
-          <div>
-            <span className="text-zinc-600 block">Bandwidth Bitrate</span>
-            <span className="font-mono text-cyan-400 font-bold">{bitrateValue} kbps</span>
-          </div>
-          <div>
-            <span className="text-zinc-600 block">Acoustic Suppressor</span>
-            <span className={`font-mono font-bold ${noiseSuppression ? 'text-emerald-400' : 'text-zinc-500'}`}>
-              {noiseSuppression ? 'DNL_ACTIVE' : 'DEACTIVATED'}
+            {/* Real timer duration block */}
+            <span className="text-[11px] text-[#25D366] font-mono leading-none mt-1 inline-block">
+              {formatTimerValue(callActiveTime)}
             </span>
           </div>
         </div>
 
-        {/* Timer, Locks & Share button */}
-        <div className="flex items-center gap-3.5">
-          <button 
-            onClick={() => setIsMeetingLocked(!isMeetingLocked)} 
-            className={`px-2.5 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 uppercase tracking-wider text-[10px] cursor-pointer ${
-              isMeetingLocked 
-                ? 'bg-rose-950 border-rose-500/30 text-rose-400' 
-                : 'bg-slate-800 border-white/5 text-zinc-400 hover:text-white hover:bg-slate-700'
-            }`}
-          >
-            <Lock size={12} />
-            <span>{isMeetingLocked ? 'CALL_LOCKED' : 'LOCK'}</span>
-          </button>
-
-          <button 
-            onClick={() => setIsShareDeviceModalOpen(true)}
-            className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 px-3 py-1.5 rounded-lg font-bold transition-all text-[11px] flex items-center gap-1.5 cursor-pointer uppercase shadow-[0_0_15px_rgba(6,182,212,0.25)]"
-          >
-            <Share2 size={12} />
-            <span>Link Phone/Laptop</span>
-          </button>
-
-          <div className="bg-slate-850 border border-white/10 px-3.5 py-1.5 rounded-xl font-mono text-[11px] text-cyan-400 flex items-center gap-2 font-black shadow-[0_0_10px_rgba(6,182,212,0.1)]">
-            <Radio size={12} className="text-cyan-400 animate-pulse" />
-            <span>{formattedCallTime()}</span>
+        {/* Dynamic call type details */}
+        <div className="flex items-center gap-4 text-xs font-mono font-bold text-zinc-400">
+          <div className="hidden sm:block text-right">
+            <span className="text-[9px] text-zinc-500 uppercase block">Bandwidth</span>
+            <span className="text-[#25D366]">768 kbps • {selectedQuality.toUpperCase()}</span>
+          </div>
+          <div className="bg-[#202c33] border border-white/5 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5">
+            <Lock size={12} className="text-[#25D366]" />
+            <span className="text-[10px] text-zinc-300 uppercase select-text tracking-wide">E2E ENCRYPTED</span>
           </div>
         </div>
       </header>
 
-      {/* 🔊 Audio Consent Warning Overlay (WhatsApp-inspired Clean Design) */}
-      {showAudioConsent && (
-        <div id="audio-consent-overlay" className="fixed inset-0 z-[6100] bg-[#121B22] text-white flex flex-col items-center justify-between p-6 select-none font-sans">
-          {/* WhatsApp soft teal gradient halo backing */}
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(18,140,126,0.15)_0%,transparent_75%)] pointer-events-none" />
-          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.005)_1px,_transparent_1px),_linear-gradient(90deg,_rgba(255,255,255,0.005)_1px,_transparent_1px)] bg-[size:40px_40px] pointer-events-none" />
-
-          {/* Header */}
-          <div className="mt-12 flex flex-col items-center gap-1.5 text-center relative z-10 w-full">
-            <span className="text-[#00a884] text-[11px] font-black tracking-[0.25em] uppercase flex items-center gap-2 justify-center">
-              <span className="w-2 h-2 rounded-full bg-[#00a884] animate-pulse inline-block" />
-              Secure VoIP Handshake
-            </span>
-            <span className="text-zinc-500 text-[10px] uppercase tracking-widest font-mono">
-              Onyx Encrypted Connection Link
-            </span>
-          </div>
-
-          {/* Center Content: Avatar & Waves */}
-          <div className="flex flex-col items-center justify-center gap-6 relative z-10 my-auto">
-            <div className="relative flex items-center justify-center">
-              {/* Pulsing visual echo halos */}
-              <div className="absolute w-52 h-52 rounded-full bg-[#00a884]/5 animate-ping opacity-30" />
-              <div className="absolute w-44 h-44 rounded-full border border-[#00a884]/20 animate-pulse opacity-50" />
-              <div className="absolute w-36 h-36 rounded-full border border-[#00a884]/10" />
-              
-              <img 
-                src={callTarget.avatar} 
-                className="w-28 h-28 rounded-full object-cover border-4 border-[#00a884] p-0.5 relative z-10 shadow-[0_8px_30px_rgba(0,0,0,0.6)]" 
-                alt={callTarget.name} 
-              />
-            </div>
-            
-            <div className="text-center">
-              <h2 className="text-3xl font-bold tracking-tight text-white mb-2">
-                {callTarget.name}
-              </h2>
-              <p className="text-zinc-400 font-mono text-[10px] uppercase tracking-widest bg-[#202c33] px-3.5 py-1.5 rounded-full border border-white/5 inline-block">
-                🔒 End-to-End Encrypted
-              </p>
-            </div>
-          </div>
-
-          {/* Buttons and call-to-action */}
-          <div className="mb-14 flex flex-col items-center gap-4 w-full max-w-sm relative z-10 text-center">
-            <button 
-              onClick={() => {
-                initializeOnyxAudio();
-                setShowAudioConsent(false);
-                setIsPartnerMuted(false); // Unmute incoming partner audio
-                try {
-                  if ('speechSynthesis' in window) {
-                    window.speechSynthesis.cancel();
-                    const dict = TRANSLATIONS[translateLang] || {};
-                    const targetText = dict[currentTranscript] || currentTranscript;
-                    const welcome = new SpeechSynthesisUtterance("Uplink secured. Audio synchronized with " + callTarget.name);
-                    welcome.rate = 1.05;
-                    window.speechSynthesis.speak(welcome);
-                  }
-                } catch(e) {
-                  console.warn(e);
-                }
-                triggerBeepTone(880, 'sine');
-              }}
-              className="w-full bg-[#00a884] hover:bg-[#008f72] text-[#111b21] font-extrabold py-4 px-6 rounded-2xl tracking-wider text-xs uppercase cursor-pointer transition-all active:scale-95 shadow-[0_4px_15px_rgba(0,168,132,0.3)] hover:shadow-[0_4px_25px_rgba(0,168,132,0.5)] flex items-center justify-center gap-2"
-            >
-              <Volume2 size={16} />
-              <span>ACTIVATE SECURE TUNNEL</span>
-            </button>
-            
-            <button
-              onClick={() => {
-                triggerBeepTone(150, 'sawtooth');
-                onEndCall(0, 'declined');
-              }}
-              className="text-[10px] text-rose-400 hover:text-rose-300 tracking-widest uppercase font-black cursor-pointer bg-rose-950/20 hover:bg-rose-950/40 border border-rose-500/10 px-4 py-2.5 rounded-xl transition-all"
-            >
-              Decline Link
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* 🤝 Drifter Entry Notification (Waiting Room banner) */}
-      {waitingParticipant.active && (
-        <div className="bg-amber-500/10 border-b border-amber-500/25 px-4 py-2.5 flex items-center justify-between text-xs z-20">
-          <div className="flex items-center gap-2.5">
-            <div className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-            <span className="text-amber-400 font-bold uppercase tracking-wider">Waiting Room Request:</span>
-            <span className="text-zinc-300 font-mono">
-              <strong>{waitingParticipant.name}</strong> ({waitingParticipant.role}) is waiting to be linked.
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => {
-                setWaitingParticipant({ ...waitingParticipant, active: false });
-                triggerBeepTone(400, 'sine');
-              }}
-              className="text-zinc-400 hover:text-white px-2.5 py-1 rounded"
-            >
-              Declined
-            </button>
-            <button 
-              onClick={() => {
-                setAddedMembers([...addedMembers, {
-                  id: "oracle",
-                  name: "Oracle Web Stream",
-                  avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80",
-                  role: "Operator"
-                }]);
-                setWaitingParticipant({ ...waitingParticipant, active: false });
-                triggerBeepTone(900, 'sine');
-              }}
-              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3 py-1 rounded shadow-lg uppercase text-[10px]"
-            >
-              Approve Entry
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Middle Core Area: Split Screen & Shared Draw Board */}
-      <div className="flex-1 flex overflow-hidden lg:flex-row flex-col relative">
+      {/* Main Core display: Voice or Video layout */}
+      <div className="relative flex-1 flex flex-col justify-center items-center overflow-hidden min-h-0 bg-[#00080d]">
         
-        {/* Calling Videos/Display Streams Grid */}
-        <div className="flex-1 p-2 sm:p-4 overflow-y-auto flex flex-col justify-center relative min-h-0">
-          
-          <div className={`grid gap-2 sm:gap-4 w-full h-full max-w-5xl mx-auto items-center ${
-            isScreenSharing 
-              ? 'grid-cols-1 lg:grid-cols-3' 
-              : isGroupMode 
-                ? 'grid-cols-2 lg:grid-cols-2' 
-                : 'grid-cols-2 sm:grid-cols-2'
-          }`}>
-
-            {/* Screen Share Stream Container */}
-            {isScreenSharing && (
-              <div className="relative aspect-video rounded-2xl overflow-hidden bg-slate-900 border-2 border-cyan-400/50 flex flex-col justify-between p-3 col-span-1 lg:col-span-2 shadow-[0_0_20px_rgba(6,182,212,0.15)]">
-                <div className="absolute inset-0 bg-cyan-950/20" />
-                <video 
-                  ref={screenVideoRef} 
-                  autoPlay 
-                  playsInline 
-                  muted 
-                  className="absolute inset-0 w-full h-full object-cover"
-                />
-                
-                <div className="relative z-10 flex justify-between items-start">
-                  <span className="bg-cyan-500 text-slate-950 font-black px-2 py-0.5 rounded text-[9px] uppercase tracking-widest shadow-md">
-                    LIVE_PRESENTATION
-                  </span>
-                  <button 
-                    onClick={stopScreenShare}
-                    className="p-1.5 bg-red-600 rounded-lg text-white"
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-                <div className="relative z-10 mt-auto bg-slate-950/80 px-2 py-1 rounded text-[10px] text-cyan-400 w-fit">
-                  🖥️ High Clarity Screen Sharing (Active)
-                </div>
-              </div>
-            )}
-
-            {/* Local Operator Video Stream */}
-            <div className={`relative aspect-video rounded-2xl overflow-hidden border border-white/5 bg-slate-900 flex flex-col justify-between p-3 shadow-xl ${
-              lowBandwidthMode ? 'brightness-75 contrast-125 grayscale' : ''
-            }`}>
-              
-              {/* Scanline element */}
-              <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/[0.02] via-transparent to-cyan-500/[0.02] pointer-events-none" />
-              <div className="absolute inset-x-0 h-0.5 bg-cyan-400/10 shadow-[0_0_10px_rgba(6,182,212,0.3)] animate-scanline pointer-events-none" />
-
-              {/* Real Camera Video Output */}
-              {!isVideoOff && (
-                localStream ? (
-                  <video 
-                    ref={(el) => {
-                      if (el && localStream && el.srcObject !== localStream) {
-                        el.srcObject = localStream;
-                      }
-                    }} 
-                    autoPlay 
-                    playsInline 
-                    muted 
-                    className="absolute inset-0 w-full h-full object-cover z-0"
-                  />
-                ) : (
-                  <HolographicFaceVisualizer 
-                    name="Operator" 
-                    avatar={userProfile?.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"} 
-                    isMe={true} 
-                    active={true} 
-                    isSpeaking={!isMuted} 
-                  />
-                )
-              )}
-
-              {/* Dynamic Virtual background and Portrait Face Tracking Mock brackets */}
-              {virtualBackground !== "none" && (
-                <div className="absolute inset-0 pointer-events-none mix-blend-color-dodge">
-                  {virtualBackground === "blur" && <div className="absolute inset-0 backdrop-blur-lg bg-teal-900/10" />}
-                  {virtualBackground === "matrix" && <div className="absolute inset-0 bg-[radial-gradient(#0f0_1px,transparent_1px)] bg-[size:16px_16px] opacity-35" />}
-                  {virtualBackground === "space" && <div className="absolute inset-0 bg-gradient-to-tr from-purple-900/40 via-transparent to-cyan-900/40 opacity-40 animate-pulse" />}
-                </div>
-              )}
-
-              {faceTracking && !isVideoOff && (
-                <div 
-                  className="absolute border border-dashed border-emerald-500 rounded-md pointer-events-none z-10 transition-all duration-300"
-                  style={{
-                    left: `${faceBbox.x}%`,
-                    top: `${faceBbox.y}%`,
-                    width: `${faceBbox.w}%`,
-                    height: `${faceBbox.h}%`
-                  }}
-                >
-                  <span className="absolute -top-4 -left-1 text-[8px] font-mono bg-emerald-950 px-1 py-0.5 rounded text-emerald-400 uppercase font-black">
-                    TARGET: OPERATOR [LOCK]
-                  </span>
-                  <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-emerald-400" />
-                  <div className="absolute top-0 right-0 w-2 h-2 border-t-2 border-r-2 border-emerald-400" />
-                  <div className="absolute bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 border-emerald-400" />
-                  <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-emerald-400" />
-                </div>
-              )}
-
-              {/* Header UI elements */}
-              <div className="relative z-10 flex justify-between">
-                <span className="text-[9px] bg-black/60 border border-white/5 px-2 py-1 rounded text-cyan-400 font-bold uppercase tracking-widest animate-pulse">
-                  {isScreenSharing ? 'PRESENTING' : 'CAMERA_FEED: LOCAL'}
-                </span>
-                <span className="text-zinc-500 font-mono text-[9px]">SYNCING_RGB</span>
-              </div>
-
-              {/* Fallback Camera Mock placeholder (showing if camera blocked) */}
-              {isVideoOff && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 py-4">
-                  <div className="w-14 h-14 rounded-full border border-dashed border-white/15 flex items-center justify-center text-zinc-500 mb-2">
-                    <VideoOff size={20} />
-                  </div>
-                  <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Biometric Shielded</span>
-                </div>
-              )}
-
-              {/* Label Operator details */}
-              <div className="relative z-10 flex items-center justify-between mt-auto bg-slate-950/80 p-2 rounded-lg gap-2 text-[10px]">
-                <span className="font-bold flex items-center gap-1.5 uppercase text-white font-mono">
-                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" /> Operator (Me)
-                </span>
-                <div className="flex gap-1.5">
-                  {isMuted ? <MicOff size={11} className="text-rose-500" /> : <Mic size={11} className="text-cyan-400" />}
-                </div>
-              </div>
-            </div>
-
-            {/* Target Drifter Partner Video Frame */}
-            <div className={`relative aspect-video rounded-2xl overflow-hidden border border-white/5 bg-slate-900 flex flex-col justify-between p-3 shadow-xl ${
-              lowBandwidthMode ? 'brightness-75 contrast-125 grayscale' : ''
-            }`}>
-              <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/[0.01] via-transparent to-cyan-500/[0.01] pointer-events-none" />
-              
-              {/* Remote WebRTC video stream if active, otherwise static loops / holograms */}
-              {remoteStream ? (
-                <video 
-                  ref={(el) => {
-                    if (el && remoteStream && el.srcObject !== remoteStream) {
-                      el.srcObject = remoteStream;
-                    }
-                  }}
-                  autoPlay 
-                  playsInline 
-                  muted={isPartnerMuted} 
-                  className="absolute inset-0 w-full h-full object-cover z-0"
-                />
-              ) : (
-                videoErrors.partner ? (
-                  <HolographicFaceVisualizer 
-                    name={callTarget.name} 
-                    avatar={callTarget.avatar} 
-                    isMe={false} 
-                    active={true} 
-                    isSpeaking={callStatus === 'connected'} 
-                  />
-                ) : (
-                  <video 
-                    src="https://assets.mixkit.co/videos/preview/mixkit-young-woman-with-glasses-talking-to-camera-40156-large.mp4"
-                    autoPlay 
-                    loop 
-                    muted={isPartnerMuted} 
-                    playsInline 
-                    referrerPolicy="no-referrer"
-                    onError={() => setVideoErrors(prev => ({ ...prev, partner: true }))}
-                    className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-80 z-0"
-                  />
-                )
-              )}
-
-              <div className="absolute inset-0 bg-slate-950/20 mix-blend-multiply border-2 border-purple-500/20 rounded-2xl pointer-events-none" />
-
-              <div className="relative z-10 flex justify-between items-start">
-                <div className="flex flex-col gap-1">
-                  <span className="text-[9px] bg-black/70 border border-purple-500/20 px-2 py-1 rounded text-purple-400 font-bold uppercase tracking-widest block w-fit">
-                    LINK FEED: INBOUND
-                  </span>
-                  {/* Dynamic Bitrate & Connection Indicator */}
-                  <span className={`text-[8.5px] px-1.5 py-0.5 mt-0.5 rounded font-black tracking-wider uppercase inline-flex items-center gap-1.5 border leading-none w-fit ${
-                    bitrateValue > 3000 
-                      ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400' 
-                      : bitrateValue > 1000 
-                        ? 'bg-amber-500/15 border-amber-500/30 text-amber-300' 
-                        : 'bg-rose-500/15 border-rose-500/30 text-rose-400'
-                  }`}>
-                    <span className="relative flex h-1.5 w-1.5">
-                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                        bitrateValue > 3000 ? 'bg-emerald-400' : bitrateValue > 1000 ? 'bg-amber-400' : 'bg-rose-400'
-                      }`}></span>
-                      <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${
-                        bitrateValue > 3000 ? 'bg-emerald-500' : bitrateValue > 1000 ? 'bg-amber-500' : 'bg-rose-500'
-                      }`}></span>
-                    </span>
-                    📶 {bitrateValue > 3000 ? "EXCELLENT" : bitrateValue > 1000 ? "SATISFACTORY" : "POOR BANDWIDTH"} ({bitrateValue} kbps)
-                  </span>
-                  <span className="text-[8px] bg-black/50 text-purple-300 font-mono px-1.5 py-0.5 rounded border border-white/5 w-fit">
-                    {videoErrors.partner ? "🛡️ CYBER-HOLOGRAM MODE" : "🎥 SECURE LIVE FEED"}
-                  </span>
-                </div>
-                <div className="flex gap-1.5">
-                  <button 
-                    onClick={() => {
-                      triggerBeepTone(400, 'sine');
-                      setVideoErrors(prev => ({ ...prev, partner: !prev.partner }));
-                    }}
-                    className="px-2 py-1 bg-black/80 hover:bg-zinc-800 text-purple-400 hover:text-white rounded border border-purple-500/30 font-mono text-[8px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-md"
-                    title="Switch camera/hologram source"
-                  >
-                    {videoErrors.partner ? "🎥 Web Stream" : "🤖 Hologram"}
-                  </button>
-                  <span className="text-zinc-400 font-mono text-[9px] bg-black/60 px-1.5 py-1 rounded border border-white/5 uppercase font-bold">
-                    Latency: {callTarget.latency || '0.12ms'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="relative z-10 flex items-center justify-between mt-auto bg-slate-950/85 p-2 rounded-lg text-[10px] border border-white/5">
-                <span className="font-bold flex items-center gap-1.5 uppercase text-white font-mono">
-                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" /> {callTarget.name}
-                </span>
-                
-                {/* Partner specific audio unmuter controls */}
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => {
-                      triggerBeepTone(isPartnerMuted ? 650 : 350, 'sine');
-                      setIsPartnerMuted(!isPartnerMuted);
-                    }}
-                    className={`px-2 py-1 rounded-md text-[9px] font-sans font-bold flex items-center gap-1 border transition-all cursor-pointer ${
-                      isPartnerMuted 
-                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20' 
-                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
-                    }`}
-                    title={isPartnerMuted ? "Click to unmute partner audio" : "Click to mute partner audio"}
-                  >
-                    {isPartnerMuted ? <VolumeX size={10} /> : <Volume2 size={10} />}
-                    <span className="text-[8px] uppercase tracking-wider">
-                      {isPartnerMuted ? "MUTED" : "UNMUTED / VOICE ON"}
-                    </span>
-                  </button>
-                  <span className="text-[8px] bg-cyan-950 border border-cyan-900 px-1.5 py-0.5 rounded text-cyan-400 font-black">ACTIVE</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Extra Simulated members for Group Video Call mode */}
-            {isGroupMode && (
-              <>
-                <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/5 bg-slate-900 flex flex-col justify-between p-3 col-span-1 shadow-xl">
-                  {/* Participant 3 loop video */}
-                  {videoErrors.luna ? (
-                    renderVideoFallback("Dr. Luna Vane", "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80", "Inbound Advisor Node Active")
-                  ) : (
-                    <video 
-                      src="https://assets.mixkit.co/videos/preview/mixkit-woman-talking-on-video-call-40011-large.mp4"
-                      autoPlay 
-                      loop 
-                      muted 
-                      playsInline 
-                      referrerPolicy="no-referrer"
-                      onError={() => setVideoErrors(prev => ({ ...prev, luna: true }))}
-                      className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-85 z-0"
-                    />
-                  )}
-                  <div className="absolute inset-0 bg-slate-950/20 mix-blend-multiply" />
-
-                  <div className="relative z-10 flex justify-between">
-                    <span className="text-[9px] bg-black/60 border border-white/5 px-2 py-1 rounded text-indigo-400 font-bold uppercase tracking-widest">
-                      MEM_FEED: INBOUND
-                    </span>
-                    <span className="text-zinc-400 font-mono text-[9px] bg-black/60 px-1.5 py-0.5 rounded border border-white/5 uppercase font-bold">DR_VANE</span>
-                  </div>
-
-                  <div className="relative z-10 mt-auto bg-slate-950/80 p-1.5 rounded text-[10px] uppercase font-mono flex items-center justify-between">
-                    <span className="font-bold flex items-center gap-1">👤 Dr. Luna Vane</span>
-                    <span className="text-[8px] uppercase text-emerald-400 font-bold">MUTED</span>
-                  </div>
-                </div>
-
-                <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/5 bg-slate-900 flex flex-col justify-between p-3 col-span-1 shadow-xl">
-                  {/* Participant 4 loop video */}
-                  {videoErrors.kaelen ? (
-                    renderVideoFallback("Kaelen Vex", "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&q=80", "Inbound Decker Node Active")
-                  ) : (
-                    <video 
-                      src="https://assets.mixkit.co/videos/preview/mixkit-man-working-on-his-laptop-at-home-41585-large.mp4"
-                      autoPlay 
-                      loop 
-                      muted 
-                      playsInline 
-                      referrerPolicy="no-referrer"
-                      onError={() => setVideoErrors(prev => ({ ...prev, kaelen: true }))}
-                      className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-85 z-0"
-                    />
-                  )}
-                  <div className="absolute inset-0 bg-slate-950/20 mix-blend-multiply" />
-
-                  <div className="relative z-10 flex justify-between">
-                    <span className="text-[9px] bg-black/60 border border-white/5 px-2 py-1 rounded text-purple-400 font-bold uppercase tracking-widest">
-                      MEM_FEED: INBOUND
-                    </span>
-                    <span className="text-zinc-400 font-mono text-[9px] bg-black/60 px-1.5 py-0.5 rounded border border-white/5 uppercase font-bold">VEX_GRID</span>
-                  </div>
-
-                  <div className="relative z-10 mt-auto bg-slate-950/80 p-1.5 rounded text-[10px] uppercase font-mono flex items-center justify-between">
-                    <span className="font-bold flex items-center gap-1">👤 Kaelen Vex</span>
-                    <span className="text-[8px] uppercase text-cyan-400 font-bold">TALKING</span>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* Approved extra nodes (from Waiting Room) */}
-            {addedMembers.map(member => (
-              <div key={member.id} className="relative aspect-video rounded-2xl overflow-hidden border border-white/5 bg-slate-900 flex flex-col justify-between p-3 col-span-1 shadow-xl">
-                {/* Participant 5 loop video */}
-                {videoErrors[member.id] ? (
-                  renderVideoFallback(member.name, member.avatar, "Approved Node Feed Secure")
-                ) : (
-                  <video 
-                    src="https://assets.mixkit.co/videos/preview/mixkit-business-professional-working-on-a-laptop-42352-large.mp4"
-                    autoPlay 
-                    loop 
-                    muted 
-                    playsInline 
-                    referrerPolicy="no-referrer"
-                    onError={() => setVideoErrors(prev => ({ ...prev, [member.id]: true }))}
-                    className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-85 z-0"
-                  />
-                )}
-                <div className="absolute inset-0 bg-slate-950/20 mix-blend-multiply" />
-
-                <div className="relative z-10 flex justify-between">
-                  <span className="text-[9px] bg-black/60 border border-white/5 px-2 py-1 rounded text-amber-400 font-bold uppercase tracking-widest animate-pulse">
-                    NODE: APPROVED
-                  </span>
-                </div>
-
-                <div className="relative z-10 mt-auto bg-slate-950/80 p-1.5 rounded text-[10px] uppercase font-mono flex items-center justify-between">
-                  <span className="font-bold flex items-center gap-1">👤 {member.name}</span>
-                  <span className="text-[8px] uppercase text-emerald-400 font-bold">LINKED</span>
-                </div>
-              </div>
-            ))}
-
-          </div>
-
-          {/* Subtitles & Captions Bar (Interactive Language Translation) */}
-          <div className="mt-4 bg-slate-950/80 border border-white/5 p-3 rounded-2xl max-w-4xl mx-auto w-full flex items-start gap-3 shadow-lg select-text">
-            <div className="bg-cyan-950/50 p-2.5 rounded-xl border border-cyan-800/30 text-cyan-400 shrink-0">
-              <Layers size={15} className="animate-pulse" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] text-cyan-500 font-black tracking-widest uppercase block">
-                  🛡️ Live STT Caption Feed {translateLang !== 'none' ? `| Translated to: ${translateLang.toUpperCase()}` : ''}
-                </span>
-                
-                {/* Translate Language selectors */}
-                <div className="flex items-center gap-1 text-[9px]">
-                  <span className="text-zinc-500">Translate:</span>
-                  {['none', 'bn', 'ja', 'es', 'de'].map(lang => (
-                    <button 
-                      key={lang} 
-                      onClick={() => {
-                        setTranslateLang(lang);
-                        triggerBeepTone(400 + lang.charCodeAt(0)*2, 'sine');
-                      }}
-                      className={`px-1.5 py-0.5 rounded uppercase cursor-pointer ${
-                        translateLang === lang 
-                          ? 'bg-cyan-500 text-slate-950 font-bold' 
-                          : 'text-zinc-400 bg-slate-900 hover:text-white'
-                      }`}
-                    >
-                      {lang === 'none' ? 'OFF' : lang}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <p className="text-zinc-200 text-xs mt-1.5 leading-relaxed font-mono">
-                "{getTranslatedSubtitle()}"
-              </p>
-            </div>
-            <div className="text-right inline-block shrink-0">
-              <span className="text-[9px] text-zinc-500 block">NOISE ENVELOPE</span>
-              <span className="text-xs font-mono font-bold text-emerald-400">{noiseFilterLevel} dB</span>
-            </div>
-          </div>
-
-          {/* Real-time speech audio visualizer */}
-          <div className="h-6 max-w-4xl mx-auto w-full mt-2 flex items-center gap-2 px-1">
-            <span className="text-[8px] text-zinc-600 uppercase font-bold shrink-0">Frequency visual</span>
-            <canvas ref={audioWaveCanvasRef} width={450} height={20} className="flex-1 h-3 block opacity-75" />
-            <span className="text-[8px] text-emerald-400 font-bold shrink-0">99.2% Suppress</span>
-          </div>
-
-        </div>
-
-        {/* 💬 Collaboration Drawer (Chat, drawing Board, Notes) */}
-        {isDrawerOpen && (
-          <aside className="w-full lg:w-[410px] lg:static absolute right-0 top-[56px] bottom-[140px] lg:bottom-0 bg-slate-900/98 shadow-2xl flex flex-col border-t lg:border-t-0 lg:border-l border-white/10 overflow-hidden z-40 transition-all duration-300">
+        {/* VIEW A: VOICE CALL STYLE */}
+        {callType === "voice" ? (
+          <div className="relative w-full h-full flex flex-col items-center justify-center p-6 z-[2]">
+            <div className="absolute inset-0 bg-radial-gradient from-emerald-950/20 to-transparent pointer-events-none" />
             
-            {/* Drawer Tab Header buttons */}
-            <div className="bg-slate-950 p-2 flex items-center justify-between border-b border-white/10 shrink-0">
-              <div className="flex items-center gap-1">
-                <button 
-                  onClick={() => { setActiveTab("chat"); triggerBeepTone(500, 'sine'); }}
-                  className={`px-3 py-1.5 rounded-lg text-xs uppercase flex items-center gap-1.5 cursor-pointer ${
-                    activeTab === 'chat' 
-                      ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' 
-                      : 'text-zinc-400 hover:text-white'
-                  }`}
-                >
-                  <MessageSquare size={13} />
-                  <span>Chat</span>
-                </button>
-                <button 
-                  onClick={() => { setActiveTab("whiteboard"); triggerBeepTone(550, 'sine'); }}
-                  className={`px-3 py-1.5 rounded-lg text-xs uppercase flex items-center gap-1.5 cursor-pointer ${
-                    activeTab === 'whiteboard' 
-                      ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' 
-                      : 'text-zinc-400 hover:text-white'
-                  }`}
-                >
-                  <Palette size={13} />
-                  <span>Presenter Board</span>
-                </button>
-                <button 
-                  onClick={() => { setActiveTab("ai"); triggerBeepTone(600, 'sine'); }}
-                  className={`px-3 py-1.5 rounded-lg text-xs uppercase flex items-center gap-1.5 cursor-pointer ${
-                    activeTab === 'ai' 
-                      ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' 
-                      : 'text-zinc-400 hover:text-white'
-                  }`}
-                >
-                  <Sparkles size={13} />
-                  <span>AI Summary</span>
-                </button>
+            {/* Avatar Pulse loop */}
+            <div className="relative flex flex-col items-center gap-5">
+              <div className="relative flex items-center justify-center">
+                {isPartnerSpeaking && (
+                  <>
+                    <div className="absolute w-56 h-56 rounded-full bg-[#25D366]/5 animate-ping opacity-30" />
+                    <div className="absolute w-44 h-44 rounded-full border border-[#25D366]/20 animate-pulse opacity-40" />
+                    <div className="absolute w-36 h-36 rounded-full border border-emerald-500/10" />
+                  </>
+                )}
+                
+                <img 
+                  src={callTarget.avatar} 
+                  className={`w-32 h-32 rounded-full object-cover border-4 p-1 shadow-2xl transition-all duration-300 ${
+                    isPartnerSpeaking ? 'border-[#25D366] scale-105' : 'border-zinc-700'
+                  }`} 
+                  referrerPolicy="no-referrer"
+                  alt={callTarget.name} 
+                  onError={(e) => { e.target.src = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80"; }}
+                />
               </div>
 
+              <div className="text-center space-y-1 mt-4">
+                <span className="text-[#25D366] text-[10px] font-bold tracking-[0.2em] uppercase block">
+                  {isPartnerSpeaking ? "🎙️ SPEAKING..." : "🎙️ CONNECTED / MUTED FILTER SECURE"}
+                </span>
+                <span className="text-xs text-zinc-500 uppercase block font-mono">
+                  SUPPRESSION RATE: {noiseSuppression ? "99.8% (CLEAN)" : "BYPASSED"}
+                </span>
+              </div>
+            </div>
+
+          </div>
+        ) : (
+          /* VIEW B: VIDEO CALL STYLE WITH FLOATING PIC-IN-PIC */
+          <div className="relative w-full h-full flex items-center justify-center z-[2]">
+            
+            {/* 1. Large Partner Feed block */}
+            <div className="absolute inset-0 z-0 bg-[#0d171d]">
+              <div className={`w-full h-full ${getFilterClass()}`}>
+                {/* Simulated companion camera streams via premium high-quality loop video */}
+                <video 
+                  src={callTarget.videoUrl || "https://assets.mixkit.co/videos/preview/mixkit-young-woman-with-glasses-talking-to-camera-40156-large.mp4"}
+                  autoPlay 
+                  loop 
+                  muted 
+                  playsInline 
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover filter brightness-[0.85] contrast-[1.05]"
+                  onError={(e) => {
+                    // Fallback to static portrait hologram canvas if block or error
+                    e.target.style.display = 'none';
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* 2. Drag-draggable/Floating Picture-in-picture local camera frame */}
+            <div 
+              className="absolute top-4 right-4 w-32 sm:w-40 aspect-[3/4] bg-zinc-950 rounded-2xl overflow-hidden border-2 border-[#128C7E] shadow-[0_4px_25px_rgba(0,0,0,0.5)] z-30 transition-transform hover:scale-105"
+              id="pip-camera-feed"
+            >
+              {!isVideoOff ? (
+                cameraPermissionError ? (
+                  <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center bg-zinc-900">
+                    <span className="text-[10px] font-bold uppercase text-[#25D366]">My Feed</span>
+                    <span className="text-[8px] text-zinc-500 mt-1 uppercase">Avatar lock</span>
+                  </div>
+                ) : (
+                  <video 
+                    ref={localVideoRef} 
+                    autoPlay 
+                    playsInline 
+                    muted 
+                    className="w-full h-full object-cover scale-x-[-1]" // mirror local camera feed
+                  />
+                )
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900 p-3">
+                  <VideoOff size={16} className="text-rose-500 block" />
+                  <span className="text-[9px] uppercase text-zinc-500 mt-1 block">Lens covered</span>
+                </div>
+              )}
+              <div className="absolute bottom-2 left-2 bg-black/60 px-2 py-0.5 rounded text-[8px] text-[#25D366] font-bold uppercase z-10">
+                Me (Local)
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* Floating live captions and language translator controller */}
+        <div className="absolute bottom-4 left-4 right-4 z-[40] bg-[#121b22]/95 border border-zinc-800 p-4 rounded-2xl shadow-2xl max-w-2xl mx-auto flex flex-col md:flex-row gap-3 items-stretch select-text">
+          <div className="flex-1">
+            <span className="text-[9px] text-[#25D366] bg-[#128C7E]/20 px-2 py-1 rounded font-black tracking-widest uppercase inline-block">
+              🗣️ LIVE COMPRESSED TRANSCRIPT {translateLang !== "none" ? `| ${translateLang.toUpperCase()}` : "| ORIGINAL"}
+            </span>
+            <p className="text-zinc-100 text-sm font-sans mt-2 leading-relaxed">
+              "{translatedCaption}"
+            </p>
+          </div>
+
+          <div className="shrink-0 flex flex-col justify-between items-end border-t md:border-t-0 md:border-l border-zinc-800 pt-2.5 md:pt-0 md:pl-4 self-stretch gap-2 min-w-[125px]">
+            <div className="text-right w-full">
+              <span className="text-[8px] text-zinc-500 uppercase block font-mono">Select Language</span>
+              <div className="flex justify-end gap-1 mt-1 text-[9px] font-bold font-mono">
+                {["none", "bn", "es", "ja"].map(lang => (
+                  <button
+                    key={lang}
+                    onClick={() => setTranslateLang(lang)}
+                    className={`px-1.5 py-0.5 rounded cursor-pointer uppercase ${
+                      translateLang === lang 
+                        ? 'bg-[#25D366] text-[#0b141a]' 
+                        : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    {lang === "none" ? "ENG" : lang}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center w-full mt-auto">
+              <span className="text-[9px] text-[#128C7E] uppercase font-bold">Filters:</span>
               <button 
-                onClick={() => setIsDrawerOpen(false)}
-                className="p-1 text-zinc-500 hover:text-white cursor-pointer"
+                onClick={() => setShowFilters(!showFilters)} 
+                className="text-[9px] text-zinc-300 bg-zinc-800 px-1.5 py-0.5 rounded uppercase font-mono cursor-pointer flex items-center gap-1"
               >
-                <X size={14} />
+                <span>{videoFilter === "none" ? "None" : videoFilter.toUpperCase()}</span>
+                <span>▼</span>
               </button>
             </div>
+          </div>
+        </div>
 
-            {/* TAB CONTAINER 1: IN-CALL CHAT & COLLAB POLLS */}
-            {activeTab === 'chat' && (
-              <div className="flex-1 flex flex-col overflow-hidden p-3.5 gap-4">
-                
-                {/* Chat items list scroll */}
-                <div className="flex-1 overflow-y-auto space-y-3 p-1 select-text">
-                  {chatMessages.map((m, idx) => (
-                    <div key={idx} className={`p-2.5 rounded-xl border text-xs leading-relaxed ${
-                      m.sender === 'System'
-                        ? 'bg-slate-950/60 border-cyan-500/10 text-cyan-400 font-mono text-[10px]'
-                        : m.sender === 'Operator (Me)'
-                          ? 'bg-cyan-950/20 border-cyan-500/15 ml-4 text-cyan-100'
-                          : 'bg-indigo-950/20 border-purple-500/10 mr-4 text-slate-200'
-                    }`}>
-                      <div className="flex justify-between items-center mb-0.5 opacity-90">
-                        <span className="font-bold uppercase tracking-wider text-[10px] text-cyan-400">{m.sender}</span>
-                        <span className="text-[8px] text-zinc-500">{m.time}</span>
-                      </div>
-                      <p>{m.text}</p>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Cyber Poll Column */}
-                <div className="bg-slate-950 p-3 rounded-xl border border-white/5 space-y-2.5 shrink-0">
-                  <header className="flex justify-between items-center text-[10px] font-black uppercase text-cyan-400">
-                    <span className="flex items-center gap-1.5"><BarChart2 size={12} /> Live Collab Poll</span>
-                    <span className="bg-cyan-950 px-1.5 py-0.5 rounded border border-cyan-800 text-[8px]">In-call</span>
-                  </header>
-                  <p className="text-xs text-zinc-300">"Approval of Neural Node Entry Protocol v4.8?"</p>
-                  
-                  <div className="space-y-1.5 text-xs font-mono">
-                    <button 
-                      onClick={() => handleVote('choiceA')}
-                      className={`w-full text-left p-2.5 rounded-lg border transition-all relative overflow-hidden flex justify-between items-center cursor-pointer ${
-                        pollVotes.userVoted === 'choiceA' 
-                          ? 'border-cyan-400/30' 
-                          : 'border-white/5 hover:border-white/10 bg-slate-900/60'
-                      }`}
-                    >
-                      <div className="absolute inset-y-0 left-0 bg-cyan-500/10" style={{ width: `${Math.round((pollVotes.choiceA / (pollVotes.choiceA + pollVotes.choiceB)) * 100)}%` }} />
-                      <span className="relative font-bold text-cyan-300">Node Option A: ACCEPT TERMINAL</span>
-                      <span className="relative font-mono font-bold text-cyan-400">{pollVotes.choiceA} votes ({Math.round((pollVotes.choiceA / (pollVotes.choiceA + pollVotes.choiceB)) * 100)}%)</span>
-                    </button>
-
-                    <button 
-                      onClick={() => handleVote('choiceB')}
-                      className={`w-full text-left p-2.5 rounded-lg border transition-all relative overflow-hidden flex justify-between items-center cursor-pointer ${
-                        pollVotes.userVoted === 'choiceB' 
-                          ? 'border-cyan-400/30' 
-                          : 'border-white/5 hover:border-white/10 bg-slate-900/60'
-                      }`}
-                    >
-                      <div className="absolute inset-y-0 left-0 bg-purple-500/10" style={{ width: `${Math.round((pollVotes.choiceB / (pollVotes.choiceA + pollVotes.choiceB)) * 100)}%` }} />
-                      <span className="relative font-bold text-purple-300">Node Option B: DELAY ACCESS</span>
-                      <span className="relative font-mono font-bold text-purple-400">{pollVotes.choiceB} votes ({Math.round((pollVotes.choiceB / (pollVotes.choiceA + pollVotes.choiceB)) * 100)}%)</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Chat messenger input form */}
-                <form onSubmit={sendChatMessage} className="flex gap-2 shrink-0">
-                  <input 
-                    type="text" 
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    placeholder="Type inside secure channel..." 
-                    className="flex-1 bg-slate-950 text-xs px-3.5 py-2.5 rounded-xl border border-white/10 focus:outline-none focus:border-cyan-400 placeholder:text-zinc-600 text-white"
-                  />
-                  <button 
-                    type="submit" 
-                    className="p-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl transition-all shadow-[0_0_10px_rgba(6,182,212,0.2)] cursor-pointer"
-                  >
-                    <Send size={15} />
-                  </button>
-                </form>
-
-              </div>
-            )}
-
-            {/* TAB CONTAINER 2: INTERACTIVE HIGH-TECH WHITEBOARD */}
-            {activeTab === 'whiteboard' && (
-              <div className="flex-1 flex flex-col p-4 gap-4 overflow-y-auto">
-                <header className="flex justify-between items-center">
-                  <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
-                      🎨 Holographic Drawing Board
-                    </h4>
-                    <p className="text-[10px] text-zinc-500 uppercase mt-0.5 font-mono">Present ideas Vector-space coordinates</p>
-                  </div>
-                  <button 
-                    onClick={clearWhiteboard}
-                    className="p-1 px-2.5 bg-rose-950 text-rose-400 hover:text-white hover:bg-red-900 rounded border border-rose-800/40 font-mono text-[9px] uppercase transition-all cursor-pointer"
-                  >
-                    Clear Vector
-                  </button>
-                </header>
-
-                {/* Color and thickness tool selectors */}
-                <div className="flex items-center justify-between text-xs font-mono bg-slate-950 p-2.5 rounded-xl border border-white/5 shrink-0 gap-2">
-                  <div className="flex items-center gap-1">
-                    <span className="text-zinc-500 text-[9px] mr-1 uppercase">Pen:</span>
-                    {['#00f0ff', '#ff007f', '#39ff14', '#ffff00', '#ffffff'].map(col => (
-                      <button 
-                        key={col} 
-                        onClick={() => setDrawColor(col)}
-                        style={{ backgroundColor: col }}
-                        className={`w-4 h-4 rounded-full transition-all cursor-pointer ${
-                          drawColor === col ? 'scale-125 ring-2 ring-cyan-400 ring-offset-2 ring-offset-slate-950' : 'opacity-85 hover:opacity-100'
-                        }`}
-                      />
-                    ))}
-                  </div>
-
-                  <div className="flex items-center gap-1">
-                    <span className="text-zinc-500 text-[9px] mr-1 uppercase">Size:</span>
-                    {[2, 4, 8, 12].map(wt => (
-                      <button 
-                        key={wt} 
-                        onClick={() => setDrawWeight(wt)}
-                        className={`px-1.5 py-0.5 text-[10px] rounded cursor-pointer ${
-                          drawWeight === wt ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-zinc-400 bg-slate-900 hover:text-white'
-                        }`}
-                      >
-                        {wt}px
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Working Canvas drawing context body */}
-                <div className="relative border border-cyan-500/20 rounded-2xl overflow-hidden bg-slate-950 h-64 shadow-inner">
-                  <canvas 
-                    ref={whiteboardCanvasRef}
-                    width={380}
-                    height={256}
-                    onMouseDown={startDrawing}
-                    onMouseMove={draw}
-                    onMouseUp={stopDrawingContext}
-                    onMouseLeave={stopDrawingContext}
-                    onTouchStart={startDrawing}
-                    onTouchMove={draw}
-                    onTouchEnd={stopDrawingContext}
-                    className="w-full h-full block cursor-crosshair"
-                  />
-                  {!isDrawing && (
-                    <div className="absolute inset-4 flex flex-col items-center justify-center pointer-events-none select-none text-center">
-                      <p className="text-[10px] uppercase font-bold text-zinc-600 tracking-wider">Drag to trace vector markers</p>
-                      <span className="text-[8px] uppercase text-zinc-700 block mt-1">Both mobile touches and cursor mouse events fully linked</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="bg-slate-950 p-3 rounded-xl border border-white/5 space-y-2">
-                  <header className="text-[9px] font-bold text-zinc-500 uppercase flex items-center justify-between">
-                    <span>Holographic canvas logs</span>
-                    <span className="text-cyan-400">READY</span>
-                  </header>
-                  <p className="text-[10px] leading-relaxed text-zinc-400">
-                    Presentation details will project into remote nodes instantaneously. Useful for network pathing during team ingress sessions.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* TAB CONTAINER 3: AI INTELLIGENT MEETING NOTES & SUMMARIZATION */}
-            {activeTab === 'ai' && (
-              <div className="flex-1 flex flex-col p-4 gap-4 overflow-y-auto">
-                <header>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
-                    <Sparkles size={13} className="text-purple-400" /> AI Intel Synthesizer
-                  </h4>
-                  <p className="text-[10px] text-zinc-500 uppercase mt-0.5 font-mono">Consolidating link speech transcripts</p>
-                </header>
-
-                <div className="space-y-3.5 flex-1">
-                  
-                  {/* Notes tracker */}
-                  <div className="bg-slate-950 p-3 rounded-xl border border-white/5 space-y-2">
-                    <header className="flex justify-between items-center text-[9px] text-purple-400 font-bold uppercase">
-                      <span>Real-time Transcribing Notes</span>
-                      <span className="text-emerald-400">CAPTURE ACTIVE</span>
-                    </header>
-                    <ul className="text-[10px] font-mono text-zinc-400 space-y-1.5 list-disc pl-3 leading-snug">
-                      <li>Network coordinates initiated from Web App shell.</li>
-                      <li>Secure tunnel initialized on port 3000 behind reverse proxy.</li>
-                      <li>Noise cancellation suppresses ambient sound successfully.</li>
-                      <li>Presenter whiteboard active. Link parameters validated by system.</li>
-                    </ul>
-                  </div>
-
-                  {/* Summary trigger block */}
-                  <div className="space-y-2">
-                    <button 
-                      onClick={generateMeetingSummary}
-                      disabled={aiSummaryLoading}
-                      className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-purple-950 disabled:text-zinc-500 text-slate-950 py-3 rounded-xl font-bold transition-all text-xs flex items-center justify-center gap-2 uppercase shadow-[0_0_15px_rgba(168,85,247,0.25)] cursor-pointer"
-                    >
-                      {aiSummaryLoading ? (
-                        <>
-                          <RefreshCw size={13} className="animate-spin text-slate-950" />
-                          <span>Generating Summary Report...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles size={13} className="text-slate-950" />
-                          <span>Compile AI Meeting Summary</span>
-                        </>
-                      )}
-                    </button>
-                    <span className="text-[8px] text-zinc-600 block text-center uppercase">Consolidating transcription logs</span>
-                  </div>
-
-                  {/* Summary Output display */}
-                  {aiSummary && (
-                    <div className="bg-slate-950 p-3 rounded-xl border border-purple-500/25 space-y-2 text-xs leading-relaxed select-text animate-fade-in shadow-lg">
-                      <header className="flex justify-between items-center text-[10px] text-purple-400 font-bold uppercase border-b border-white/5 pb-1.5">
-                        <span className="flex items-center gap-1.5"><Check size={12} /> Live Compilation Output</span>
-                        <button 
-                          onClick={() => {
-                            navigator.clipboard.writeText(aiSummary);
-                            triggerBeepTone(850, 'sine');
-                          }}
-                          className="text-[9px] underline hover:text-white cursor-pointer"
-                        >
-                          Copy Text
-                        </button>
-                      </header>
-                      <div className="font-mono text-zinc-300 text-[10px] whitespace-pre-wrap leading-casual">
-                        {aiSummary}
-                      </div>
-                    </div>
-                  )}
-
-                </div>
-              </div>
-            )}
-
-          </aside>
+        {/* Video Filter Selectors overlay bubble */}
+        {showFilters && (
+          <div className="absolute bottom-24 right-4 z-[50] bg-[#1f2c34] border border-zinc-700 p-2.5 rounded-xl text-xs space-y-1 shadow-2xl flex flex-col">
+            <span className="text-[9px] text-zinc-400 font-bold uppercase mb-1 border-b border-zinc-800 pb-1">Video Filters</span>
+            {["none", "sepia", "grayscale", "monochrome"].map(flt => (
+              <button
+                key={flt}
+                onClick={() => {
+                  setVideoFilter(flt);
+                  setShowFilters(false);
+                }}
+                className={`text-left px-3 py-1.5 rounded uppercase font-mono text-[10px] ${
+                  videoFilter === flt ? 'bg-[#128C7E] text-white' : 'text-zinc-300 hover:bg-zinc-800'
+                }`}
+              >
+                {flt === "none" ? "Normal Feed" : flt}
+              </button>
+            ))}
+          </div>
         )}
 
       </div>
 
-      {/* 🎮 Bottom Control Console - Meeting & Call Toggles */}
-      <footer className="shrink-0 bg-slate-900 border-t border-white/10 p-3 flex flex-col md:flex-row items-center justify-between gap-4 z-10">
+      {/* WhatsApp standard rounded buttons control panel */}
+      <footer className="relative z-[20] shrink-0 bg-[#121b22]/95 border-t border-zinc-800 py-5 px-6 flex items-center justify-center gap-4 shadow-[0_-5px_15px_rgba(0,0,0,0.2)]">
         
-        {/* Collaboration widgets indicators: reaction pads */}
-        <div className="flex items-center gap-1">
-          <span className="text-[10px] text-zinc-500 uppercase mr-1.5 hidden md:block select-none">Send Burst:</span>
-          {['👍', '❤️', '🔥', '🎉', '🚀', '💡'].map(emoji => (
-            <button 
-              key={emoji} 
-              onClick={() => triggerReaction(emoji)}
-              className="p-1.5 hover:bg-slate-800 rounded-lg text-lg transition-transform hover:scale-125 cursor-pointer active:scale-90"
-              title={`Emit ${emoji}`}
-            >
-              {emoji}
-            </button>
-          ))}
-        </div>
+        {/* Mute Mic toggle */}
+        <button
+          onClick={() => setIsMuted(!isMuted)}
+          className={`p-3.5 rounded-full border transition-all cursor-pointer ${
+            isMuted 
+              ? 'bg-rose-600/15 border-rose-500/25 text-rose-400 hover:bg-rose-500/30' 
+              : 'bg-[#202c33]/85 border-white/5 text-zinc-300 hover:text-white hover:bg-[#2e3b43]'
+          }`}
+          title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+          id="toggle-audio-btn"
+        >
+          {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
+        </button>
 
-        {/* Core Media togglers center */}
-        <div className="flex items-center gap-2.5">
-          {/* Mute Audio */}
-          <button
-            onClick={() => {
-              triggerBeepTone(isMuted ? 600 : 300, 'sine');
-              setIsMuted(!isMuted);
-            }}
-            className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-              isMuted 
-                ? 'bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20' 
-                : 'bg-slate-800 border-white/5 text-zinc-400 hover:text-white hover:bg-slate-700'
-            }`}
-            title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
-          >
-            {isMuted ? <MicOff size={18} /> : <Mic size={18} />}
-          </button>
+        {/* Camera Feed toggle */}
+        <button
+          onClick={() => setIsVideoOff(!isVideoOff)}
+          className={`p-3.5 rounded-full border transition-all cursor-pointer ${
+            isVideoOff 
+              ? 'bg-rose-600/15 border-rose-500/25 text-rose-400 hover:bg-rose-500/30' 
+              : 'bg-[#202c33]/85 border-white/5 text-zinc-300 hover:text-white hover:bg-[#2e3b43]'
+          }`}
+          title={isVideoOff ? 'Enable Camera video' : 'Disable Camera video'}
+          id="toggle-video-btn"
+        >
+          {isVideoOff ? <VideoOff size={20} /> : <Video size={20} />}
+        </button>
 
-          {/* Video Toggle */}
-          <button
-            onClick={() => {
-              triggerBeepTone(isVideoOff ? 700 : 350, 'sawtooth');
-              setIsVideoOff(!isVideoOff);
-            }}
-            className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-              isVideoOff 
-                ? 'bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20' 
-                : 'bg-slate-800 border-white/5 text-zinc-400 hover:text-white hover:bg-slate-700'
-            }`}
-            title={isVideoOff ? 'Enable Camera' : 'Disable Camera'}
-          >
-            {isVideoOff ? <VideoOff size={18} /> : <Video size={18} />}
-          </button>
+        {/* Speaker Booster Output */}
+        <button
+          onClick={() => setIsSpeakerBoost(!isSpeakerBoost)}
+          className={`p-3.5 rounded-full border transition-all cursor-pointer ${
+            !isSpeakerBoost 
+              ? 'bg-[#202c33]/40 border-white/5 text-zinc-500 hover:bg-[#202c33]' 
+              : 'bg-[#202c33]/85 border-[#128C7E]/40 text-[#25D366] hover:bg-[#2e3b43]'
+          }`}
+          title={isSpeakerBoost ? 'Disable Speaker Boost' : 'Enable Speaker Boost'}
+          id="boost-sound-btn"
+        >
+          {isSpeakerBoost ? <Volume2 size={20} /> : <VolumeX size={20} />}
+        </button>
 
-          {/* Screen Share toggle */}
-          <button
-            onClick={startScreenShare}
-            className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-              isScreenSharing 
-                ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-400 animate-pulse' 
-                : 'bg-slate-800 border-white/5 text-zinc-400 hover:text-white hover:bg-slate-700'
-            }`}
-            title={isScreenSharing ? 'Stop Screen Sharing' : 'Share Screen'}
-          >
-            <Monitor size={18} />
-          </button>
+        {/* Severe End Call (Red circle) */}
+        <button
+          onClick={handleHangupCall}
+          className="p-4 mx-2 bg-rose-600 hover:bg-rose-500 rounded-full text-white font-bold transition-all transform active:scale-90 hover:scale-105 shadow-[0_5px_20px_rgba(244,63,94,0.4)] cursor-pointer"
+          title="End WhatsApp Call Session"
+          id="hangup-call-btn"
+        >
+          <PhoneOff size={22} />
+        </button>
 
-          {/* Collapsible Presenter Board / Whiteboard */}
-          <button
-            onClick={() => {
-              triggerBeepTone(500, 'sine');
-              setIsDrawerOpen(!isDrawerOpen);
-            }}
-            className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-              isDrawerOpen 
-                ? 'bg-cyan-500/10 border-cyan-400/20 text-cyan-400' 
-                : 'bg-slate-800 border-white/5 text-zinc-400 hover:text-white hover:bg-slate-700'
-            }`}
-            title="Toggle Right Collab Panel"
-          >
-            <MessageSquare size={18} />
-          </button>
-
-          {/* Floating Settings & Advanced Video Features Modal */}
-          <button
-            onClick={() => {
-              triggerBeepTone(610, 'sine');
-              setIsFeaturesModalOpen(true);
-            }}
-            className="p-3.5 bg-slate-800 border border-white/5 text-zinc-400 hover:text-white hover:bg-slate-700 rounded-2xl cursor-pointer"
-            title="Meeting & Video Settings"
-          >
-            <Sliders size={18} />
-          </button>
-
-          {/* Separator */}
-          <div className="w-px h-8 bg-zinc-800 self-center mx-1.5 hidden md:block" />
-
-          {/* Group Calling toggle */}
-          <button 
-            onClick={() => {
-              setIsGroupMode(!isGroupMode);
-              triggerBeepTone(isGroupMode ? 300 : 700, 'sine');
-            }}
-            className={`px-3 py-3 rounded-2xl border transition-all flex items-center gap-2 cursor-pointer ${
-              isGroupMode 
-                ? 'bg-indigo-500/25 border-indigo-500/30 text-indigo-300' 
-                : 'bg-slate-800 border-white/5 text-zinc-400 hover:text-white hover:bg-slate-700'
-            }`}
-            title="Toggle Group Call simulation"
-          >
-            <Users size={18} />
-            <span className="text-[10px] uppercase font-bold hidden md:inline">
-              {isGroupMode ? 'GROUP: ON (4)' : '1-to-1 CALL'}
-            </span>
-          </button>
-
-          {/* Severe End Call */}
-          <button
-            onClick={() => {
-              triggerBeepTone(150, 'sawtooth');
-              if (localStream) {
-                localStream.getTracks().forEach(t => t.stop());
-              }
-              if (screenStream) {
-                screenStream.getTracks().forEach(t => t.stop());
-              }
-              onEndCall(callActiveTime, 'connected');
-            }}
-            className="p-4 bg-rose-600 hover:bg-rose-500 rounded-2xl text-white font-bold transition-all transform active:scale-95 shadow-[0_0_20px_rgba(244,63,94,0.4)] cursor-pointer"
-            title="Disconnect Connection Link"
-          >
-            <PhoneOff size={20} />
-          </button>
-        </div>
-
-        {/* Platform identity signature */}
-        <div className="text-[9px] text-zinc-500 font-mono hidden md:block select-none">
-          ONYX MEETING NET_STATION // PORT 3000 STABLE
-        </div>
+        {/* Interactive sound filters options setting */}
+        <button
+          onClick={() => setNoiseSuppression(!noiseSuppression)}
+          className={`hidden sm:flex px-4 py-2.5 rounded-xl border font-bold text-xs items-center gap-2 uppercase tracking-wide cursor-pointer transition-all ${
+            noiseSuppression 
+              ? 'bg-[#128C7E]/20 border-[#128C7E]/50 text-[#25D366]' 
+              : 'bg-zinc-850 border-white/5 text-zinc-500 hover:text-white'
+          }`}
+          title="Toggle acoustic suppression algorithms"
+          id="toggle-suppress-btn"
+        >
+          <Sliders size={14} />
+          <span>{noiseSuppression ? 'AI CANCEL: ON' : 'AI CANCEL: OFF'}</span>
+        </button>
 
       </footer>
-
-      {/* ⚙️ POPUP MODAL: MEETING & AI CONGREGATION SETTINGS */}
-      {isFeaturesModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-[7000] p-4 transition-all">
-          <div className="relative max-w-lg w-full bg-slate-900 border border-white/10 rounded-3xl p-6 shadow-2xl relative font-mono text-xs text-zinc-300 flex flex-col gap-5 max-h-[90vh] overflow-y-auto">
-            
-            <header className="flex justify-between items-center border-b border-white/5 pb-3">
-              <div className="flex items-center gap-2">
-                <Sliders className="text-cyan-400" size={16} />
-                <h3 className="font-bold text-white text-sm uppercase tracking-wider">Acoustic & Video settings</h3>
-              </div>
-              <button 
-                onClick={() => setIsFeaturesModalOpen(false)}
-                className="p-1.5 text-zinc-500 hover:text-white bg-slate-800 rounded-lg cursor-pointer"
-              >
-                <X size={14} />
-              </button>
-            </header>
-
-            {/* Video Features Grid */}
-            <div className="space-y-4">
-              
-              <div className="space-y-2">
-                <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest block">📹 Advanced Video Processing</span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  
-                  {/* Virtual backgrounds */}
-                  <div className="bg-slate-950/60 p-3 rounded-xl border border-white/5 space-y-1.5">
-                    <span className="text-[9px] text-zinc-500 uppercase block">Virtual Background</span>
-                    <select 
-                      value={virtualBackground} 
-                      onChange={(e) => setVirtualBackground(e.target.value)} 
-                      className="w-full bg-slate-900 text-[11px] py-1.5 px-2 rounded focus:outline-none border border-white/10 text-white"
-                    >
-                      <option value="none">No Filter (Real Feed)</option>
-                      <option value="blur">Soft Background Blur</option>
-                      <option value="matrix">Neon Matrix Green Rain</option>
-                      <option value="space">Cosmic Starfield overlay</option>
-                    </select>
-                  </div>
-
-                  {/* Face tracking */}
-                  <div className="bg-slate-950/60 p-3 rounded-xl border border-white/5 flex items-center justify-between">
-                    <div>
-                      <span className="text-[9px] text-emerald-400 uppercase block font-bold">Auto framing / tracking</span>
-                      <span className="text-[8px] text-zinc-500">Overlay vector mesh</span>
-                    </div>
-                    <button 
-                      onClick={() => setFaceTracking(!faceTracking)}
-                      className={`px-3 py-1.5 rounded uppercase font-bold text-[9px] cursor-pointer ${
-                        faceTracking ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-zinc-400'
-                      }`}
-                    >
-                      {faceTracking ? 'ON' : 'OFF'}
-                    </button>
-                  </div>
-
-                  {/* HD Standard Quality */}
-                  <div className="bg-slate-950/60 p-2.5 rounded-xl border border-white/5 col-span-1 sm:col-span-2 space-y-2">
-                    <span className="text-[9px] text-zinc-500 uppercase block">Video Resolution Mode</span>
-                    <div className="flex gap-1.5">
-                      {[
-                        { k: '1080p_hd', l: 'HD 1080p' },
-                        { k: '720p', l: 'Standard 720p' },
-                        { k: 'adaptive', l: 'Adaptive (Auto)' },
-                        { k: 'low', l: 'Low Bandwidth (Scanline)' }
-                      ].map(ql => (
-                        <button
-                          key={ql.k}
-                          onClick={() => {
-                            setSelectedQuality(ql.k);
-                            setLowBandwidthMode(ql.k === 'low');
-                            triggerBeepTone(400, 'sine');
-                          }}
-                          className={`flex-1 text-[9px] py-2 rounded text-center transition-all uppercase font-bold cursor-pointer ${
-                            selectedQuality === ql.k 
-                              ? 'bg-cyan-500 text-slate-950' 
-                              : 'bg-slate-900 hover:bg-slate-850 text-zinc-400 hover:text-white'
-                          }`}
-                        >
-                          {ql.l}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                </div>
-              </div>
-
-              {/* Audio Settings */}
-              <div className="space-y-2">
-                <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest block">🎤 Acoustic Suppressor Sync</span>
-                <div className="space-y-2.5">
-                  {[
-                    { state: noiseSuppression, updater: setNoiseSuppression, label: "AI Noise Suppression (99.4% filter)", desc: "Deep brain background noise removal filter" },
-                    { state: echoCancellation, updater: setEchoCancellation, label: "Echo Acoustic Cancellation", desc: "Bypasses acoustic feed loop loops" },
-                    { state: autoGainControl, updater: setAutoGainControl, label: "Automatic Gain Control", desc: "Auto-calibrator for decibel inputs" }
-                  ].map((aud, index) => (
-                    <div key={index} className="bg-slate-950/60 p-3 rounded-xl border border-white/5 flex items-center justify-between">
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-300 block">{aud.label}</span>
-                        <span className="text-[8px] text-zinc-500 block">{aud.desc}</span>
-                      </div>
-                      <button 
-                        onClick={() => {
-                          aud.updater(!aud.state);
-                          triggerBeepTone(500, 'sine');
-                        }}
-                        className={`px-3 py-1.5 rounded uppercase font-bold text-[9px] cursor-pointer ${
-                          aud.state ? 'bg-cyan-500 text-slate-950' : 'bg-slate-800 text-zinc-400'
-                        }`}
-                      >
-                        {aud.state ? 'ACTIVE' : 'MUTED'}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* End-to-End Handshake mode */}
-              <div className="bg-slate-950/60 p-3 rounded-xl border border-dashed border-cyan-500/20 flex items-center justify-between mt-2">
-                <div>
-                  <span className="text-[10px] text-cyan-400 font-bold uppercase block">Secure AES-512 Handshake</span>
-                  <p className="text-[8px] text-zinc-500 mt-0.5">Encrypts audio/video packets from end to end</p>
-                </div>
-                <button 
-                  onClick={() => {
-                    setIsE2EEncrypt(!isE2EEncrypt);
-                    triggerBeepTone(isE2EEncrypt ? 200 : 900, 'sawtooth');
-                  }}
-                  className={`px-3 py-1.5 rounded uppercase text-[9px] font-black cursor-pointer ${
-                    isE2EEncrypt ? 'bg-cyan-500 text-slate-950' : 'bg-slate-800 text-zinc-400'
-                  }`}
-                >
-                  {isE2EEncrypt ? 'ENABLED' : 'DISABLED'}
-                </button>
-              </div>
-
-            </div>
-
-            <footer className="mt-2 text-right">
-              <button 
-                onClick={() => setIsFeaturesModalOpen(false)}
-                className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-[11px] px-5 py-2.5 rounded-xl uppercase hover:scale-95 transition-all shadow-[0_0_15px_rgba(6,182,212,0.2)] cursor-pointer"
-              >
-                Apply Parameters
-              </button>
-            </footer>
-
-          </div>
-        </div>
-      )}
-
-      {/* 📱 UNIQUE POPUP MODAL: LAPTOP TO PHONE SYNC DRAWER */}
-      {isShareDeviceModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-[7000] p-4 transition-all">
-          <div className="relative max-w-md w-full bg-slate-900 border border-white/10 rounded-3xl p-6 shadow-2xl relative font-mono text-xs text-zinc-300 flex flex-col gap-4">
-            
-            <header className="flex justify-between items-center border-b border-white/5 pb-2.5">
-              <div className="flex items-center gap-2">
-                <Laptop className="text-cyan-400" size={16} />
-                <h3 className="font-bold text-white text-xs uppercase tracking-wider">Device Synchronization Link</h3>
-              </div>
-              <button 
-                onClick={() => setIsShareDeviceModalOpen(false)}
-                className="p-1 text-zinc-500 hover:text-white bg-slate-800 rounded-lg cursor-pointer"
-              >
-                <X size={14} />
-              </button>
-            </header>
-
-            <div className="space-y-3.5">
-              <p className="text-zinc-400 leading-relaxed text-[11px]">
-                To link call sync between your <strong>Phone</strong> and your <strong>Laptop</strong> in real-time, share or open this live instance link:
-              </p>
-
-              {/* Link Box */}
-              <div className="bg-slate-950 p-3 rounded-xl border border-white/5 flex items-center justify-between gap-3 font-mono">
-                <span className="text-[10px] text-cyan-400 truncate flex-1 select-text">
-                  {window.location.href}
-                </span>
-                <button 
-                  onClick={() => {
-                    navigator.clipboard.writeText(window.location.href);
-                    triggerBeepTone(800, 'sine');
-                  }}
-                  className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-2.5 py-1 rounded select-none text-[9px] uppercase cursor-pointer"
-                >
-                  Copy Link
-                </button>
-              </div>
-
-              {/* Technical steps */}
-              <div className="bg-slate-950/60 p-3 rounded-xl border border-white/5 space-y-1.5 text-[11px]">
-                <span className="text-[9px] text-zinc-500 uppercase block font-bold">Cross-Device Calling Instructions:</span>
-                <ol className="list-decimal pl-4 text-zinc-400 space-y-1 font-sans">
-                  <li>Copy this server web URL above.</li>
-                  <li>Send or scan this link on your secondary device (phone or laptop).</li>
-                  <li>Sign in as a different Drifter Node (e.g. <strong>Sasha</strong> or <strong>Kaelen</strong>) on the second device.</li>
-                  <li>Search for your primary username and click <strong>Initiate Call</strong>.</li>
-                  <li>Both systems will synchronize over the live Socket Synapse instantly!</li>
-                </ol>
-              </div>
-
-              {/* Cross-device pairing mockup */}
-              <div className="flex justify-around items-center bg-slate-950/60 p-4 rounded-xl border border-dashed border-cyan-500/10 text-center text-zinc-400">
-                <div className="space-y-1">
-                  <Laptop size={20} className="mx-auto text-cyan-400" />
-                  <span className="text-[9px] uppercase block font-bold text-white">Laptop Web Node</span>
-                </div>
-                <div className="text-zinc-600 animate-pulse font-bold text-xs">➔ socket ➔</div>
-                <div className="space-y-1">
-                  <Smartphone size={20} className="mx-auto text-purple-400" />
-                  <span className="text-[9px] uppercase block font-bold text-white">Mobile Web Node</span>
-                </div>
-              </div>
-
-            </div>
-
-            <footer className="text-right">
-              <button 
-                onClick={() => setIsShareDeviceModalOpen(false)}
-                className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-[10px] px-4 py-2.5 rounded-xl uppercase transition-all cursor-pointer"
-              >
-                Close Link Info
-              </button>
-            </footer>
-
-          </div>
-        </div>
-      )}
 
     </div>
   );
