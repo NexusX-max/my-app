@@ -229,7 +229,94 @@ const CallScreen = ({
   useEffect(() => {
     let active = true;
 
+    // Helper: Generates a high-fidelity real-time canvas stream animation as local camera fallback
+    const setupSimulatedLocalStream = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 640;
+        canvas.height = 480;
+        const ctx = canvas.getContext("2d");
+
+        let angle = 0;
+        const drawFrame = () => {
+          if (!active) return; // stop if cleaned up
+
+          ctx.fillStyle = "#121b22";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          // Holographic grids
+          ctx.strokeStyle = "rgba(0, 168, 132, 0.12)";
+          ctx.lineWidth = 1;
+          for (let i = 0; i < canvas.width; i += 40) {
+            ctx.beginPath();
+            ctx.moveTo(i, 0);
+            ctx.lineTo(i, canvas.height);
+            ctx.stroke();
+          }
+          for (let j = 0; j < canvas.height; j += 40) {
+            ctx.beginPath();
+            ctx.moveTo(0, j);
+            ctx.lineTo(canvas.width, j);
+            ctx.stroke();
+          }
+
+          // Concentric circles
+          ctx.strokeStyle = "rgba(168, 85, 247, 0.25)";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(canvas.width / 2, canvas.height / 2, 80 + Math.sin(angle) * 12, 0, Math.PI * 2);
+          ctx.stroke();
+
+          ctx.strokeStyle = "rgba(0, 168, 132, 0.4)";
+          ctx.beginPath();
+          ctx.arc(canvas.width / 2, canvas.height / 2, 50 - Math.cos(angle * 1.2) * 8, 0, Math.PI * 2);
+          ctx.stroke();
+
+          // Green sonar radar sweep line
+          const scanY = (canvas.height / 2) + Math.sin(angle * 1.5) * 120;
+          ctx.strokeStyle = "rgba(0, 168, 132, 0.6)";
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(40, scanY);
+          ctx.lineTo(canvas.width - 40, scanY);
+          ctx.stroke();
+
+          ctx.fillStyle = "#e9edef";
+          ctx.font = "bold 13px monospace";
+          ctx.textAlign = "center";
+          ctx.fillText("ONYX SIMULATOR FEED", canvas.width / 2, canvas.height / 2 - 130);
+          ctx.font = "9px monospace";
+          ctx.fillStyle = "rgba(0, 229, 255, 0.85)";
+          ctx.fillText("SECURE OPERATOR HOLO LINK ACTIVE", canvas.width / 2, canvas.height / 2 + 130);
+
+          angle += 0.04;
+          requestAnimationFrame(drawFrame);
+        };
+
+        requestAnimationFrame(drawFrame);
+
+        // Note: captureStream works seamlessly on modern Chromium/Firefox environments
+        const stream = canvas.captureStream(25);
+        localStreamRef.current = stream;
+        setLocalStream(stream);
+
+        // Bind to video ref as well
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
+          localVideoRef.current.play().catch(() => {});
+        }
+      } catch (e) {
+        console.warn("Local canvas simulation failed:", e);
+      }
+    };
+
     const setupUserMedia = async () => {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.warn("⚠️ Media Devices API is blocked or unsupported in this context (requires secure HTTPS context). Activating Hologram Simulator.");
+        setupSimulatedLocalStream();
+        return;
+      }
+
       const constraints = {
         audio: {
           echoCancellation: true,
@@ -260,6 +347,7 @@ const CallScreen = ({
           if (videoTrack) originalVideoTrackRef.current = videoTrack;
           if (localVideoRef.current) {
             localVideoRef.current.srcObject = stream;
+            localVideoRef.current.play().catch(() => {});
           }
         }
 
@@ -290,6 +378,7 @@ const CallScreen = ({
             if (videoTrack) originalVideoTrackRef.current = videoTrack;
             if (localVideoRef.current) {
               localVideoRef.current.srcObject = genericStream;
+              localVideoRef.current.play().catch(() => {});
             }
           }
         } catch (e2) {
@@ -304,7 +393,8 @@ const CallScreen = ({
             setLocalStream(audioOnly);
             setIsVideoOff(true);
           } catch (e3) {
-            console.error("❌ Emergency Block: Cam & Mic denied/unavailable.", e3);
+            console.error("❌ Emergency Block: Cam & Mic denied/unavailable. Deploying local simulation filter loop.", e3);
+            setupSimulatedLocalStream();
           }
         }
       }
@@ -550,15 +640,19 @@ const CallScreen = ({
 
   // Bind Remote Stream video dom
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
+    const video = remoteVideoRef.current;
+    if (video && remoteStream) {
+      video.srcObject = remoteStream;
+      video.play().catch(e => console.warn("Remote video auto-play blocked:", e));
     }
   }, [remoteStream, isPartnerVideoOff]);
 
   // Bind Local Stream video dom
   useEffect(() => {
-    if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
+    const video = localVideoRef.current;
+    if (video && localStream) {
+      video.srcObject = localStream;
+      video.play().catch(e => console.warn("Local video auto-play blocked:", e));
     }
   }, [localStream, isVideoOff, isScreenSharing]);
 
@@ -873,6 +967,138 @@ const CallScreen = ({
     }
     return () => clearInterval(callTimer);
   }, [callStatus]);
+
+  // 9. Intelligent Simulated Call Auto-Answer for Bots and Offline Nodes
+  useEffect(() => {
+    const targetId = callTarget?._id || callTarget?.id || "";
+    const isBotTarget = targetId.startsWith("bot-") || callTarget?.isBot || targetId.includes("bot");
+
+    // Helper: Generates a beautiful live synth/wave canvas animation when communicating with a simulated contact or bot
+    const setupCanvasRemoteStream = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 640;
+        canvas.height = 480;
+        const ctx = canvas.getContext("2d");
+
+        let angle = 0;
+        const drawFrame = () => {
+          // Keep drawing if we are still in connected/reconnecting state
+          if (peerConnectionRef.current?.connectionState === "failed") return;
+
+          // Space intelligence matrix look
+          ctx.fillStyle = "#0c141a";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          // Grid lines
+          ctx.strokeStyle = "rgba(0, 168, 132, 0.08)";
+          ctx.lineWidth = 1;
+          for (let i = 0; i < canvas.width; i += 40) {
+            ctx.beginPath();
+            ctx.moveTo(i, 0);
+            ctx.lineTo(i, canvas.height);
+            ctx.stroke();
+          }
+          for (let j = 0; j < canvas.height; j += 40) {
+            ctx.beginPath();
+            ctx.moveTo(0, j);
+            ctx.lineTo(canvas.width, j);
+            ctx.stroke();
+          }
+
+          // Concentric waves
+          const pulse = 120 + Math.sin(angle) * 35;
+          ctx.fillStyle = "rgba(0, 168, 132, 0.04)";
+          ctx.beginPath();
+          ctx.arc(canvas.width / 2, canvas.height / 2, pulse, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = "rgba(0, 168, 132, 0.3)";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(canvas.width / 2, canvas.height / 2, pulse - 30, 0, Math.PI * 2);
+          ctx.stroke();
+
+          // High frequency wave
+          ctx.strokeStyle = "#00e5ff";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          for (let x = 0; x < canvas.width; x++) {
+            const y = canvas.height / 2 + Math.sin(x * 0.03 + angle * 2.5) * 25 + Math.cos(x * 0.01 - angle) * 15;
+            if (x === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+
+          // Neon scanning line
+          ctx.strokeStyle = "rgba(168, 85, 247, 0.35)";
+          ctx.lineWidth = 2.5;
+          const scanY = (canvas.height / 2) + Math.cos(angle * 1.2) * 160;
+          ctx.beginPath();
+          ctx.moveTo(30, scanY);
+          ctx.lineTo(canvas.width - 30, scanY);
+          ctx.stroke();
+
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "bold 13px monospace";
+          ctx.textAlign = "center";
+          ctx.fillText(`AI CONSOLE LINK: ${callTarget?.name || "Onyx Node"}`, canvas.width / 2, canvas.height / 2 - 140);
+          ctx.font = "9px monospace";
+          ctx.fillStyle = "rgba(0, 168, 132, 0.85)";
+          ctx.fillText("BOT SECURE TRANSMISSION CHANNEL SECURED", canvas.width / 2, canvas.height / 2 + 150);
+
+          angle += 0.05;
+          requestAnimationFrame(drawFrame);
+        };
+
+        requestAnimationFrame(drawFrame);
+
+        const stream = canvas.captureStream(25);
+        setRemoteStream(stream);
+
+        // Bind to remote video element
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = stream;
+          remoteVideoRef.current.play().catch(() => {});
+        }
+      } catch (e) {
+        console.warn("Remote canvas simulation failed:", e);
+      }
+    };
+
+    if (isBotTarget) {
+      if (callTarget?.isIncoming && callStatus === "ringing") {
+        // Incoming call from a bot that we accepted - connect immediately
+        const timer = setTimeout(() => {
+          console.log("🤖 [AI Incoming Simulation] Connecting bot incoming call:", targetId);
+          playTone(600, 800, 250, 'sine');
+          setCallStatus("connected");
+          
+          if (localStream) {
+            setRemoteStream(localStream);
+          } else {
+            setupCanvasRemoteStream();
+          }
+        }, 1000);
+        return () => clearTimeout(timer);
+      } else if (!callTarget?.isIncoming && (callStatus === "calling" || callStatus === "ringing")) {
+        // Outgoing call to a bot
+        const timer = setTimeout(() => {
+          console.log("🤖 [AI Outgoing Simulation] Local auto-answer triggered for bot target:", targetId);
+          playTone(600, 800, 250, 'sine');
+          setCallStatus("connected");
+
+          if (localStream) {
+            setRemoteStream(localStream);
+          } else {
+            setupCanvasRemoteStream();
+          }
+        }, 2200);
+
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [callStatus, localStream, callTarget]);
 
   const handleHangUp = () => {
     // Release streams immediately 

@@ -12,8 +12,8 @@ const GROUP_AVATAR_PRESETS = [
 ];
 
 const Sidebar = ({
-  chatList,
-  groupList,
+  chatList = [],
+  groupList = [],
   activeTab,
   setActiveTab,
   selectedChatId,
