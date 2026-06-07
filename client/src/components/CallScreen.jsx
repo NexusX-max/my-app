@@ -420,10 +420,10 @@ const CallScreen = ({
     }
   }, [isVideoOff, localStream, isScreenSharing]);
 
-  // 4. Stable RTCPeerConnection Singleton Hook (Created ONLY ONCE, preventing duplicated hooks)
+  // 4. Stable RTCPeerConnection Singleton Hook (Created ONLY ONCE, completely stable across state changes)
   useEffect(() => {
-    // We bind the connection once media stream is aligned.
-    if (!localStream) return;
+    const socketListener = refs.current.socket;
+    if (!socketListener) return;
 
     const partnerId = refs.current.callTarget?.otherId || refs.current.callTarget?.id;
 
@@ -447,16 +447,20 @@ const CallScreen = ({
       bundlePolicy: "max-bundle"
     });
 
+    pc.iceCandidatesQueue = [];
     peerConnectionRef.current = pc;
 
-    // Direct existing tracks to tunnel
-    localStream.getTracks().forEach(track => {
-      try {
-        pc.addTrack(track, localStream);
-      } catch (e) {
-        console.warn("Track insertion error (benign if pre-negotiated):", e);
-      }
-    });
+    // Direct any existing active local stream tracks to tunnel
+    const activeStream = localStreamRef.current;
+    if (activeStream) {
+      activeStream.getTracks().forEach(track => {
+        try {
+          pc.addTrack(track, activeStream);
+        } catch (e) {
+          console.warn("Track insertion error on mount setup:", e);
+        }
+      });
+    }
 
     // Inbound remote user stream capture
     pc.ontrack = (event) => {
@@ -498,6 +502,21 @@ const CallScreen = ({
       }
     };
 
+    // Helper to apply any buffered ICE candidates safely
+    const flushIceCandidates = async (pcInstance) => {
+      if (pcInstance.iceCandidatesQueue && pcInstance.iceCandidatesQueue.length > 0) {
+        console.log(`📡 [WebRTC Handshake] Flushing ${pcInstance.iceCandidatesQueue.length} queued ICE candidates...`);
+        for (const candidate of pcInstance.iceCandidatesQueue) {
+          try {
+            await pcInstance.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (ce) {
+            console.warn("Buffered ICE candidate application failed:", ce);
+          }
+        }
+        pcInstance.iceCandidatesQueue = [];
+      }
+    };
+
     // Inbound Signalling Signal routers 
     const handleSignalingSignal = async (data) => {
       const partnerId = refs.current.callTarget.otherId || refs.current.callTarget.id;
@@ -509,6 +528,8 @@ const CallScreen = ({
       try {
         if (signal.type === "offer") {
           await pc.setRemoteDescription(new RTCSessionDescription(signal));
+          await flushIceCandidates(pc);
+          
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           
@@ -520,9 +541,18 @@ const CallScreen = ({
           setCallStatus("connected");
         } else if (signal.type === "answer") {
           await pc.setRemoteDescription(new RTCSessionDescription(signal));
+          await flushIceCandidates(pc);
           setCallStatus("connected");
         } else if (signal.type === "candidate" && signal.candidate) {
-          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          if (pc.remoteDescription && pc.remoteDescription.type) {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+            } catch (ce) {
+              console.warn("ICE candidate application failed:", ce);
+            }
+          } else {
+            pc.iceCandidatesQueue.push(signal.candidate);
+          }
         } else if (signal.type === "recipientRinging") {
           setCallStatus("ringing");
         } else if (signal.type === "partnerMutedChange") {
@@ -530,7 +560,6 @@ const CallScreen = ({
         } else if (signal.type === "partnerVideoChange") {
           setIsPartnerVideoOff(signal.videoOff);
         } else if (signal.type === "partnerBusy") {
-          // ☎️ Remote agent is busy!
           console.warn("☎️ Partner is currently busy on an active connection lines.");
           playTone(280, 240, 800, 'sawtooth');
           setCallStatus("busy");
@@ -550,52 +579,48 @@ const CallScreen = ({
       }
     };
 
-    const socketListener = refs.current.socket;
-    if (socketListener) {
-      socketListener.on("webrtcSignal", handleSignalingSignal);
-      
-      // Auto-answer triggers
-      socketListener.on("callConnected", () => {
-        setCallStatus("connecting");
-        playTone(600, 800, 200, 'sine');
-      });
+    socketListener.on("webrtcSignal", handleSignalingSignal);
+    
+    // Both sides are available—this triggers the active offer creation process.
+    socketListener.on("callConnected", async () => {
+      console.log("🔗 [WebRTC] Both ends available. Upgrading to active peer handshake.");
+      setCallStatus("connecting");
+      playTone(600, 800, 200, 'sine');
 
-      socketListener.on("callCancelled", (data) => {
-        setCallStatus("declined");
-        playTone(300, 180, 500, 'sawtooth');
-        setTimeout(() => {
-          if (refs.current.onEndCall) refs.current.onEndCall(refs.current.callDuration, "ended");
-        }, 1200);
-      });
-    }
+      // Caller registers and generates the invite offer AFTER the recipient has actually accepted.
+      if (!callTarget?.isIncoming) {
+        // A minimal delay ensures local stream loops have completed inserting tracks.
+        setTimeout(async () => {
+          try {
+            console.log("📤 Distributing WebRTC SDP Invitation Offer (on callConnected)...");
+            const offer = await pc.createOffer({
+              offerToReceiveAudio: true,
+              offerToReceiveVideo: true
+            });
+            await pc.setLocalDescription(offer);
+            
+            socketListener.emit("webrtcSignal", {
+              to: partnerId,
+              from: refs.current.userProfile?._id || "me",
+              signal: offer
+            });
+          } catch (e) {
+            console.error("SDP offer emission blocker on callConnected:", e);
+          }
+        }, 300);
+      }
+    });
 
-    // Trigger SDP sequence 
-    if (!callTarget?.isIncoming && socketListener) {
-      // Small buffer timer to ensure routing registers completely
-      const dialingTimer = setTimeout(async () => {
-        try {
-          console.log("📤 Distributing WebRTC SDP Invitation Offer...");
-          const offer = await pc.createOffer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: true
-          });
-          await pc.setLocalDescription(offer);
-          
-          socketListener.emit("webrtcSignal", {
-            to: partnerId,
-            from: refs.current.userProfile?._id || "me",
-            signal: offer
-          });
-        } catch (e) {
-          console.error("SDP offer emission blocker:", e);
-        }
-      }, 600);
-
-      return () => clearTimeout(dialingTimer);
-    }
+    socketListener.on("callCancelled", (data) => {
+      setCallStatus("declined");
+      playTone(300, 180, 500, 'sawtooth');
+      setTimeout(() => {
+        if (refs.current.onEndCall) refs.current.onEndCall(refs.current.callDuration, "ended");
+      }, 1200);
+    });
 
     // Send Ring message to notify caller we are Ringing!
-    if (callTarget?.isIncoming && socketListener) {
+    if (callTarget?.isIncoming) {
       socketListener.emit("webrtcSignal", {
         to: partnerId,
         from: refs.current.userProfile?._id || "me",
@@ -603,18 +628,14 @@ const CallScreen = ({
       });
     }
 
-    // No mock standalone local loop; routing is driven strictly by live socket.io signalling.
-
     return () => {
-      if (socketListener) {
-        socketListener.off("webrtcSignal", handleSignalingSignal);
-        socketListener.off("callConnected");
-        socketListener.off("callCancelled");
-      }
+      socketListener.off("webrtcSignal", handleSignalingSignal);
+      socketListener.off("callConnected");
+      socketListener.off("callCancelled");
       pc.close();
       peerConnectionRef.current = null;
     };
-  }, [localStream, selectedTurnRegion]); // Re-pivot only when localStream changes, completely stable on state re-renders!
+  }, [selectedTurnRegion]); // Completely stable across state re-renders! Re-spawns connection only when TURN region changes.
 
   // Robust production ICE dynamic restart
   const doProductionIceRestart = async () => {
@@ -1261,14 +1282,14 @@ const CallScreen = ({
           <div className="absolute inset-0 w-full h-full flex items-center justify-center bg-zinc-950">
             {/* Main Remote User Feed Frame */}
             <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
-              {remoteStream && !isPartnerVideoOff && (callStatus === "connected" || callStatus === "reconnecting") ? (
-                <video 
-                  ref={remoteVideoRef}
-                  autoPlay 
-                  playsInline 
-                  className={`w-full h-full object-cover`}
-                />
-              ) : (
+              <video 
+                ref={remoteVideoRef}
+                autoPlay 
+                playsInline 
+                className={`w-full h-full object-cover ${remoteStream && !isPartnerVideoOff && (callStatus === "connected" || callStatus === "reconnecting") ? "block" : "hidden"}`}
+              />
+
+              {!(remoteStream && !isPartnerVideoOff && (callStatus === "connected" || callStatus === "reconnecting")) && (
                 /* Remote camera placeholder screensaver */
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0e171e]">
                   <div className="relative mb-6">
@@ -1305,17 +1326,17 @@ const CallScreen = ({
 
             {/* PIP (Picture-In-Picture) Local selfie webcam screen */}
             <div className="absolute bottom-28 right-4 w-28 h-40 md:w-36 md:h-52 rounded-xl overflow-hidden border-2 border-[#202c33] bg-[#121b22] shadow-2xl z-20 transition-all duration-300 transform hover:scale-105 select-none">
-              {!isVideoOff && localStream ? (
-                <video 
-                  ref={localVideoRef}
-                  autoPlay 
-                  playsInline 
-                  muted 
-                  className={`w-full h-full object-cover transform scale-x-[-1] ${getCameraFilterClass()}`}
-                />
-              ) : (
+              <video 
+                ref={localVideoRef}
+                autoPlay 
+                playsInline 
+                muted 
+                className={`w-full h-full object-cover transform scale-x-[-1] ${getCameraFilterClass()} ${(!isVideoOff && localStream) ? "block" : "hidden"}`}
+              />
+
+              {(!localStream || isVideoOff) && (
                 /* Selfie Camera Off Layout */
-                <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center bg-zinc-900">
+                <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center bg-zinc-900 absolute inset-0">
                   <img 
                     src={userProfile?.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"} 
                     className="w-14 h-14 rounded-full object-cover border border-[#222e35] mb-2 shadow" 
@@ -1331,7 +1352,7 @@ const CallScreen = ({
                 </div>
               )}
               {/* Overlay small secure watermark */}
-              <div className="absolute bottom-1.5 left-2 bg-black/60 px-2 py-0.5 rounded text-[8px] text-zinc-300 font-bold uppercase tracking-wider leading-none select-none">
+              <div className="absolute bottom-1.5 left-2 bg-black/60 px-2 py-0.5 rounded text-[8px] text-zinc-300 font-bold uppercase tracking-wider leading-none select-none z-10">
                 {isScreenSharing ? "Screen Sharing" : "Me"}
               </div>
             </div>
