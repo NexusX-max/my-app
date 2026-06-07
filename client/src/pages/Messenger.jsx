@@ -11,6 +11,7 @@ import BiometricScreen from '../components/BiometricScreen';
 import SearchScreen from './SearchScreen';
 import { ShieldAlert, Clock, PhoneOff, Mic } from 'lucide-react';
 import toast from 'react-hot-toast';
+
 const showToast = {
   success: (msg) => {
     try {
@@ -191,6 +192,10 @@ export default function Messenger() {
   
   // Call Session Active State
   const [activeCallSession, setActiveCallSession] = useState(null); 
+  const activeCallSessionRef = useRef(null);
+  useEffect(() => {
+    activeCallSessionRef.current = activeCallSession;
+  }, [activeCallSession]);
   const [isAITyping, setIsAITyping] = useState(false);
 
   // --- Block, Mute, Delete and Dynamic Chats State ---
@@ -558,6 +563,21 @@ export default function Messenger() {
     socket.on("incomingCall", (data) => {
       console.log("📞 [SOCKET] Telemetry Incoming call detected:", data);
       
+      // Auto busy signaling if user is already in another call
+      if (activeCallSessionRef.current) {
+        console.log("☎️ User is busy in an active session. Emitting busy signal to caller.");
+        socket.emit("webrtcSignal", {
+          to: data.from,
+          from: userProfile._id || "me",
+          signal: { type: "partnerBusy" }
+        });
+        socket.emit("declineCall", {
+          to: data.from,
+          from: userProfile._id || "me"
+        });
+        return;
+      }
+
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         new Notification(`Onyx Secure Call from ${data.name}`, { body: `Encryption rate synced.` });
       }
@@ -1547,37 +1567,45 @@ export default function Messenger() {
       )}
 
       {incomingCallSession && (
-        <div id="incoming-call-portal" className="fixed inset-0 z-[7000] bg-black/90 backdrop-blur-md flex flex-col items-center justify-center font-mono">
-          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.015)_1px,_transparent_1px),_linear-gradient(90deg,_rgba(255,255,255,0.015)_1px,_transparent_1px)] bg-[size:30px_30px]" />
-          <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/10 via-transparent to-purple-500/10 animate-pulse" />
-          
-          <div className="relative z-10 max-w-sm w-full mx-4 p-8 rounded-3xl bg-zinc-900 border border-cyan-500/20 text-center shadow-[0_0_50px_rgba(6,182,212,0.15)] flex flex-col items-center">
-            {/* Visual signal wave */}
-            <div className="w-20 h-20 rounded-full border-4 border-dashed border-cyan-500/30 animate-spin flex items-center justify-center mb-6">
-              <img src={incomingCallSession.avatar} className="w-16 h-16 rounded-full object-cover border-2 border-cyan-400 p-0.5" alt="Caller" />
+        <div id="incoming-call-portal" className="fixed inset-0 z-[7000] bg-[#0b141a]/95 backdrop-blur-md flex flex-col items-center justify-between p-8 font-sans text-[#e9edef]">
+          {/* Top Lock Indicator */}
+          <div className="flex items-center gap-2 mt-4 text-zinc-400">
+            <Shield size={14} className="text-[#00a884] shrink-0" />
+            <span className="text-[11px] font-bold tracking-widest uppercase">
+              End-to-End Encrypted
+            </span>
+          </div>
+
+          {/* Caller Profile Card */}
+          <div className="flex flex-col items-center text-center my-auto">
+            {/* Pulsing Avatar Frame */}
+            <div className="relative mb-6">
+              <div className="absolute inset-x-0 -inset-y-4 rounded-full bg-[#00a884]/15 animate-ping duration-2000" />
+              <div className="absolute inset-0 rounded-full bg-[#128c7e]/10 animate-pulse duration-1000" />
+              <img 
+                src={incomingCallSession.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"} 
+                className="w-28 h-28 rounded-full object-cover border-4 border-[#121b22] relative z-10 shadow-2xl"
+                alt="Caller avatar"
+                referrerPolicy="no-referrer"
+              />
             </div>
 
-            <p className="text-[10px] text-cyan-400 uppercase tracking-[0.3em] font-black mb-1 animate-pulse">
-              INCOMING ONYX SECURE TELEMETRY LINE
-            </p>
-            <h2 className="text-xl font-bold text-white uppercase tracking-wider mb-2">
+            <h2 className="text-2xl font-black text-white mb-1.5 tracking-wider">
               {incomingCallSession.name}
             </h2>
-            <p className="text-xs text-zinc-500 uppercase tracking-widest mb-8">
-              REQ RATE SYNCED ({incomingCallSession.type})
+            <p className="text-sm text-[#00a884] font-bold tracking-widest uppercase flex items-center gap-1.5 justify-center">
+              {incomingCallSession.type === 'video' ? <Video size={14} /> : <Phone size={14} />}
+              <span>Incoming WhatsApp {incomingCallSession.type === 'video' ? 'Video' : 'Voice'} Call</span>
             </p>
+          </div>
 
-            {/* Glowing ring waves simulation */}
-            <div className="flex gap-1.5 items-center justify-center mb-10 h-6">
-              <span className="w-1.5 h-3 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.1s]" />
-              <span className="w-1.5 h-6 bg-cyan-500 rounded-full animate-bounce [animation-delay:0.2s]" />
-              <span className="w-1.5 h-4 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.3s]" />
-              <span className="w-1.5 h-6 bg-cyan-500 rounded-full animate-bounce [animation-delay:0.4s]" />
-              <span className="w-1.5 h-3 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.5s]" />
-            </div>
-
-            {/* Actions: Accept or Decline */}
-            <div className="flex justify-center gap-8 w-full">
+          {/* Bottom Action Keys */}
+          <div className="w-full max-w-sm mb-6 flex flex-col items-center gap-6">
+            <span className="text-xs text-zinc-500 uppercase tracking-widest font-black animate-pulse">
+              Swipe or click to answer
+            </span>
+            
+            <div className="flex justify-center gap-10 w-full">
               {/* Decline Call Button */}
               <button
                 onClick={() => {
@@ -1625,8 +1653,8 @@ export default function Messenger() {
                   }
                   setIncomingCallSession(null);
                 }}
-                className="w-16 h-16 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center transition-all cursor-pointer shadow-[0_0_20px_rgba(239,68,68,0.4)] active:scale-95 animate-pulse"
-                title="Decline Secure Connection"
+                className="w-16 h-16 rounded-full bg-[#ea0038] hover:bg-[#c9002e] text-white flex items-center justify-center transition-all cursor-pointer shadow-[0_4px_20px_rgba(234,0,56,0.3)] active:scale-90"
+                title="Decline Call"
               >
                 <PhoneOff size={24} />
               </button>
@@ -1669,12 +1697,10 @@ export default function Messenger() {
 
                   setIncomingCallSession(null);
                 }}
-                className="w-16 h-16 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center transition-all cursor-pointer shadow-[0_0_20px_rgba(16,185,129,0.4)] active:scale-95"
-                title="Accept Secure Connection"
+                className="w-16 h-16 rounded-full bg-[#00a884] hover:bg-[#009675] text-white flex items-center justify-center transition-all cursor-pointer shadow-[0_4px_20px_rgba(0,168,132,0.3)] active:scale-90"
+                title="Accept Call"
               >
-                <div className="rotate-135">
-                  <Mic size={24} />
-                </div>
+                <Phone size={24} className="animate-bounce" />
               </button>
             </div>
           </div>
