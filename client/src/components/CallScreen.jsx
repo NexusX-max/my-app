@@ -335,6 +335,8 @@ const CallScreen = ({
     // We bind the connection once media stream is aligned.
     if (!localStream) return;
 
+    const partnerId = refs.current.callTarget?.otherId || refs.current.callTarget?.id;
+
     console.log(`🌐 [WebRTC Engine] Spawning stable Peer Tunnel via ${selectedTurnRegion} Cloud Gateway.`);
     
     const iceServers = [
@@ -376,12 +378,11 @@ const CallScreen = ({
 
     // Candidate dispatch
     pc.onicecandidate = (event) => {
-      const liveRefs = refs.current;
-      if (event.candidate && liveRefs.socket && liveRefs.callTarget) {
-        const partnerId = liveRefs.callTarget.otherId || liveRefs.callTarget.id;
-        liveRefs.socket.emit("webrtcSignal", {
+      if (event.candidate && refs.current.socket && refs.current.callTarget) {
+        const partnerId = refs.current.callTarget.otherId || refs.current.callTarget.id;
+        refs.current.socket.emit("webrtcSignal", {
           to: partnerId,
-          from: liveRefs.userProfile?._id || "me",
+          from: refs.current.userProfile?._id || "me",
           signal: {
             type: "candidate",
             candidate: event.candidate
@@ -409,8 +410,7 @@ const CallScreen = ({
 
     // Inbound Signalling Signal routers 
     const handleSignalingSignal = async (data) => {
-      const liveRefs = refs.current;
-      const partnerId = liveRefs.callTarget.otherId || liveRefs.callTarget.id;
+      const partnerId = refs.current.callTarget.otherId || refs.current.callTarget.id;
       if (data.from !== partnerId) return;
 
       const { signal } = data;
@@ -422,9 +422,9 @@ const CallScreen = ({
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           
-          liveRefs.socket.emit("webrtcSignal", {
+          refs.current.socket.emit("webrtcSignal", {
             to: partnerId,
-            from: liveRefs.userProfile?._id || "me",
+            from: refs.current.userProfile?._id || "me",
             signal: answer
           });
           setCallStatus("connected");
@@ -445,14 +445,14 @@ const CallScreen = ({
           playTone(280, 240, 800, 'sawtooth');
           setCallStatus("busy");
           setTimeout(() => {
-            if (liveRefs.onEndCall) liveRefs.onEndCall(0, "busy");
+            if (refs.current.onEndCall) refs.current.onEndCall(0, "busy");
           }, 1800);
         } else if (signal.type === "partnerTimeout") {
           console.warn("🛑 Direct Timeout cancellation triggered from endpoint.");
           setCallStatus("timeout");
           playTone(200, 150, 650, 'sine');
           setTimeout(() => {
-            if (liveRefs.onEndCall) liveRefs.onEndCall(0, "missed");
+            if (refs.current.onEndCall) refs.current.onEndCall(0, "missed");
           }, 1500);
         }
       } catch (err) {
@@ -460,7 +460,7 @@ const CallScreen = ({
       }
     };
 
-    const socketListener = liveRefs.socket;
+    const socketListener = refs.current.socket;
     if (socketListener) {
       socketListener.on("webrtcSignal", handleSignalingSignal);
       
@@ -493,7 +493,7 @@ const CallScreen = ({
           
           socketListener.emit("webrtcSignal", {
             to: partnerId,
-            from: liveRefs.userProfile?._id || "me",
+            from: refs.current.userProfile?._id || "me",
             signal: offer
           });
         } catch (e) {
@@ -508,7 +508,7 @@ const CallScreen = ({
     if (callTarget?.isIncoming && socketListener) {
       socketListener.emit("webrtcSignal", {
         to: partnerId,
-        from: liveRefs.userProfile?._id || "me",
+        from: refs.current.userProfile?._id || "me",
         signal: { type: "recipientRinging" }
       });
     }
@@ -535,12 +535,11 @@ const CallScreen = ({
       const offer = await pc.createOffer({ iceRestart: true });
       await pc.setLocalDescription(offer);
       
-      const liveRefs = refs.current;
-      if (liveRefs.socket && liveRefs.callTarget) {
-        const partnerId = liveRefs.callTarget.otherId || liveRefs.callTarget.id;
-        liveRefs.socket.emit("webrtcSignal", {
+      if (refs.current.socket && refs.current.callTarget) {
+        const partnerId = refs.current.callTarget.otherId || refs.current.callTarget.id;
+        refs.current.socket.emit("webrtcSignal", {
           to: partnerId,
-          from: liveRefs.userProfile?._id || "me",
+          from: refs.current.userProfile?._id || "me",
           signal: offer
         });
       }
@@ -556,26 +555,31 @@ const CallScreen = ({
     }
   }, [remoteStream, isPartnerVideoOff]);
 
+  // Bind Local Stream video dom
+  useEffect(() => {
+    if (localVideoRef.current && localStream) {
+      localVideoRef.current.srcObject = localStream;
+    }
+  }, [localStream, isVideoOff, isScreenSharing]);
+
   // Transmit control key changes to caller in real time 
   useEffect(() => {
-    const liveRefs = refs.current;
-    if (liveRefs.socket && liveRefs.callTarget && callStatus === "connected") {
-      const partnerId = liveRefs.callTarget.otherId || liveRefs.callTarget.id;
-      liveRefs.socket.emit("webrtcSignal", {
+    if (refs.current.socket && refs.current.callTarget && callStatus === "connected") {
+      const partnerId = refs.current.callTarget.otherId || refs.current.callTarget.id;
+      refs.current.socket.emit("webrtcSignal", {
         to: partnerId,
-        from: liveRefs.userProfile?._id || "me",
+        from: refs.current.userProfile?._id || "me",
         signal: { type: "partnerMutedChange", muted: isMuted }
       });
     }
   }, [isMuted, callStatus]);
 
   useEffect(() => {
-    const liveRefs = refs.current;
-    if (liveRefs.socket && liveRefs.callTarget && callStatus === "connected") {
-      const partnerId = liveRefs.callTarget.otherId || liveRefs.callTarget.id;
-      liveRefs.socket.emit("webrtcSignal", {
+    if (refs.current.socket && refs.current.callTarget && callStatus === "connected") {
+      const partnerId = refs.current.callTarget.otherId || refs.current.callTarget.id;
+      refs.current.socket.emit("webrtcSignal", {
         to: partnerId,
-        from: liveRefs.userProfile?._id || "me",
+        from: refs.current.userProfile?._id || "me",
         signal: { type: "partnerVideoChange", videoOff: isVideoOff }
       });
     }
@@ -882,12 +886,11 @@ const CallScreen = ({
 
     playTone(320, 150, 350, 'sawtooth');
 
-    const liveRefs = refs.current;
-    if (liveRefs.socket && liveRefs.callTarget) {
-      const partnerId = liveRefs.callTarget.otherId || liveRefs.callTarget.id;
-      liveRefs.socket.emit("declineCall", {
+    if (refs.current.socket && refs.current.callTarget) {
+      const partnerId = refs.current.callTarget.otherId || refs.current.callTarget.id;
+      refs.current.socket.emit("declineCall", {
         to: partnerId,
-        from: liveRefs.userProfile?._id || "me"
+        from: refs.current.userProfile?._id || "me"
       });
     }
 
