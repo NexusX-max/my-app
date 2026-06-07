@@ -27,7 +27,6 @@ const CallScreen = ({
   const [videoFilter, setVideoFilter] = useState("none"); // none, blur, matrix, crimson, neon
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
-  const [isLockScreenEmulated, setIsLockScreenEmulated] = useState(false);
   const [e2eeCipherKey, setE2eeCipherKey] = useState("");
   const [copiedKey, setCopiedKey] = useState(false);
 
@@ -514,14 +513,7 @@ const CallScreen = ({
       });
     }
 
-    // Direct standalone auto-connect fallback if socket routing is inactive
-    let fallbackTimer;
-    if (!socketListener) {
-      fallbackTimer = setTimeout(() => {
-        console.log("🛰️ Development Emulator: Socket offline, establishing standalone local loop.");
-        setCallStatus("connected");
-      }, 2500);
-    }
+    // No mock standalone local loop; routing is driven strictly by live socket.io signalling.
 
     return () => {
       if (socketListener) {
@@ -529,7 +521,6 @@ const CallScreen = ({
         socketListener.off("callConnected");
         socketListener.off("callCancelled");
       }
-      if (fallbackTimer) clearTimeout(fallbackTimer);
       pc.close();
       peerConnectionRef.current = null;
     };
@@ -979,20 +970,6 @@ const CallScreen = ({
         </div>
         
         <div className="flex items-center gap-2">
-          {/* Lock Screen CallKit Emulator Switch */}
-          <button
-            onClick={() => setIsLockScreenEmulated(!isLockScreenEmulated)}
-            className={`px-3 py-1 text-[10px] font-black tracking-widest rounded-full uppercase flex items-center gap-1 transition-all ${
-              isLockScreenEmulated 
-                ? 'bg-amber-600/20 text-amber-500 border border-amber-500/40' 
-                : 'bg-[#202c33] text-zinc-400 hover:text-white border border-[#222d34]'
-            }`}
-            title="Integrate iPhone/Android WhatsApp Lockscreen Simulation"
-          >
-            <Timer size={10} />
-            <span>CallKit Test</span>
-          </button>
-
           {/* Diagnostics toggle */}
           {callStatus === "connected" && (
             <button
@@ -1013,71 +990,7 @@ const CallScreen = ({
         </div>
       </header>
 
-      {/* --- CallKit Lock Screen Emulator Frame Overlay --- */}
-      {isLockScreenEmulated && (
-        <div className="absolute inset-0 bg-zinc-950 z-[9000] flex flex-col justify-between p-8 font-sans transition-all animate-fade-in">
-          {/* Top Info */}
-          <div className="flex flex-col items-center mt-12 text-center">
-            <div className="bg-zinc-900/80 p-1 rounded-full border border-zinc-800 flex items-center gap-1.5 px-3 mb-2 text-zinc-400">
-              <ShieldCheck size={11} className="text-[#00a884]" />
-              <span className="text-[10px] font-bold uppercase tracking-widest leading-none">Onyx CallKit active</span>
-            </div>
-            
-            <img 
-              src={callTarget.avatar} 
-              className="w-24 h-24 rounded-full border-2 border-zinc-800 mt-4 shadow-xl object-cover" 
-              alt={callTarget.name}
-            />
-            
-            <h1 className="text-3xl font-black text-white mt-4 tracking-wide">{callTarget.name}</h1>
-            <p className="text-sm text-zinc-400 mt-1 uppercase tracking-widest font-mono">WhatsApp Secure Link</p>
-            <p className="text-[#00a884] text-xs font-bold uppercase tracking-widest animate-pulse mt-4 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#00a884] animate-ping" />
-              Incoming Lock Screen Intent
-            </p>
-          </div>
 
-          {/* Bottom Action sliders */}
-          <div className="w-full max-w-sm mx-auto flex flex-col items-center gap-6 mb-12">
-            <p className="text-xs text-zinc-500 text-center select-none tracking-widest font-black uppercase">
-              Drag slide button or tap to answer
-            </p>
-
-            <div className="w-full bg-zinc-900/60 p-2.5 rounded-full border border-zinc-800 flex justify-between items-center relative overflow-hidden group">
-              <button 
-                onClick={handleHangUp}
-                className="bg-red-600 hover:bg-red-500 text-white p-3.5 rounded-full font-bold relative z-10 cursor-pointer"
-                title="Decline"
-              >
-                <PhoneOff size={20} />
-              </button>
-              
-              <span className="text-[11px] font-black tracking-[0.2em] uppercase text-zinc-400 select-none animate-pulse mx-auto">
-                Swipe to Unlock Answer
-              </span>
-
-              <button 
-                onClick={() => {
-                  setCallStatus("connected");
-                  setIsLockScreenEmulated(false);
-                  playTone(600, 800, 200, 'sine');
-                }}
-                className="bg-[#00a884] hover:bg-[#009675] text-white p-3.5 rounded-full font-bold z-10 cursor-pointer animate-pulse"
-                title="Unlock and Answer"
-              >
-                <Volume2 size={20} />
-              </button>
-            </div>
-
-            <button 
-              onClick={() => setIsLockScreenEmulated(false)}
-              className="text-xs text-zinc-500 hover:text-white uppercase font-bold tracking-widest transition-colors cursor-pointer"
-            >
-              Exit Simulation
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* 📞 MAIN AUDIO / VIDEO PLATFORM RENDER CANVAS */}
       <main className="flex-1 w-full bg-[#111b21] flex flex-col items-center justify-center relative p-4">
