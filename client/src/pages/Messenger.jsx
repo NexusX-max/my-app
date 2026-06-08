@@ -11,6 +11,7 @@ import BiometricScreen from '../components/BiometricScreen';
 import SearchScreen from './SearchScreen';
 import { ShieldAlert, Clock, PhoneOff, Mic } from 'lucide-react';
 import toast from 'react-hot-toast';
+
 const showToast = {
   success: (msg) => {
     try {
@@ -75,10 +76,10 @@ export default function Messenger() {
   const [messagesHistory, setMessagesHistory] = useState(() => {
     try {
       const saved = localStorage.getItem('onyx_messages_history_v2');
-      return saved ? JSON.parse(saved) : {};
+      return saved ? JSON.parse(saved) : INITIAL_MESSAGES;
     } catch (e) {
       console.error("LocalStorage Corrupted, resetting history", e);
-      return {};
+      return INITIAL_MESSAGES;
     }
   });
 
@@ -108,63 +109,19 @@ export default function Messenger() {
         localStorage.removeItem('onyx_stories');
       }
     }
-    return [
-      {
-        id: "st-1",
-        nodeId: "bot-onyx",
-        nodeName: "Onyx Core",
-        nodeAvatar: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80",
-        timestamp: "5m ago",
-        media: "https://images.unsplash.com/photo-1618055182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80",
-        caption: "✨ Onyx compiler index running at 100% nominal speed."
-      },
-      {
-        id: "st-2",
-        nodeId: "bot-luna",
-        nodeName: "Advisor Luna",
-        nodeAvatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80",
-        timestamp: "1h ago",
-        media: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=600&q=80",
-        caption: "🌱 Morning telemetry check complete. Rest your eyes!"
-      }
-    ];
+    return [];
   });
 
   const [broadcastChannels, setBroadcastChannels] = useState(() => {
     const saved = localStorage.getItem('onyx_channels_list_v2');
-    return saved ? JSON.parse(saved) : [
-      {
-        id: "chan-onyx-news",
-        name: "📢 Onyx Intelligence Bulletin",
-        avatar: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=150&q=80",
-        lastMsg: "New decryption cipher module launched in Citadel Hub.",
-        time: "Just now",
-        isChannel: true,
-        joined: true,
-        subscribers: 1024,
-        description: "Official bulletins and news regarding Core Citadel encryption developments.",
-        role: "owner"
-      },
-      {
-        id: "chan-cyber-weekly",
-        name: "📡 Cyber Weekly Feed",
-        avatar: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80",
-        lastMsg: "Establishing secure multi-party call relays inside WebRTC sub-decks.",
-        time: "09:30 AM",
-        isChannel: true,
-        joined: false,
-        subscribers: 256,
-        description: "Weekly telemetry updates covering cryptographic protocols and deep web links.",
-        role: "guest"
-      }
-    ];
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [searchedNodes, setSearchedNodes] = useState([]);
   const [unreadChatIds, setUnreadChatIds] = useState([]);
   const [incomingCallSession, setIncomingCallSession] = useState(null);
 
-  const [selectedChatId, setSelectedChatId] = useState("conv-onyx");
+  const [selectedChatId, setSelectedChatId] = useState(null);
   const [activeTab, setActiveTab] = useState("chats"); 
   const [searchQuery, setSearchQuery] = useState("");
   
@@ -191,6 +148,10 @@ export default function Messenger() {
   
   // Call Session Active State
   const [activeCallSession, setActiveCallSession] = useState(null); 
+  const activeCallSessionRef = useRef(null);
+  useEffect(() => {
+    activeCallSessionRef.current = activeCallSession;
+  }, [activeCallSession]);
   const [isAITyping, setIsAITyping] = useState(false);
 
   // --- Block, Mute, Delete and Dynamic Chats State ---
@@ -211,8 +172,18 @@ export default function Messenger() {
 
   const [dynamicChats, setDynamicChats] = useState(() => {
     const saved = localStorage.getItem('onyx_dynamic_chats');
-    return saved ? JSON.parse(saved) : [];
+    return saved ? JSON.parse(saved) : INITIAL_CHATS;
   });
+
+  const selectedChatIdRef = useRef(null);
+  useEffect(() => {
+    selectedChatIdRef.current = selectedChatId;
+  }, [selectedChatId]);
+
+  const dynamicChatsRef = useRef(null);
+  useEffect(() => {
+    dynamicChatsRef.current = dynamicChats;
+  }, [dynamicChats]);
 
   // UTC clock coordinates
   const [utcClockTime, setUtcClockTime] = useState(new Date("2026-05-27T03:00:00Z"));
@@ -315,91 +286,106 @@ export default function Messenger() {
         if (Array.isArray(data)) {
           const formatted = data.map(formatBackendConversation);
           
+          let latestDynamic = [];
+          try {
+            const saved = localStorage.getItem('onyx_dynamic_chats');
+            latestDynamic = saved ? JSON.parse(saved) : (dynamicChatsRef.current || []);
+          } catch (e) {
+            latestDynamic = dynamicChatsRef.current || [];
+          }
+
           setChatList(() => {
             const combined = [...formatted];
-            dynamicChats.forEach(d => {
+            latestDynamic.forEach(d => {
               if (!combined.some(c => c.id === d.id || (d.otherId && c.otherId === d.otherId))) {
                 combined.push(d);
               }
             });
+            if (combined.length === 0) {
+              return INITIAL_CHATS;
+            }
             return combined;
           });
           
+          // If we have a selectedChatId that is a temp ID, resolve it to the loaded real conversation ID
+          const currentSelectedId = selectedChatIdRef.current;
+          if (currentSelectedId && currentSelectedId.startsWith("conv-temp-")) {
+            const tempUserId = currentSelectedId.replace("conv-temp-", "");
+            const matchingRealConv = formatted.find(c => c.otherId === tempUserId);
+            if (matchingRealConv) {
+              const realConvId = matchingRealConv.id;
+              console.log(`💡 [LOAD CONVERSATIONS] Auto-resolving selectedChatId from temp ${currentSelectedId} to real ${realConvId}`);
+              
+              setDynamicChats(prev => {
+                const next = prev.map(c => {
+                  if (c.id === currentSelectedId) {
+                    return { ...c, id: realConvId };
+                  }
+                  return c;
+                });
+                localStorage.setItem('onyx_dynamic_chats', JSON.stringify(next));
+                return next;
+              });
+
+              setMessagesHistory(prev => {
+                const updated = { ...prev };
+                const oldList = updated[currentSelectedId] || [];
+                updated[realConvId] = [...(updated[realConvId] || []), ...oldList].filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
+                delete updated[currentSelectedId];
+                return updated;
+              });
+
+              setSelectedChatId(realConvId);
+            }
+          }
+          
           // Verify if active selected chat still active, fallback if not set
-          if (formatted.length > 0 && !selectedChatId) {
-            setSelectedChatId(formatted[0].id);
+          const activeList = formatted.length > 0 ? formatted : (latestDynamic.length > 0 ? latestDynamic : INITIAL_CHATS);
+          if (activeList.length > 0 && !currentSelectedId) {
+            setSelectedChatId(activeList[0].id);
           }
         }
       })
       .catch(err => {
         console.warn("REST API conversations fetch offline simulation fallback:", err);
-        const fallback = [
-          {
-            id: "bot-onyx",
-            name: "Onyx Core Intelligence",
-            avatar: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80",
-            lastMsg: "Neural link aggregated. All modules operating optimally.",
-            time: "03:00 AM",
-            online: true,
-            isBot: true,
-            bio: "Core artificial intelligence framework. Serves advanced network routing logic and deep inquiry.",
-            encryptionKey: "AES-512-NX",
-            latency: "0.04ms"
-          },
-          {
-            id: "bot-luna",
-            name: "Dr. Luna Vane",
-            avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80",
-            lastMsg: "Your focus waves seem slightly hyperactive today. Rest is useful.",
-            time: "2:54 AM",
-            online: true,
-            isBot: true,
-            bio: "Chief Bio-Neural Psychologist of Onyx Citadel. Specialized in operator burnout preservation.",
-            encryptionKey: "RSA-4096-LUNA",
-            latency: "1.12ms"
-          },
-          {
-            id: "user-kaelen",
-            name: "Kaelen Vex",
-            avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&q=80",
-            lastMsg: "Just bypass the mainframe port 3000 rules. It's direct ingress.",
-            time: "Yesterday",
-            online: true,
-            isBot: false,
-            bio: "Underground network decker and freelance ingress engineer. Likes bypass tools.",
-            encryptionKey: "PGP-MEMBER-99",
-            latency: "12ms"
-          },
-          {
-            id: "user-sasha",
-            name: "Sasha Glimmer",
-            avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80",
-            lastMsg: "Our audio visualizers look incredible. Try calling me to inspect!",
-            time: "May 25",
-            online: false,
-            isBot: false,
-            bio: "Synthetic interface architect. Obsessed with high-refresh neon render grids.",
-            encryptionKey: "BLOWFISH-SS",
-            latency: "35ms"
-          }
-        ];
+        const fallback = INITIAL_CHATS;
         
+        let latestDynamic = [];
+        try {
+          const saved = localStorage.getItem('onyx_dynamic_chats');
+          latestDynamic = saved ? JSON.parse(saved) : (dynamicChatsRef.current || []);
+        } catch (e) {
+          latestDynamic = dynamicChatsRef.current || [];
+        }
+
         setChatList(() => {
           const combined = [...fallback];
-          dynamicChats.forEach(d => {
+          latestDynamic.forEach(d => {
             if (!combined.some(c => c.id === d.id || (d.otherId && c.otherId === d.otherId))) {
               combined.push(d);
             }
           });
+          if (combined.length === 0) {
+            return INITIAL_CHATS;
+          }
           return combined;
         });
+
+        // Verify if active selected chat still active, fallback if not set
+        const currentSelectedId = selectedChatIdRef.current;
+        if (!currentSelectedId) {
+          const fallbackList = latestDynamic.length > 0 ? latestDynamic : INITIAL_CHATS;
+          if (fallbackList.length > 0) {
+            setSelectedChatId(fallbackList[0].id);
+          }
+        }
       });
   };
 
   // Initial load
   useEffect(() => {
     loadAllConversations();
-  }, [user, dynamicChats]);
+  }, [user]);
 
   // Global user gesture detection to unlock AudioContext compliant with browser autoplay policies
   useEffect(() => {
@@ -478,23 +464,25 @@ export default function Messenger() {
       let originId = data.conversationId;
       const currentUserId = user?._id || userProfile?._id || 'me';
 
-      // Dynamically resolve target chat ID based on members to align sender and recipient views
+      let partnerId = null;
       if (data.conversation && data.conversation.members) {
         const members = data.conversation.members.map(m => m.toString());
-        const partnerId = members.find(m => m !== currentUserId.toString());
-        if (partnerId) {
-          const matchedChat = chatList.find(c => 
-            c.id === partnerId || 
-            c.otherId === partnerId || 
-            c.id === `conv-temp-${partnerId}` ||
-            c.id === `conv-${partnerId}` ||
-            c.id === originId
-          );
-          if (matchedChat) {
-            originId = matchedChat.id;
-          } else {
-            originId = partnerId;
-          }
+        partnerId = members.find(m => m !== currentUserId.toString());
+      }
+
+      // Dynamically resolve target chat ID based on members to align sender and recipient views
+      if (partnerId) {
+        const matchedChat = chatList.find(c => 
+          c.id === partnerId || 
+          c.otherId === partnerId || 
+          c.id === `conv-temp-${partnerId}` ||
+          c.id === `conv-${partnerId}` ||
+          c.id === originId
+        );
+        if (matchedChat) {
+          originId = matchedChat.id;
+        } else {
+          originId = partnerId;
         }
       }
 
@@ -505,17 +493,32 @@ export default function Messenger() {
         const tempTargetUserId = selectedChatId.replace("conv-temp-", "");
         let isMatch = (data.message?.senderId === tempTargetUserId);
 
-        if (!isMatch && data.conversation && data.conversation.members) {
-          const membersStr = data.conversation.members.map(m => m.toString());
-          if (membersStr.includes(currentUserId.toString()) && membersStr.includes(tempTargetUserId)) {
-            isMatch = true;
-          }
+        if (!isMatch && partnerId && tempTargetUserId === partnerId) {
+          isMatch = true;
         }
 
         if (isMatch) {
           const realConvId = data.conversationId;
           console.log(`🔄 [SOCKET SWAP] Automatically switching selectedChatId from temp ${selectedChatId} to real ${realConvId}`);
           
+          setDynamicChats(prev => {
+            const next = prev.map(c => {
+              if (c.id === selectedChatId || c.otherId === tempTargetUserId) {
+                return { ...c, id: realConvId };
+              }
+              return c;
+            });
+            localStorage.setItem('onyx_dynamic_chats', JSON.stringify(next));
+            return next;
+          });
+
+          setChatList(prev => prev.map(c => {
+            if (c.id === selectedChatId || c.otherId === tempTargetUserId) {
+              return { ...c, id: realConvId };
+            }
+            return c;
+          }));
+
           setMessagesHistory(prev => {
             const updated = { ...prev };
             const oldList = updated[selectedChatId] || [];
@@ -529,10 +532,23 @@ export default function Messenger() {
         }
       }
 
-      // Update current history list if in active chat
-      if (originId === activeId) {
+      // Determine if this received message matches the active chat view (whether it is by real ID, temp ID, or partner ID)
+      let incomingMessageMatchesActive = false;
+      if (originId === activeId || data.conversationId === activeId) {
+        incomingMessageMatchesActive = true;
+      } else if (activeId && activeId.startsWith("conv-temp-")) {
+        const tempTargetUserId = activeId.replace("conv-temp-", "");
+        if (tempTargetUserId === partnerId || tempTargetUserId === data.conversationId) {
+          incomingMessageMatchesActive = true;
+        }
+      } else if (activeId && partnerId && activeId === partnerId) {
+        incomingMessageMatchesActive = true;
+      }
+
+      if (incomingMessageMatchesActive) {
         setMessagesHistory(prev => {
-          const currentList = prev[originId] || [];
+          // Check both the activeId and data.conversationId just in case histories are keyed differently
+          const currentList = prev[activeId] || prev[data.conversationId] || prev[originId] || [];
           if (currentList.some(m => m.id === msgId)) return prev;
           
           const isSenderMe = data.message.senderId === 'me' || data.message.senderId === currentUserId.toString();
@@ -544,20 +560,49 @@ export default function Messenger() {
             file: data.message.image,
             time: new Date(data.message.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           };
-          return {
+
+          const nextHistory = {
             ...prev,
-            [originId]: [...currentList, newMsgFormatted]
+            [activeId]: [...currentList, newMsgFormatted]
           };
+
+          // Also save it under the real database conversation ID so that if the user switches chats and comes back, it is properly cached
+          if (data.conversationId && data.conversationId !== activeId) {
+            const targetList = prev[data.conversationId] || [];
+            if (!targetList.some(m => m.id === msgId)) {
+              nextHistory[data.conversationId] = [...targetList, newMsgFormatted];
+            }
+          }
+
+          return nextHistory;
         });
       } else {
         // Mark as unread!
-        setUnreadChatIds(prev => prev.includes(originId) ? prev : [...prev, originId]);
+        const unreadKey = originId || data.conversationId || partnerId;
+        if (unreadKey) {
+          setUnreadChatIds(prev => prev.includes(unreadKey) ? prev : [...prev, unreadKey]);
+        }
       }
     });
 
     socket.on("incomingCall", (data) => {
       console.log("📞 [SOCKET] Telemetry Incoming call detected:", data);
       
+      // Auto busy signaling if user is already in another call
+      if (activeCallSessionRef.current) {
+        console.log("☎️ User is busy in an active session. Emitting busy signal to caller.");
+        socket.emit("webrtcSignal", {
+          to: data.from,
+          from: userProfile._id || "me",
+          signal: { type: "partnerBusy" }
+        });
+        socket.emit("declineCall", {
+          to: data.from,
+          from: userProfile._id || "me"
+        });
+        return;
+      }
+
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         new Notification(`Onyx Secure Call from ${data.name}`, { body: `Encryption rate synced.` });
       }
@@ -755,16 +800,20 @@ export default function Messenger() {
     connectApi
       .then(newConv => {
         // Swap temp with real ID
-        setDynamicChats(prev => prev.map(c => {
-          if (c.id === tempConvId) {
-            return {
-              ...c,
-              id: newConv._id,
-              lastMsg: newConv.lastMessage?.text || "Neural connection established."
-            };
-          }
-          return c;
-        }));
+        setDynamicChats(prev => {
+          const next = prev.map(c => {
+            if (c.id === tempConvId) {
+              return {
+                ...c,
+                id: newConv._id,
+                lastMsg: newConv.lastMessage?.text || "Neural connection established."
+              };
+            }
+            return c;
+          });
+          localStorage.setItem('onyx_dynamic_chats', JSON.stringify(next));
+          return next;
+        });
 
         setChatList(prev => prev.map(c => {
           if (c.id === tempConvId) {
@@ -889,18 +938,10 @@ export default function Messenger() {
         }
       })
       .catch(err => {
-        console.warn("History API link offline. Reverting local mock messages history.");
-        let fallbackKey = selectedChatId;
-        if (!INITIAL_MESSAGES[fallbackKey]) {
-          if (fallbackKey.includes("onyx")) fallbackKey = "bot-onyx";
-          else if (fallbackKey.includes("luna")) fallbackKey = "bot-luna";
-          else if (fallbackKey.includes("kaelen")) fallbackKey = "user-kaelen";
-          else if (fallbackKey.includes("sasha")) fallbackKey = "user-sasha";
-        }
-        const fallbackMsgs = INITIAL_MESSAGES[fallbackKey] || [];
+        console.warn("History API link offline. No mock messages history returned.");
         setMessagesHistory(prev => ({
           ...prev,
-          [selectedChatId]: fallbackMsgs
+          [selectedChatId]: []
         }));
       });
   }, [selectedChatId, api]);
@@ -986,9 +1027,13 @@ export default function Messenger() {
   const isSelectedChatGroup = selectedChatId ? selectedChatId.startsWith("group-") : false;
   const selectedChatDetails = isSelectedChatGroup 
     ? groupList.find(g => g.id === selectedChatId)
-    : filteredChatList.find(c => c.id === selectedChatId);
+    : (filteredChatList.find(c => c.id === selectedChatId) || 
+       (selectedChatId && selectedChatId.startsWith("conv-temp-") 
+        ? filteredChatList.find(c => c.otherId === selectedChatId.replace("conv-temp-", ""))
+        : null));
 
-  const activeMessages = messagesHistory[selectedChatId] || [];
+  const resolvedSelectedIdForMessages = selectedChatDetails ? selectedChatDetails.id : selectedChatId;
+  const activeMessages = messagesHistory[resolvedSelectedIdForMessages] || messagesHistory[selectedChatId] || [];
 
   // --- Direct Chat message triggers & AI Core integrations ---
   const handleSendMessage = async ({ text, file, replyTo }) => {
@@ -1061,7 +1106,7 @@ export default function Messenger() {
 
     setMessagesHistory(prev => ({
       ...prev,
-      [selectedChatId]: [...(prev[selectedChatId] || []), clientPredictionMsg]
+      [resolvedSelectedIdForMessages]: [...(prev[resolvedSelectedIdForMessages] || []), clientPredictionMsg]
     }));
 
     // Self destruct mechanism
@@ -1070,7 +1115,7 @@ export default function Messenger() {
       setTimeout(() => {
         setMessagesHistory(prev => ({
           ...prev,
-          [selectedChatId]: (prev[selectedChatId] || []).filter(m => m.id !== targetMsgId)
+          [resolvedSelectedIdForMessages]: (prev[resolvedSelectedIdForMessages] || []).filter(m => m.id !== targetMsgId)
         }));
       }, selfDestructDuration * 1000);
     }
@@ -1079,7 +1124,7 @@ export default function Messenger() {
       let responseData;
       if (api) {
         const res = await api.post("/messages/message", {
-          conversationId: selectedChatId,
+          conversationId: resolvedSelectedIdForMessages,
           text: text,
           image: file || null
         });
@@ -1089,7 +1134,7 @@ export default function Messenger() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            conversationId: selectedChatId,
+            conversationId: resolvedSelectedIdForMessages,
             text: text,
             image: file || null
           })
@@ -1097,11 +1142,29 @@ export default function Messenger() {
       }
 
       // Dynamic conversion sync if backend maps to real Mongo conversation ID
-      const activeChatId = responseData && responseData.conversationId ? responseData.conversationId : selectedChatId;
-      if (responseData && responseData.conversationId && responseData.conversationId !== selectedChatId) {
+      const activeChatId = responseData && responseData.conversationId ? responseData.conversationId : resolvedSelectedIdForMessages;
+      if (responseData && responseData.conversationId && responseData.conversationId !== selectedChatId && responseData.conversationId !== resolvedSelectedIdForMessages) {
         const realConvId = responseData.conversationId;
         console.log(`🔄 Swapping raw/temp selectedChatId: ${selectedChatId} for real mapped conversationId: ${realConvId}`);
         
+        setDynamicChats(prev => {
+          const next = prev.map(c => {
+            if (c.id === selectedChatId || (selectedChatId && selectedChatId.startsWith("conv-temp-") && c.otherId === selectedChatId.replace("conv-temp-", ""))) {
+              return { ...c, id: realConvId };
+            }
+            return c;
+          });
+          localStorage.setItem('onyx_dynamic_chats', JSON.stringify(next));
+          return next;
+        });
+
+        setChatList(prev => prev.map(c => {
+          if (c.id === selectedChatId || (selectedChatId && selectedChatId.startsWith("conv-temp-") && c.otherId === selectedChatId.replace("conv-temp-", ""))) {
+            return { ...c, id: realConvId };
+          }
+          return c;
+        }));
+
         setMessagesHistory(prev => {
           const updated = { ...prev };
           const oldList = updated[selectedChatId] || [];
@@ -1135,10 +1198,26 @@ export default function Messenger() {
                 };
               });
 
-              setMessagesHistory(prev => ({
-                ...prev,
-                [activeChatId]: formattedMsgs
-              }));
+              setMessagesHistory(prev => {
+                const currentList = prev[activeChatId] || [];
+                if (formattedMsgs.length === 0 && currentList.length > 0) {
+                  return prev;
+                }
+                const merged = [...formattedMsgs];
+                // Keep local predictive messages that haven't been resolved or loaded yet to prevent deletion/glitch
+                currentList.forEach(localMsg => {
+                  if (localMsg.id.startsWith("usr-predict-") || localMsg.id.startsWith("msg-local-")) {
+                    const exists = formattedMsgs.some(serverMsg => serverMsg.text === localMsg.text);
+                    if (!exists) {
+                      merged.push(localMsg);
+                    }
+                  }
+                });
+                return {
+                  ...prev,
+                  [activeChatId]: merged
+                };
+              });
 
               // Auto delete incoming bot response if self destruct active
               if (selfDestructDuration > 0) {
@@ -1462,22 +1541,17 @@ export default function Messenger() {
   };
 
   const handleClearAllHistory = () => {
-    setMessagesHistory(INITIAL_MESSAGES);
-    setChatList([
-      {
-        id: "bot-onyx",
-        name: "Onyx Core Intelligence",
-        avatar: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80",
-        lastMsg: "Neural link aggregated. All modules operating optimally.",
-        time: "03:00 AM",
-        online: true,
-        isBot: true,
-        bio: "Core artificial intelligence framework. Serves advanced network routing logic and deep inquiry.",
-        encryptionKey: "AES-512-NX",
-        latency: "0.04ms"
-      }
-    ]);
-    setGroupList(INITIAL_GROUPS);
+    setMessagesHistory({});
+    setChatList([]);
+    setGroupList([]);
+    setBroadcastChannels([]);
+    setStories([]);
+    localStorage.removeItem('onyx_messages_history_v2');
+    localStorage.removeItem('onyx_groups_node');
+    localStorage.removeItem('onyx_channels_list_v2');
+    localStorage.removeItem('onyx_stories');
+    localStorage.removeItem('onyx_dynamic_chats');
+    setSelectedChatId(null);
   };
 
   return (
@@ -1547,37 +1621,45 @@ export default function Messenger() {
       )}
 
       {incomingCallSession && (
-        <div id="incoming-call-portal" className="fixed inset-0 z-[7000] bg-black/90 backdrop-blur-md flex flex-col items-center justify-center font-mono">
-          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.015)_1px,_transparent_1px),_linear-gradient(90deg,_rgba(255,255,255,0.015)_1px,_transparent_1px)] bg-[size:30px_30px]" />
-          <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/10 via-transparent to-purple-500/10 animate-pulse" />
-          
-          <div className="relative z-10 max-w-sm w-full mx-4 p-8 rounded-3xl bg-zinc-900 border border-cyan-500/20 text-center shadow-[0_0_50px_rgba(6,182,212,0.15)] flex flex-col items-center">
-            {/* Visual signal wave */}
-            <div className="w-20 h-20 rounded-full border-4 border-dashed border-cyan-500/30 animate-spin flex items-center justify-center mb-6">
-              <img src={incomingCallSession.avatar} className="w-16 h-16 rounded-full object-cover border-2 border-cyan-400 p-0.5" alt="Caller" />
+        <div id="incoming-call-portal" className="fixed inset-0 z-[7000] bg-[#0b141a]/95 backdrop-blur-md flex flex-col items-center justify-between p-8 font-sans text-[#e9edef]">
+          {/* Top Lock Indicator */}
+          <div className="flex items-center gap-2 mt-4 text-zinc-400">
+            <Shield size={14} className="text-[#00a884] shrink-0" />
+            <span className="text-[11px] font-bold tracking-widest uppercase">
+              End-to-End Encrypted
+            </span>
+          </div>
+
+          {/* Caller Profile Card */}
+          <div className="flex flex-col items-center text-center my-auto">
+            {/* Pulsing Avatar Frame */}
+            <div className="relative mb-6">
+              <div className="absolute inset-x-0 -inset-y-4 rounded-full bg-[#00a884]/15 animate-ping duration-2000" />
+              <div className="absolute inset-0 rounded-full bg-[#128c7e]/10 animate-pulse duration-1000" />
+              <img 
+                src={incomingCallSession.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"} 
+                className="w-28 h-28 rounded-full object-cover border-4 border-[#121b22] relative z-10 shadow-2xl"
+                alt="Caller avatar"
+                referrerPolicy="no-referrer"
+              />
             </div>
 
-            <p className="text-[10px] text-cyan-400 uppercase tracking-[0.3em] font-black mb-1 animate-pulse">
-              INCOMING ONYX SECURE TELEMETRY LINE
-            </p>
-            <h2 className="text-xl font-bold text-white uppercase tracking-wider mb-2">
+            <h2 className="text-2xl font-black text-white mb-1.5 tracking-wider">
               {incomingCallSession.name}
             </h2>
-            <p className="text-xs text-zinc-500 uppercase tracking-widest mb-8">
-              REQ RATE SYNCED ({incomingCallSession.type})
+            <p className="text-sm text-[#00a884] font-bold tracking-widest uppercase flex items-center gap-1.5 justify-center">
+              {incomingCallSession.type === 'video' ? <Video size={14} /> : <Phone size={14} />}
+              <span>Incoming WhatsApp {incomingCallSession.type === 'video' ? 'Video' : 'Voice'} Call</span>
             </p>
+          </div>
 
-            {/* Glowing ring waves simulation */}
-            <div className="flex gap-1.5 items-center justify-center mb-10 h-6">
-              <span className="w-1.5 h-3 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.1s]" />
-              <span className="w-1.5 h-6 bg-cyan-500 rounded-full animate-bounce [animation-delay:0.2s]" />
-              <span className="w-1.5 h-4 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.3s]" />
-              <span className="w-1.5 h-6 bg-cyan-500 rounded-full animate-bounce [animation-delay:0.4s]" />
-              <span className="w-1.5 h-3 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.5s]" />
-            </div>
-
-            {/* Actions: Accept or Decline */}
-            <div className="flex justify-center gap-8 w-full">
+          {/* Bottom Action Keys */}
+          <div className="w-full max-w-sm mb-6 flex flex-col items-center gap-6">
+            <span className="text-xs text-zinc-500 uppercase tracking-widest font-black animate-pulse">
+              Swipe or click to answer
+            </span>
+            
+            <div className="flex justify-center gap-10 w-full">
               {/* Decline Call Button */}
               <button
                 onClick={() => {
@@ -1625,8 +1707,8 @@ export default function Messenger() {
                   }
                   setIncomingCallSession(null);
                 }}
-                className="w-16 h-16 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center transition-all cursor-pointer shadow-[0_0_20px_rgba(239,68,68,0.4)] active:scale-95 animate-pulse"
-                title="Decline Secure Connection"
+                className="w-16 h-16 rounded-full bg-[#ea0038] hover:bg-[#c9002e] text-white flex items-center justify-center transition-all cursor-pointer shadow-[0_4px_20px_rgba(234,0,56,0.3)] active:scale-90"
+                title="Decline Call"
               >
                 <PhoneOff size={24} />
               </button>
@@ -1669,12 +1751,10 @@ export default function Messenger() {
 
                   setIncomingCallSession(null);
                 }}
-                className="w-16 h-16 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center transition-all cursor-pointer shadow-[0_0_20px_rgba(16,185,129,0.4)] active:scale-95"
-                title="Accept Secure Connection"
+                className="w-16 h-16 rounded-full bg-[#00a884] hover:bg-[#009675] text-white flex items-center justify-center transition-all cursor-pointer shadow-[0_4px_20px_rgba(0,168,132,0.3)] active:scale-90"
+                title="Accept Call"
               >
-                <div className="rotate-135">
-                  <Mic size={24} />
-                </div>
+                <Phone size={24} className="animate-bounce" />
               </button>
             </div>
           </div>
