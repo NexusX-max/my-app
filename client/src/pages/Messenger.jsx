@@ -411,12 +411,16 @@ export default function Messenger() {
         historyApi
           .then(data => {
             if (Array.isArray(data)) {
+              // Retrieve partner contact details directly from chatList to prevent temporal dead zone (TDZ) reference errors
+              const targetChat = chatList.find(c => c.id === idToRefresh || c.otherId === idToRefresh);
+              const partnerName = targetChat?.name || "Grid Operator";
+
               const formattedMsgs = data.map((m) => {
                 const isMsgMe = m.senderId === 'me' || m.senderId === (userProfile?._id || 'me');
                 return {
                   id: m.id || m._id,
                   sender: isMsgMe ? 'me' : m.senderId,
-                  senderName: isMsgMe ? userProfile.name : (selectedChatDetails?.name || "Grid Operator"),
+                  senderName: isMsgMe ? userProfile.name : partnerName,
                   text: m.text,
                   file: m.image,
                   time: m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now"
@@ -459,7 +463,7 @@ export default function Messenger() {
     // Keep background sync running every 4 seconds for highly responsive delivery
     const syncInterval = setInterval(runBackgroundSync, 4000);
     return () => clearInterval(syncInterval);
-  }, [userProfile?._id, selectedChatDetails?.name]);
+  }, [userProfile?._id, chatList]);
 
   // Global user gesture detection to unlock AudioContext compliant with browser autoplay policies
   useEffect(() => {
@@ -1041,12 +1045,15 @@ export default function Messenger() {
     historyApi
       .then(data => {
         if (Array.isArray(data)) {
+          const targetChat = chatList.find(c => c.id === selectedChatId || c.otherId === selectedChatId);
+          const partnerName = targetChat?.name || "Grid Operator";
+
           const formattedMsgs = data.map((m) => {
             const isMsgMe = m.senderId === 'me' || m.senderId === (userProfile?._id || 'me');
             return {
               id: m.id || m._id,
               sender: isMsgMe ? 'me' : m.senderId,
-              senderName: isMsgMe ? userProfile.name : (selectedChatDetails?.name || "Grid Operator"),
+              senderName: isMsgMe ? userProfile.name : partnerName,
               text: m.text,
               file: m.image,
               time: m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now"
@@ -1102,7 +1109,7 @@ export default function Messenger() {
           };
         });
       });
-  }, [selectedChatId, api]);
+  }, [selectedChatId, api, chatList, userProfile?._id]);
 
   // --- Background Ambiance Synthesizer Drone ---
   useEffect(() => {
