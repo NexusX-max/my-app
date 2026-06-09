@@ -1233,17 +1233,14 @@ export default function Messenger() {
 
               setMessagesHistory(prev => {
                 const currentList = prev[activeChatId] || [];
-                if (formattedMsgs.length === 0 && currentList.length > 0) {
-                  return prev;
-                }
                 const merged = [...formattedMsgs];
-                // Keep local predictive messages that haven't been resolved or loaded yet to prevent deletion/glitch
                 currentList.forEach(localMsg => {
-                  if (localMsg.id.startsWith("usr-predict-") || localMsg.id.startsWith("msg-local-")) {
-                    const exists = formattedMsgs.some(serverMsg => serverMsg.text === localMsg.text);
-                    if (!exists) {
-                      merged.push(localMsg);
-                    }
+                  const alreadyExists = formattedMsgs.some(serverMsg => 
+                    serverMsg.id === localMsg.id || 
+                    (serverMsg.text === localMsg.text && serverMsg.sender === localMsg.sender)
+                  );
+                  if (!alreadyExists) {
+                    merged.push(localMsg);
                   }
                 });
                 return {
