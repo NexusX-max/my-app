@@ -9,7 +9,7 @@ import CallScreen from '../components/CallScreen';
 import SettingsScreen from '../components/SettingsScreen';
 import BiometricScreen from '../components/BiometricScreen';
 import SearchScreen from './SearchScreen';
-import { ShieldAlert, Clock, PhoneOff, Mic } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, Clock, PhoneOff, Mic, Phone, Video } from 'lucide-react';
 import toast from 'react-hot-toast';
 const showToast = {
   success: (msg) => {
