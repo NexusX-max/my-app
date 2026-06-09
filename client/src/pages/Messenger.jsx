@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  INITIAL_GROUPS, INITIAL_MESSAGES, GLOW_PRESETS 
-} from '../data';
+import { GLOW_PRESETS, INITIAL_CHATS, INITIAL_GROUPS, INITIAL_MESSAGES } from '../data';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from "./Sidebar";
 import ChatWindow from '../components/ChatWindow';
@@ -11,6 +9,7 @@ import BiometricScreen from '../components/BiometricScreen';
 import SearchScreen from './SearchScreen';
 import { ShieldAlert, ShieldCheck, Clock, PhoneOff, Mic, Phone, Video } from 'lucide-react';
 import toast from 'react-hot-toast';
+
 const showToast = {
   success: (msg) => {
     try {
@@ -456,9 +455,6 @@ export default function Messenger() {
         new Notification("Onyx Node Message", { body: data.message?.text || "Secured packet received." });
       }
 
-      // Reload conversations list to update previews
-      loadAllConversations();
-
       const msgId = data.message?.id || data.message?._id;
       let originId = data.conversationId;
       const currentUserId = user?._id || userProfile?._id || 'me';
@@ -468,6 +464,36 @@ export default function Messenger() {
         const members = data.conversation.members.map(m => m.toString());
         partnerId = members.find(m => m !== currentUserId.toString());
       }
+
+      // Show beautiful visual in-app toast notification if the message is from someone else
+      const senderId = data.message?.senderId;
+      const isMsgFromMe = senderId === 'me' || (senderId && currentUserId && senderId.toString() === currentUserId.toString());
+      if (!isMsgFromMe) {
+        let senderName = "Remote Operative";
+        if (data.conversation?.userDetails) {
+          senderName = `${data.conversation.userDetails.firstName || ''} ${data.conversation.userDetails.lastName || ''}`.trim() || data.conversation.userDetails.username || "Operator Node";
+        } else {
+          const matchCh = chatList.find(c => c.otherId === senderId || c.id === senderId || (partnerId && (c.otherId === partnerId || c.id === partnerId)));
+          if (matchCh) senderName = matchCh.name;
+        }
+        
+        toast(`💬 New Message from ${senderName}:\n"${data.message?.text || 'Secured packet'}"`, {
+          icon: '📩',
+          style: {
+            background: '#09090b',
+            color: '#22d3ee',
+            border: '1px solid rgba(34, 211, 238, 0.4)',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.8)',
+            borderRadius: '1rem',
+            fontFamily: 'monospace',
+            fontSize: '11px',
+          },
+          duration: 4000
+        });
+      }
+
+      // Reload conversations list to update previews
+      loadAllConversations();
 
       // Dynamically resolve target chat ID based on members to align sender and recipient views
       if (partnerId) {
@@ -544,38 +570,58 @@ export default function Messenger() {
         incomingMessageMatchesActive = true;
       }
 
-      if (incomingMessageMatchesActive) {
-        setMessagesHistory(prev => {
-          // Check both the activeId and data.conversationId just in case histories are keyed differently
-          const currentList = prev[activeId] || prev[data.conversationId] || prev[originId] || [];
-          if (currentList.some(m => m.id === msgId)) return prev;
-          
-          const isSenderMe = data.message.senderId === 'me' || data.message.senderId === currentUserId.toString();
-          const newMsgFormatted = {
-            id: msgId,
-            sender: isSenderMe ? 'me' : data.message.senderId,
-            senderName: isSenderMe ? userProfile.name : "Remote Operator",
-            text: data.message.text,
-            file: data.message.image,
-            time: new Date(data.message.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          };
+      // ALWAYS format and store the received message into history mapping under all matching keys
+      // to guarantee that no messages are missed when the user switches views or opens chat.
+      setMessagesHistory(prev => {
+        const nextHistory = { ...prev };
+        const isSenderMe = data.message?.senderId === 'me' || (data.message?.senderId && currentUserId && data.message.senderId.toString() === currentUserId.toString());
+        const newMsgFormatted = {
+          id: msgId,
+          sender: isSenderMe ? 'me' : (data.message?.senderId || 'opponent'),
+          senderName: isSenderMe ? userProfile.name : "Remote Operator",
+          text: data.message?.text || "",
+          file: data.message?.image || null,
+          time: new Date(data.message?.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
 
-          const nextHistory = {
-            ...prev,
-            [activeId]: [...currentList, newMsgFormatted]
-          };
-
-          // Also save it under the real database conversation ID so that if the user switches chats and comes back, it is properly cached
-          if (data.conversationId && data.conversationId !== activeId) {
-            const targetList = prev[data.conversationId] || [];
-            if (!targetList.some(m => m.id === msgId)) {
-              nextHistory[data.conversationId] = [...targetList, newMsgFormatted];
-            }
+        // 1. Write under activeId (if matching, or if we are actively viewing it)
+        const activeKey = activeId || originId || data.conversationId || partnerId;
+        if (activeKey) {
+          const list = nextHistory[activeKey] || [];
+          if (!list.some(m => m.id === msgId)) {
+            nextHistory[activeKey] = [...list, newMsgFormatted];
           }
+        }
 
-          return nextHistory;
-        });
-      } else {
+        // 2. Write under standard conversationId
+        if (data.conversationId && data.conversationId !== activeKey) {
+          const list = nextHistory[data.conversationId] || [];
+          if (!list.some(m => m.id === msgId)) {
+            nextHistory[data.conversationId] = [...list, newMsgFormatted];
+          }
+        }
+
+        // 3. Write under partnerId (which helps resolve standard direct user ID tracking)
+        if (partnerId && partnerId !== activeKey && partnerId !== data.conversationId) {
+          const list = nextHistory[partnerId] || [];
+          if (!list.some(m => m.id === msgId)) {
+            nextHistory[partnerId] = [...list, newMsgFormatted];
+          }
+        }
+
+        // 4. Write under temp-prefixed partnerId
+        const tempPartnerKey = `conv-temp-${partnerId}`;
+        if (partnerId && tempPartnerKey !== activeKey && tempPartnerKey !== data.conversationId) {
+          const list = nextHistory[tempPartnerKey] || [];
+          if (!list.some(m => m.id === msgId)) {
+            nextHistory[tempPartnerKey] = [...list, newMsgFormatted];
+          }
+        }
+
+        return nextHistory;
+      });
+
+      if (!incomingMessageMatchesActive) {
         // Mark as unread!
         const unreadKey = originId || data.conversationId || partnerId;
         if (unreadKey) {
