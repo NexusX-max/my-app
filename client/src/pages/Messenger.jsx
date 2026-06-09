@@ -10,6 +10,7 @@ import SearchScreen from './SearchScreen';
 import { ShieldAlert, ShieldCheck, Clock, PhoneOff, Mic, Phone, Video } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+
 const showToast = {
   success: (msg) => {
     try {
@@ -380,10 +381,85 @@ export default function Messenger() {
       });
   };
 
-  // Initial load
+  // Initial load, background synchronization, and browser notification permission queries
   useEffect(() => {
     loadAllConversations();
+
+    // Prompts users for permission to trigger native browser notification handshakes
+    if (typeof Notification !== 'undefined' && Notification.permission === "default") {
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          console.log("🔔 [NOTIFICATIONS] Secure link notifications enabled.");
+        }
+      });
+    }
   }, [user]);
+
+  // Periodic visual handshake sync to support 100% reliable transport even across transient offline frames
+  useEffect(() => {
+    const runBackgroundSync = () => {
+      // 1. Reload conversations to update previews and unreads in sidebar
+      loadAllConversations();
+
+      // 2. Fetch latest history for actively selected direct chat to pull down new messages without page refreshes
+      const idToRefresh = selectedChatIdRef.current;
+      if (idToRefresh && !idToRefresh.startsWith("group-") && !idToRefresh.startsWith("conv-temp-")) {
+        const historyApi = api 
+          ? api.get(`/messages/history/${idToRefresh}`).then(res => res.data) 
+          : fetch(`/api/messages/history/${idToRefresh}`).then(res => res.json());
+
+        historyApi
+          .then(data => {
+            if (Array.isArray(data)) {
+              const formattedMsgs = data.map((m) => {
+                const isMsgMe = m.senderId === 'me' || m.senderId === (userProfile?._id || 'me');
+                return {
+                  id: m.id || m._id,
+                  sender: isMsgMe ? 'me' : m.senderId,
+                  senderName: isMsgMe ? userProfile.name : (selectedChatDetails?.name || "Grid Operator"),
+                  text: m.text,
+                  file: m.image,
+                  time: m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now"
+                };
+              });
+
+              setMessagesHistory(prev => {
+                const currentList = prev[idToRefresh] || [];
+                // Check if we actually have any new incoming messages to avoid triggering infinite state updates
+                const hasNewMessages = formattedMsgs.length !== currentList.filter(m => !m.id.startsWith("usr-predict-")).length ||
+                  formattedMsgs.some(f => !currentList.some(c => c.id === f.id));
+
+                if (!hasNewMessages) return prev;
+
+                // Merge preserving local optimistic predictive messages
+                const merged = [...formattedMsgs];
+                currentList.forEach(localMsg => {
+                  const alreadyExists = formattedMsgs.some(serverMsg => 
+                    serverMsg.id === localMsg.id || 
+                    (serverMsg.text === localMsg.text && serverMsg.sender === localMsg.sender)
+                  );
+                  if (!alreadyExists && localMsg.id.startsWith("usr-predict-")) {
+                    merged.push(localMsg);
+                  }
+                });
+
+                return {
+                  ...prev,
+                  [idToRefresh]: merged
+                };
+              });
+            }
+          })
+          .catch(err => {
+            console.debug("Background messages synchronizer bypassed:", err);
+          });
+      }
+    };
+
+    // Keep background sync running every 4 seconds for highly responsive delivery
+    const syncInterval = setInterval(runBackgroundSync, 4000);
+    return () => clearInterval(syncInterval);
+  }, [userProfile?._id, selectedChatDetails?.name]);
 
   // Global user gesture detection to unlock AudioContext compliant with browser autoplay policies
   useEffect(() => {
@@ -450,11 +526,6 @@ export default function Messenger() {
         }
       } catch (e) {}
 
-      // Trigger standard browser notification if permitted
-      if (typeof Notification !== 'undefined' && Notification.permission === "granted") {
-        new Notification("Onyx Node Message", { body: data.message?.text || "Secured packet received." });
-      }
-
       const msgId = data.message?.id || data.message?._id;
       let originId = data.conversationId;
       const currentUserId = user?._id || userProfile?._id || 'me';
@@ -490,6 +561,14 @@ export default function Messenger() {
           },
           duration: 4000
         });
+
+        // Trigger native browser notification with actual sender details if permitted
+        if (typeof Notification !== 'undefined' && Notification.permission === "granted") {
+          new Notification(`💬 Message from ${senderName}`, { 
+            body: data.message?.text || "Secured packet received.",
+            icon: data.conversation?.userDetails?.avatar || "/favicon.ico"
+          });
+        }
       }
 
       // Reload conversations list to update previews
