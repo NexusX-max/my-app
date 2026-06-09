@@ -1654,7 +1654,7 @@ export default function Messenger() {
         <div id="incoming-call-portal" className="fixed inset-0 z-[7000] bg-[#0b141a]/95 backdrop-blur-md flex flex-col items-center justify-between p-8 font-sans text-[#e9edef]">
           {/* Top Lock Indicator */}
           <div className="flex items-center gap-2 mt-4 text-zinc-400">
-            <Shield size={14} className="text-[#00a884] shrink-0" />
+            <ShieldCheck size={14} className="text-[#00a884] shrink-0" />
             <span className="text-[11px] font-bold tracking-widest uppercase">
               End-to-End Encrypted
             </span>
