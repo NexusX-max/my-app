@@ -115,7 +115,7 @@ export default function Messenger() {
   }, [contextSocket, userProfile?._id]);
 
   const switchUser = contextSwitchUser || React.useCallback((userId) => {
-    localStorage.removeItem('onyx_token');
+    localStorage.setItem('onyx_token', "sandbox_token_signature_" + userId);
     localStorage.setItem('onyx_selected_user_id', userId);
     
     let profile = {
@@ -758,7 +758,6 @@ export default function Messenger() {
       // ALWAYS format and store the received message into history mapping under all matching keys
       // to guarantee that no messages are missed when the user switches views or opens chat.
       setMessagesHistory(prev => {
-        const nextHistory = { ...prev };
         const isSenderMe = data.message?.senderId === 'me' || (data.message?.senderId && currentUserId && data.message.senderId.toString() === currentUserId.toString());
         const newMsgFormatted = {
           id: msgId,
@@ -769,39 +768,25 @@ export default function Messenger() {
           time: new Date(data.message?.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         };
 
-        // 1. Write under activeId (if matching, or if we are actively viewing it)
+        const nextHistory = { ...prev };
         const activeKey = activeId || originId || data.conversationId || partnerId;
-        if (activeKey) {
-          const list = nextHistory[activeKey] || [];
-          if (!list.some(m => m.id === msgId)) {
-            nextHistory[activeKey] = [...list, newMsgFormatted];
-          }
-        }
+        const tempPartnerKey = partnerId ? `conv-temp-${partnerId}` : null;
 
-        // 2. Write under standard conversationId
-        if (data.conversationId && data.conversationId !== activeKey) {
-          const list = nextHistory[data.conversationId] || [];
-          if (!list.some(m => m.id === msgId)) {
-            nextHistory[data.conversationId] = [...list, newMsgFormatted];
-          }
-        }
+        const targetKeys = [
+          activeKey,
+          data.conversationId,
+          partnerId,
+          tempPartnerKey
+        ].filter(Boolean);
 
-        // 3. Write under partnerId (which helps resolve standard direct user ID tracking)
-        if (partnerId && partnerId !== activeKey && partnerId !== data.conversationId) {
-          const list = nextHistory[partnerId] || [];
+        // Deduplicate key updates cleanly and perform updates functionally
+        const uniqueKeys = [...new Set(targetKeys)];
+        uniqueKeys.forEach(key => {
+          const list = nextHistory[key] || [];
           if (!list.some(m => m.id === msgId)) {
-            nextHistory[partnerId] = [...list, newMsgFormatted];
+            nextHistory[key] = [...list, newMsgFormatted];
           }
-        }
-
-        // 4. Write under temp-prefixed partnerId
-        const tempPartnerKey = `conv-temp-${partnerId}`;
-        if (partnerId && tempPartnerKey !== activeKey && tempPartnerKey !== data.conversationId) {
-          const list = nextHistory[tempPartnerKey] || [];
-          if (!list.some(m => m.id === msgId)) {
-            nextHistory[tempPartnerKey] = [...list, newMsgFormatted];
-          }
-        }
+        });
 
         return nextHistory;
       });

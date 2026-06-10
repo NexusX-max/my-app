@@ -114,9 +114,32 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     let isMounted = true;
     const initAuth = async () => {
-      const token = localStorage.getItem(TOKEN_KEY);
-      if (!token) {
-        if (isMounted) setLoading(false);
+      let token = localStorage.getItem(TOKEN_KEY);
+      const selectedUserId = localStorage.getItem('onyx_selected_user_id') || 'me';
+
+      if (!token || token === "null") {
+        token = "sandbox_token_signature_" + selectedUserId;
+        localStorage.setItem(TOKEN_KEY, token);
+      }
+
+      if (token && token.startsWith("sandbox_token_signature_")) {
+        const uId = token.replace("sandbox_token_signature_", "");
+        const userData = {
+          _id: uId,
+          id: uId,
+          username: uId === 'me' ? "me_operator" : uId === 'user-kaelen' ? "kaelen_deck" : "sasha_design",
+          firstName: uId === 'me' ? "Operator" : uId === 'user-kaelen' ? "Kaelen" : "Sasha",
+          lastName: uId === 'me' ? "Node" : uId === 'user-kaelen' ? "Vex" : "Glimmer",
+          avatar: uId === 'me' 
+            ? "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"
+            : uId === 'user-kaelen'
+            ? "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&q=80"
+            : "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"
+        };
+        if (isMounted) {
+          setUser(userData);
+          setLoading(false);
+        }
         return;
       }
 
