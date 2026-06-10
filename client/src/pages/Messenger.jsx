@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { GLOW_PRESETS, INITIAL_CHATS, INITIAL_GROUPS, INITIAL_MESSAGES } from '../data';
-import { useAuth } from '../context/AuthContext';
 import Sidebar from "./Sidebar";
 import ChatWindow from '../components/ChatWindow';
 import CallScreen from '../components/CallScreen';
@@ -9,8 +8,8 @@ import BiometricScreen from '../components/BiometricScreen';
 import SearchScreen from './SearchScreen';
 import { ShieldAlert, ShieldCheck, Clock, PhoneOff, Mic, Phone, Video } from 'lucide-react';
 import toast from 'react-hot-toast';
-
-
+import { useAuth } from '../context/AuthContext';
+import { io } from 'socket.io-client';
 const showToast = {
   success: (msg) => {
     try {
@@ -36,8 +35,25 @@ const showToast = {
   }
 };
 
+const API_NODES = [
+  'https://my-app-v6xz.onrender.com',
+  'https://my-app-2-uzoi.onrender.com',
+  'https://my-app-3-kn3k.onrender.com',
+  'https://my-app-4-btda.onrender.com'
+];
+
+const getLiveNode = () => {
+  if (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
+    return "http://localhost:5005";
+  }
+  return API_NODES[0];
+};
+
+const BASE_URL = getLiveNode();
+
 export default function Messenger() {
-  const { user, api, socket, currentNode, switchUser } = useAuth();
+  const { user, api, socket: contextSocket, currentNode: contextCurrentNode, switchUser: contextSwitchUser } = useAuth();
+  const [localSocket, setLocalSocket] = useState(null);
 
   // --- Persistent Client States ---
   const [userProfile, setUserProfile] = useState(() => {
@@ -45,9 +61,95 @@ export default function Messenger() {
     return saved ? JSON.parse(saved) : {
       name: "Operator Node (You)",
       avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80",
-      bio: "Rogue Quantum Deck Architect"
+      bio: "Rogue Quantum Deck Architect",
+      _id: "me"
     };
   });
+
+  const socket = contextSocket || localSocket;
+  const currentNode = contextCurrentNode || BASE_URL;
+
+  // --- Dynamic fallback socket connection ---
+  useEffect(() => {
+    if (contextSocket) {
+      if (localSocket) {
+        localSocket.disconnect();
+        setLocalSocket(null);
+      }
+      return;
+    }
+
+    const currentUserId = userProfile?._id || 'me';
+    let socketInstance = null;
+
+    try {
+      socketInstance = io(BASE_URL, {
+        query: { userId: currentUserId },
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 2000,
+        secure: true,
+        withCredentials: true
+      });
+
+      socketInstance.on("connect", () => {
+        console.log("%c 🚀 Local fallback neural link active: " + socketInstance.id, "color: #0d9488; font-weight: bold;");
+        socketInstance.emit("addNewUser", currentUserId);
+        setLocalSocket(socketInstance);
+      });
+
+      socketInstance.on("connect_error", (err) => {
+        console.warn("📡 Local fallback signal pending/error:", err);
+      });
+
+      return () => {
+        if (socketInstance) {
+          socketInstance.disconnect();
+          console.log("📡 Local fallback neural link closed.");
+        }
+      };
+    } catch (err) {
+      console.error("Local fallback socket initialization error:", err);
+    }
+  }, [contextSocket, userProfile?._id]);
+
+  const switchUser = contextSwitchUser || React.useCallback((userId) => {
+    localStorage.removeItem('onyx_token');
+    localStorage.setItem('onyx_selected_user_id', userId);
+    
+    let profile = {
+      _id: userId,
+      firstName: userId === 'me' ? "Operator" : userId === 'user-kaelen' ? "Kaelen" : "Sasha",
+      lastName: userId === 'me' ? "Node" : userId === 'user-kaelen' ? "Vex" : "Glimmer",
+      username: userId === 'me' ? "me_operator" : userId === 'user-kaelen' ? "kaelen_deck" : "sasha_design",
+      avatar: userId === 'me' 
+        ? "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"
+        : userId === 'user-kaelen'
+        ? "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&q=80"
+        : "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80",
+      bio: userId === 'me'
+        ? "Rogue Quantum Deck Architect"
+        : userId === 'user-kaelen'
+        ? "Underground network decker and freelance ingress engineer."
+        : "Synthetic interface architect."
+    };
+    
+    setUserProfile({
+      name: `${profile.firstName} ${profile.lastName}`,
+      avatar: profile.avatar,
+      bio: profile.bio,
+      _id: profile._id
+    });
+    localStorage.setItem('onyx_profile_node', JSON.stringify({
+      name: `${profile.firstName} ${profile.lastName}`,
+      avatar: profile.avatar,
+      bio: profile.bio,
+      _id: profile._id
+    }));
+
+    window.location.reload();
+  }, [contextSwitchUser]);
 
   // Sync with AuthProvider user session dynamically
   useEffect(() => {
