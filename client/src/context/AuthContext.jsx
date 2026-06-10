@@ -1,6 +1,10 @@
 import React, { createContext, useState, useEffect, useContext, useMemo, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
+import { networkInterfaces } from 'node:os';
+import { handleAiAutoReply } from '../../../server/controllers/messageController';
+import { Hands } from '@mediapipe/hands';
+import { HdmiPortIcon } from 'lucide-react';
 
 // ✅ ১. ডাইনামিক এপিআই এবং সকেট ইউআরএল
 
@@ -11,10 +15,10 @@ const API_NODES = [
 'https://my-app-4-btda.onrender.com'
 ];
 const getLiveNode = () => {
-if (typeof window !== "undefined") {
-return window.location.origin;
+if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+return "http://localhost:5005";
 }
-return "http://localhost:3000";
+return API_NODES[0];
 };
 const BASE_URL = getLiveNode();
 const API_BASE_URL = `${BASE_URL}/api`;
@@ -218,6 +222,5 @@ export const AuthProvider = ({ children }) => {
     </AuthContext.Provider>
   );
 };
-
 export const useAuth = () => useContext(AuthContext);
 export default AuthProvider;
