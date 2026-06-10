@@ -98,14 +98,6 @@ const protect = async (req, res, next) => {
   if (authHeader && authHeader.startsWith("Bearer")) {
     try {
       const token = authHeader.split(" ")[1];
-      if (token && token.startsWith("sandbox_token_signature_")) {
-        const uId = token.replace("sandbox_token_signature_", "");
-        const username = uId === 'me' ? "me_operator" : uId === 'user-kaelen' ? "kaelen_deck" : "sasha_design";
-        const firstName = uId === 'me' ? "Operator" : uId === 'user-kaelen' ? "Kaelen" : "Sasha";
-        const lastName = uId === 'me' ? "Node" : uId === 'user-kaelen' ? "Vex" : "Glimmer";
-        req.user = { id: uId, _id: uId, username, firstName, lastName };
-        return next();
-      }
       if (token === "sandbox_token_signature" || token === "onyx_token" || token === "null" || !token) {
         req.user = { id: "me", _id: "me", username: "me_operator" };
         return next();
@@ -244,17 +236,7 @@ app.post("/api/gemini/chat", async (req, res) => {
 
 /* ⚡ SOCKET.IO (Neural Sync Engine) Setup with Redis adapter option */
 const io = new Server(server, { 
- cors: { 
-   origin: (origin, callback) => {
-     if (!origin || allowedOrigins.includes(origin) || origin.includes("localhost") || origin.includes("run.app") || origin.includes("ais-") || origin.includes("onyx-drift.com")) {
-       callback(null, origin);
-     } else {
-       callback(new Error('Neural Network Access Denied'), false);
-     }
-   }, 
-   credentials: true,
-   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
- }, 
+ cors: { origin: allowedOrigins, credentials: true }, 
  pingTimeout: 60000 
 });
 app.set("io", io);
@@ -363,8 +345,7 @@ const setupSocket = async () => {
       
       try {
         if (MessageSelectedModel) {
-          const tempMsg = new MessageSelectedModel({ conversationId: `group_${groupId}`, senderId: sender?._id || "me", text, media: processedUrl });
-          const msg = await tempMsg.save();
+          const msg = await MessageSelectedModel.create({ conversationId: `group_${groupId}`, senderId: sender?._id || "me", text, media: processedUrl });
           io.to(`group_${groupId}`).emit('receive_group_message', msg);
         } else {
           throw new Error("MongoDB Message model fallback active");
@@ -398,13 +379,12 @@ const setupSocket = async () => {
 
       if (MessageSelectedModel) {
         try {
-          const tempMsg = new MessageSelectedModel({
+          savedMsg = await MessageSelectedModel.create({
             conversationId: conversationId || `conv-${cleanTargetId}`,
             senderId: senderId || "me",
             text: text || "",
             image: image || null
           });
-          savedMsg = await tempMsg.save();
         } catch (err) {
           console.error("Message Save Error during socket transfer:", err.message);
         }
@@ -512,42 +492,7 @@ const startApp = async () => {
       console.log("ℹ️ getNeuralFeed is not available.");
     }
 
-    if (authRoutes) {
-      app.use('/api/auth', authRoutes); 
-    } else {
-      console.log("🛠️ Creating mock fallback router for /api/auth due to absent database/auth middleware endpoints");
-      const mockAuthRouter = express.Router();
-      mockAuthRouter.get("/me", protect, (req, res) => {
-        res.json({ user: req.user || { id: "me", _id: "me", username: "me_operator", firstName: "Operator", lastName: "Node" } });
-      });
-      mockAuthRouter.post("/login", (req, res) => {
-        const { email, username } = req.body;
-        const identifier = email || username || "me";
-        const uId = identifier.includes("kaelen") ? "user-kaelen" : identifier.includes("sasha") ? "user-sasha" : "me";
-        const user = {
-          id: uId,
-          _id: uId,
-          username: uId === 'me' ? "me_operator" : uId === 'user-kaelen' ? "kaelen_deck" : "sasha_design",
-          firstName: uId === 'me' ? "Operator" : uId === 'user-kaelen' ? "Kaelen" : "Sasha",
-          lastName: uId === 'me' ? "Node" : uId === 'user-kaelen' ? "Vex" : "Glimmer"
-        };
-        res.json({ token: `sandbox_token_signature_${uId}`, user });
-      });
-      mockAuthRouter.post("/register", (req, res) => {
-        const { email, username } = req.body;
-        const identifier = email || username || "me";
-        const uId = identifier.includes("kaelen") ? "user-kaelen" : identifier.includes("sasha") ? "user-sasha" : "me";
-        const user = {
-          id: uId,
-          _id: uId,
-          username: uId === 'me' ? "me_operator" : uId === 'user-kaelen' ? "kaelen_deck" : "sasha_design",
-          firstName: uId === 'me' ? "Operator" : uId === 'user-kaelen' ? "Kaelen" : "Sasha",
-          lastName: uId === 'me' ? "Node" : uId === 'user-kaelen' ? "Vex" : "Glimmer"
-        };
-        res.json({ token: `sandbox_token_signature_${uId}`, user });
-      });
-      app.use('/api/auth', mockAuthRouter);
-    }
+    if (authRoutes) app.use('/api/auth', authRoutes); 
     if (profileRoutes) app.use("/api/profile", protect, profileRoutes); 
     if (userRoutes) app.use("/api/users", protect, userRoutes); 
     if (notificationRoutes) app.use('/api/notifications', protect, notificationRoutes);
