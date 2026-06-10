@@ -43,10 +43,11 @@ const API_NODES = [
 ];
 
 const getLiveNode = () => {
-  if (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
-    return "http://localhost:5005";
+  if (typeof window !== "undefined") {
+    // Dynamically point to the exact same host the page is currently loaded on to ensure zero CORS policies and unified room synchronization
+    return window.location.origin;
   }
-  return API_NODES[0];
+  return "http://localhost:3000";
 };
 
 const BASE_URL = getLiveNode();
@@ -757,38 +758,41 @@ export default function Messenger() {
 
       // ALWAYS format and store the received message into history mapping under all matching keys
       // to guarantee that no messages are missed when the user switches views or opens chat.
-      setMessagesHistory(prev => {
-        const isSenderMe = data.message?.senderId === 'me' || (data.message?.senderId && currentUserId && data.message.senderId.toString() === currentUserId.toString());
-        const newMsgFormatted = {
-          id: msgId,
-          sender: isSenderMe ? 'me' : (data.message?.senderId || 'opponent'),
-          senderName: isSenderMe ? userProfile.name : "Remote Operator",
-          text: data.message?.text || "",
-          file: data.message?.image || null,
-          time: new Date(data.message?.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
+      const isSenderMe = data.message?.senderId === 'me' || (data.message?.senderId && currentUserId && data.message.senderId.toString() === currentUserId.toString());
+      const newMsgFormatted = {
+        id: msgId,
+        sender: isSenderMe ? 'me' : (data.message?.senderId || 'opponent'),
+        senderName: isSenderMe ? userProfile.name : "Remote Operator",
+        text: data.message?.text || "",
+        file: data.message?.image || null,
+        time: new Date(data.message?.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
 
-        const nextHistory = { ...prev };
-        const activeKey = activeId || originId || data.conversationId || partnerId;
-        const tempPartnerKey = partnerId ? `conv-temp-${partnerId}` : null;
+      const activeKey = activeId || originId || data.conversationId || partnerId;
+      const tempPartnerKey = partnerId ? `conv-temp-${partnerId}` : null;
 
-        const targetKeys = [
-          activeKey,
-          data.conversationId,
-          partnerId,
-          tempPartnerKey
-        ].filter(Boolean);
+      const targetKeys = [
+        activeKey,
+        data.conversationId,
+        partnerId,
+        tempPartnerKey
+      ].filter(Boolean);
 
-        // Deduplicate key updates cleanly and perform updates functionally
-        const uniqueKeys = [...new Set(targetKeys)];
+      const uniqueKeys = [...new Set(targetKeys)];
+
+      setMessagesHistory(prevHistory => {
+        let hasChanges = false;
+        const newHistory = { ...prevHistory };
+
         uniqueKeys.forEach(key => {
-          const list = nextHistory[key] || [];
-          if (!list.some(m => m.id === msgId)) {
-            nextHistory[key] = [...list, newMsgFormatted];
+          const currentList = newHistory[key] || [];
+          if (!currentList.some(m => m.id === msgId)) {
+            newHistory[key] = [...currentList, newMsgFormatted];
+            hasChanges = true;
           }
         });
 
-        return nextHistory;
+        return hasChanges ? newHistory : prevHistory;
       });
 
       if (!incomingMessageMatchesActive) {

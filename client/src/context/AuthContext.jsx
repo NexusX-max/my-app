@@ -11,10 +11,10 @@ const API_NODES = [
 'https://my-app-4-btda.onrender.com'
 ];
 const getLiveNode = () => {
-if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
-return "http://localhost:5005";
+if (typeof window !== "undefined") {
+return window.location.origin;
 }
-return API_NODES[0];
+return "http://localhost:3000";
 };
 const BASE_URL = getLiveNode();
 const API_BASE_URL = `${BASE_URL}/api`;
