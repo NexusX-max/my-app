@@ -1,9 +1,6 @@
 import React, { createContext, useState, useEffect, useContext, useMemo, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
-import { networkInterfaces } from 'node:os';
-import { handleAiAutoReply } from '../../../server/controllers/messageController';
-import { Hands } from '@mediapipe/hands';
 import { HdmiPortIcon } from 'lucide-react';
 
 // ✅ ১. ডাইনামিক এপিআই এবং সকেট ইউআরএল
