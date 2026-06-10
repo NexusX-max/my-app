@@ -17,7 +17,7 @@ return "http://localhost:5005";
 return API_NODES[0];
 };
 const BASE_URL = getLiveNode();
-const API_BASE_URL = `${BASE_URL}/api`
+const API_BASE_URL = `${BASE_URL}/api`;
 const TOKEN_KEY = 'onyx_token';
 
 export const AuthContext = createContext();
