@@ -2,15 +2,19 @@ import React, { createContext, useState, useEffect, useContext, useMemo, useCall
 import axios from 'axios';
 import { io } from 'socket.io-client';
 
-// ✅ ১. ডাইনামিক এপিআই ইউআরএল
+// ✅ ১. ডাইনামিক এপিআই এবং সকেট ইউআরএল
+const API_NODES = [
+  'https://my-app-v6xz.onrender.com',
+  'https://my-app-2-uzoi.onrender.com',
+  'https://my-app-3-kn3k.onrender.com',
+  'https://my-app-4-btda.onrender.com'
+];
+
 const getLiveNode = () => {
-  // আপনার মূল প্রোডাকশন ইউআরএল এখানে সেট করুন
-  const PRODUCTION_URL = "https://my-app-v6xz.onrender.com";
-  
   if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
     return "http://localhost:5005";
   }
-  return PRODUCTION_URL;
+  return API_NODES[0];
 };
 
 const BASE_URL = getLiveNode();
@@ -39,7 +43,7 @@ export const AuthProvider = ({ children }) => {
         config.headers.Authorization = `Bearer ${token}`;
       }
       return config;
-    });
+    }, (error) => Promise.reject(error));
 
     return instance;
   }, []);
@@ -57,46 +61,47 @@ export const AuthProvider = ({ children }) => {
 
   // 🛠️ ৪. সকেট ম্যানেজমেন্ট
   useEffect(() => {
-    if (!user?._id || socketConnecting.current) return;
+    let socketInstance = null;
 
-    socketConnecting.current = true;
-    const socketInstance = io(BASE_URL, {
-      query: { userId: user._id },
-      transports: ['websocket'], // মোবাইল অ্যাপের জন্য শুধুমাত্র websocket সেরা
-      secure: true,
-      withCredentials: true
-    });
+    if (user?._id && !socketConnecting.current) {
+      socketConnecting.current = true;
+      const currentUserId = user._id;
 
-    socketInstance.on("connect", () => {
-      console.log("🚀 Neural link active");
-      setSocket(socketInstance);
-    });
+      socketInstance = io(BASE_URL, {
+        query: { userId: currentUserId },
+        transports: ['websocket', 'polling'],
+        secure: true,
+        withCredentials: true
+      });
 
-    socketInstance.on("connect_error", (err) => {
-      console.warn("📡 Signal Pending:", err.message);
-    });
+      socketInstance.on("connect", () => {
+        console.log("🚀 Neural link active:", socketInstance.id);
+        socketInstance.emit("addNewUser", currentUserId);
+        setSocket(socketInstance);
+        socketConnecting.current = false;
+      });
 
-    return () => {
-      socketInstance.disconnect();
-      socketConnecting.current = false;
-    };
-  }, [user?._id]); 
+      return () => {
+        if (socketInstance) socketInstance.disconnect();
+        socketConnecting.current = false;
+      };
+    }
+  }, [user?._id]);
 
   // 🛠️ ৫. সেশন রিকভারি
   useEffect(() => {
     let isMounted = true;
     const initAuth = async () => {
-      const token = localStorage.getItem(TOKEN_KEY);
+      let token = localStorage.getItem(TOKEN_KEY);
       
       if (!token) {
         setLoading(false);
         return;
       }
 
-      // স্যান্ডবক্স ইউজার হ্যান্ডলিং
       if (token.startsWith("sandbox_token_signature_")) {
         const uId = token.replace("sandbox_token_signature_", "");
-        setUser({ _id: uId, username: "Operator" });
+        setUser({ _id: uId, username: "operator", firstName: "Operator", lastName: "Node" });
         setLoading(false);
         return;
       }
@@ -105,7 +110,8 @@ export const AuthProvider = ({ children }) => {
         const res = await api.get('/auth/me');
         if (isMounted) setUser(res.data.user || res.data);
       } catch (err) {
-        if (isMounted) clearAuthData();
+        console.error("Neural Recovery Error:", err);
+        clearAuthData();
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -115,23 +121,46 @@ export const AuthProvider = ({ children }) => {
     return () => { isMounted = false; };
   }, [api, clearAuthData]);
 
-  const login = async (email, password) => {
+  // 🛠️ ৬. অথেনটিকেশন মেথডসমূহ
+  const login = useCallback(async (email, password) => {
     const res = await api.post('/auth/login', { email, password });
     localStorage.setItem(TOKEN_KEY, res.data.token);
     setUser(res.data.user);
     return res.data;
-  };
+  }, [api]);
 
-  const logout = () => {
+  const signup = useCallback(async (formData) => {
+    const res = await api.post('/auth/register', formData);
+    localStorage.setItem(TOKEN_KEY, res.data.token);
+    setUser(res.data.user);
+    return res.data;
+  }, [api]);
+
+  const logout = useCallback(() => {
     clearAuthData();
-    window.location.reload();
-  };
+    window.location.href = '/login';
+  }, [clearAuthData]);
+
+  // 🛠️ ৭. Context Value (এখানেই কমা দেওয়া হয়েছে)
+  const contextValue = useMemo(() => ({
+    user,
+    socket,
+    loading,
+    login,
+    signup,
+    logout,
+    isAuthenticated: !!user,
+    api,
+    currentNode: BASE_URL
+  }), [user, socket, loading, login, signup, logout, api]);
 
   return (
-    <AuthContext.Provider value={{ user, socket, loading, login, logout, api }}>
+    <AuthContext.Provider value={contextValue}>
       {!loading ? children : (
         <div className="min-h-screen bg-[#020617] flex items-center justify-center">
-            <div className="text-cyan-500 animate-pulse">Syncing_Neural_Core...</div>
+            <div className="text-cyan-500 font-mono animate-pulse uppercase tracking-[0.4em] text-[10px]">
+              Syncing_Neural_Core...
+            </div>
         </div>
       )}
     </AuthContext.Provider>
