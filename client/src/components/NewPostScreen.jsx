@@ -18,7 +18,7 @@ import {
   Play,
   Pause
 } from 'lucide-react';
-import { DEFAULT_SONGS, FILTERS } from '../data/templates';
+import { FILTERS } from '../data/templates';
 import { ensureAudioContext, startSynthSession, stopSynthSession } from '../utils/audio';
 
 export default function NewPostScreen({
