@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, Music, Volume2, Check, X, ShieldAlert } from 'lucide-react';
-import { DEFAULT_SONGS } from '../data/templates';
+import { FILTERS } from '../data/DataTemplates';
 
 export default function SongSelector({ currentSong, onSelectSong, onClose }) {
   const [searchQuery, setSearchQuery] = useState('');
