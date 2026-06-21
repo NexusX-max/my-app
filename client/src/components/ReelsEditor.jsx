@@ -3,7 +3,7 @@ import {
   Music, Type, Image as ImageIcon, Sparkles, Sliders, Maximize2, 
   Plus, Play, Pause, Trash2, Check, RotateCcw, Volume2, VolumeX, PlusCircle
 } from 'lucide-react';
-import { FILTERS } from '../data/templates';
+import { FILTERS } from '../data/DataTemplates';
 import SongSelector from './SongSelector';
 import { startSynthSession, stopSynthSession, playCameraClick, ensureAudioContext } from '../utils/audio';
 

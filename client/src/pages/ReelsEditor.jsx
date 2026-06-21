@@ -3,7 +3,7 @@ import axios from 'axios';
 import MobileFrame from '../components/MobileFrame';
 import ReelsEditor from '../components/ReelsEditor';
 import NewPostScreen from '../components/NewPostScreen';
-import { FILTERS } from '../data/templates';
+import { FILTERS } from '../data/DataTemplates';
 import { playSuccessChime, ensureAudioContext } from '../utils/audio';
 import { Sparkles, Check, Play, Share2, Volume2, VolumeX } from 'lucide-react';
 
