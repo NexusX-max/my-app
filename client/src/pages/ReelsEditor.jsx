@@ -1,14 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect, useContext } from 'react';
 import MobileFrame from '../components/MobileFrame';
 import ReelsEditor from '../components/ReelsEditor';
 import NewPostScreen from '../components/NewPostScreen';
 import { FILTERS } from '../data/DataTemplates';
 import { playSuccessChime, ensureAudioContext } from '../utils/audio';
-import { Sparkles, Check, Play, Share2, Volume2, VolumeX } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
+import { AuthContext } from '../context/AuthContext';
 
 export default function App() {
-  // Navigation Screens: 'editor' | 'sharing' | 'player' | 'new_post'
+  // AuthContext থেকে api ইন্সট্যান্সটি নেওয়া হলো (এটি ইন্টারসেপ্টরসহ)
+  const { api } = useContext(AuthContext); 
+  
   const [activeScreen, setActiveScreen] = useState('editor');
   
   const [sharedPost, setSharedPost] = useState(() => {
@@ -25,7 +27,6 @@ export default function App() {
     } catch (e) { return []; }
   });
 
-  // Editor states
   const [media, setMedia] = useState(null);
   const [selectedSong, setSelectedSong] = useState(null);
   const [textOverlays, setTextOverlays] = useState([]);
@@ -33,17 +34,13 @@ export default function App() {
   const [activeFilter, setActiveFilter] = useState('normal');
   const [filterStrength, setFilterStrength] = useState(100);
   const [adjustments, setAdjustments] = useState({
-    brightness: 100,
-    contrast: 100,
-    saturation: 100,
-    blur: 0
+    brightness: 100, contrast: 100, saturation: 100, blur: 0
   });
   const [canvasRatio, setCanvasRatio] = useState('9:16');
   const [allClips, setAllClips] = useState([]);
   const [activeClipIndex, setActiveClipIndex] = useState(-1);
-  const [isVideoMuted, setIsVideoMuted] = useState(true);
   const [sharingProgress, setSharingProgress] = useState(0);
-  const [sharingLabel, setSharingLabel] = useState('Extracting soundtrack loops...');
+  const [sharingLabel] = useState('Extracting soundtrack loops...');
   const [toast, setToast] = useState('');
 
   const triggerToast = (msg) => {
@@ -68,23 +65,28 @@ export default function App() {
     setActiveScreen('sharing');
   };
 
+  // ✅ সমাধান: সরাসরি api ইন্সট্যান্স ব্যবহার করা হয়েছে
   const handleUploadToOnyx = async (specificCaption = null, specificMedia = null) => {
     const postMedia = specificMedia || media;
     const postCaption = specificCaption || "New creation from Voltagram";
     const postType = postMedia?.type || 'video';
 
     try {
-      const postData = { text: postCaption, mediaUrl: postMedia?.url, mediaType: postType, category: postType === 'video' ? 'reels' : 'feed' };
-      await axios.post("https://my-app-v6xz.onrender.com/api/posts", postData);
-      triggerToast("Synced to OnyxDrift Grid!");
+      const postData = { 
+        text: postCaption, 
+        mediaUrl: postMedia?.url, 
+        mediaType: postType, 
+        category: postType === 'video' ? 'reels' : 'feed' 
+      };
       
-      // স্টেট পরিবর্তন করে স্ক্রিন আপডেট করছি (রিলোড ছাড়াই)
-      setTimeout(() => {
-        setActiveScreen('editor'); 
-        // এখানে আপনি চাইলে 'reels' বা 'feed' নামে নতুন স্ক্রিন স্টেট যোগ করে সেখানে পাঠাতে পারেন
-      }, 1000);
-    } catch (err) {
+      // এখানে api.post ব্যবহার করায় ইন্টারসেপ্টর স্বয়ংক্রিয়ভাবে টোকেন যুক্ত করবে
+      await api.post("/posts", postData);
+      
       triggerToast("Synced to OnyxDrift Grid!");
+      setTimeout(() => { setActiveScreen('editor'); }, 1000);
+    } catch (err) {
+      console.error("Upload error:", err);
+      triggerToast("Sync Failed: Authentication Error");
       setTimeout(() => { setActiveScreen('editor'); }, 1000);
     }
   };
@@ -97,7 +99,7 @@ export default function App() {
       setSharingProgress(prg);
       if (prg >= 100) {
         clearInterval(interval);
-        playSuccessChime();
+       playSuccessChime();
         setActiveScreen('player');
         triggerToast("🚀 Shared successfully!");
         let finalCaption = "New creation from Voltagram";
@@ -155,15 +157,6 @@ export default function App() {
             <div className="flex-1 flex flex-col items-center justify-center bg-[#010101] text-white p-6 space-y-7 z-50">
               <span className="text-2xl font-black">{sharingProgress}%</span>
               <p className="text-sm font-bold">{sharingLabel}</p>
-            </div>
-          )}
-
-          {activeScreen === 'player' && (
-            <div className="flex-1 flex flex-col justify-between text-white bg-neutral-950 p-0 overflow-hidden h-full">
-              {/* (Player content remains same as your original code) */}
-              <div className="p-4">
-                 <button onClick={() => setActiveScreen('editor')} className="w-full bg-emerald-600 py-3 rounded-full font-bold">Back to Editor</button>
-              </div>
             </div>
           )}
         </MobileFrame>
